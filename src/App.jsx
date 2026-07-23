@@ -16,7 +16,7 @@ import QuotaDepletedModal from './components/QuotaDepletedModal';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
 import { initDatabase, renewFreeQuota } from './services/sqlDataService';
-import { ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
+import { Moon, ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
 
 export default function App() {
   const [projects, setProjects] = useState(SECURITY_PROJECTS_MOCK);
@@ -38,7 +38,11 @@ export default function App() {
 
   // Initialize SQL Data Store
   useEffect(() => {
-    initDatabase();
+    try {
+      initDatabase();
+    } catch (e) {
+      console.warn('initDatabase notice:', e);
+    }
   }, []);
 
   // Active File & Scan Analysis
@@ -98,7 +102,7 @@ export default function App() {
     const updatedUser = renewFreeQuota(currentUser.id, 'COMMUNITY_FREE_RENEWAL');
     if (updatedUser) {
       setCurrentUser({ ...updatedUser });
-      alert(`🎉 Bạn đã gia hạn thành công! Nhận thêm +3 lượt AI Scan trong ngày và +50 Karma (Tổng Karma: ${updatedUser.karma_points}).`);
+      alert(`🎉 Bạn đã gia hạn thành công! Nhận thêm +3 lượt AI Scan trong ngày và +50 Karma.`);
     } else {
       // Fallback local update
       setCurrentUser({
@@ -380,13 +384,15 @@ export default function App() {
         scanResult={scanResult}
       />
 
-      <QuotaDepletedModal
-        isOpen={isQuotaModalOpen}
-        onClose={() => setIsQuotaModalOpen(false)}
-        onRenewFreeQuota={handleRenewFreeQuota}
-        onOpenPricing={() => setIsPricingOpen(true)}
-        currentUser={currentUser}
-      />
+      {isQuotaModalOpen && (
+        <QuotaDepletedModal
+          isOpen={isQuotaModalOpen}
+          onClose={() => setIsQuotaModalOpen(false)}
+          onRenewFreeQuota={handleRenewFreeQuota}
+          onOpenPricing={() => setIsPricingOpen(true)}
+          currentUser={currentUser}
+        />
+      )}
 
       {/* Exact Figma Style Footer */}
       <footer style={{
