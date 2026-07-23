@@ -23,6 +23,7 @@
   --accent-amber: #f59e0b;
   
   --gradient-lunar: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #06b6d4 100%);
+  --gradient-brand: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #06b6d4 100%);
   --gradient-crimson: linear-gradient(135deg, #e11d48 0%, #a855f7 100%);
   --gradient-emerald: linear-gradient(135deg, #10b981 0%, #059669 100%);
   --gradient-rainbow: linear-gradient(90deg, #6366f1 0%, #a855f7 25%, #06b6d4 50%, #10b981 75%, #f59e0b 100%);
@@ -230,7 +231,7 @@ body {
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
 
-/* Inputs */
+/* Form Inputs */
 .input-group {
   display: flex;
   flex-direction: column;
