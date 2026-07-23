@@ -1,39 +1,39 @@
 import React from 'react';
-import { ShieldCheck, Search, LogIn, LogOut, Sparkles, Wrench, Zap, Bot, Heart, Package } from 'lucide-react';
+import { Moon, ShieldCheck, Users, Search, LogIn, LogOut, Sparkles, Wrench, Zap, Bot, Heart, Package, Terminal } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQuery, setSearchQuery, currentUser, currentTier, onOpenAuth, onLogout, onOpenPricing, onOpenGitBot }) {
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 50 }}>
       
-      {/* Top Rainbow Accent Line (npm style) */}
-      <div style={{ height: '5px', background: 'var(--gradient-rainbow)', width: '100%' }} />
+      {/* Top Graphic Gradient Rainbow Bar */}
+      <div style={{ height: '4px', background: 'var(--gradient-rainbow)', width: '100%' }} />
 
-      {/* Top Sub-Bar (npm style) */}
+      {/* Top Status Bar */}
       <div style={{
-        background: '#090c12',
+        background: 'rgba(6, 8, 15, 0.95)',
         borderBottom: '1px solid var(--border-color)',
-        padding: '4px 24px',
-        fontSize: '0.75rem',
+        padding: '5px 24px',
+        fontSize: '0.76rem',
         color: 'var(--text-secondary)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Heart size={12} color="#fb7185" fill="#fb7185" />
-          <span>Lunar AI • Build amazing things securely</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Sparkles size={13} color="#a5b4fc" />
+          <span>Lunar Security v2.0 • AI Code Audit & Automated Git Bot</span>
         </div>
 
-        <div style={{ display: 'flex', gap: '16px' }}>
-          <a href="#docs" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>Documentation</a>
-          <a href="#community" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>Security Advisories</a>
-          <a href="#pro" style={{ color: '#fb7185', textDecoration: 'none', fontWeight: '700' }}>Lunar Pro</a>
+        <div style={{ display: 'flex', gap: '18px', alignItems: 'center' }}>
+          <a href="#docs" onClick={(e) => { e.preventDefault(); setActiveTab('explore'); }} style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>SAST Rules</a>
+          <a href="#community" onClick={(e) => { e.preventDefault(); setActiveTab('community'); }} style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>White-Hat Forum</a>
+          <a href="#pro" onClick={(e) => { e.preventDefault(); onOpenPricing(); }} style={{ color: '#a855f7', textDecoration: 'none', fontWeight: '700' }}>Lunar Pro & Bot</a>
         </div>
       </div>
 
-      {/* Main Header Container */}
+      {/* Main Navbar */}
       <div style={{
-        background: 'rgba(15, 19, 26, 0.92)',
+        background: 'rgba(11, 14, 23, 0.92)',
         backdropFilter: 'blur(16px)',
         borderBottom: '1px solid var(--border-color)',
         padding: '12px 24px'
@@ -48,7 +48,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
           flexWrap: 'wrap'
         }}>
           
-          {/* npm Style Square Red Logo */}
+          {/* Lunar Brand Logo */}
           <div 
             onClick={() => setActiveTab('explore')}
             style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
@@ -56,19 +56,15 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
             <div style={{
               width: '42px',
               height: '42px',
-              borderRadius: '4px',
-              background: 'var(--npm-red)',
+              borderRadius: '12px',
+              background: 'var(--gradient-lunar)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: '#ffffff',
-              fontFamily: 'var(--font-heading)',
-              fontWeight: '900',
-              fontSize: '1.4rem',
-              boxShadow: '0 0 15px var(--npm-red-glow)',
-              letterSpacing: '-0.05em'
+              boxShadow: '0 0 25px rgba(99, 102, 241, 0.5)'
             }}>
-              lnr
+              <Moon size={24} color="#ffffff" />
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -76,24 +72,28 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
                   fontFamily: 'var(--font-heading)',
                   fontSize: '1.4rem',
                   fontWeight: '800',
-                  color: '#ffffff',
+                  background: 'linear-gradient(135deg, #ffffff 40%, #c084fc 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
                   letterSpacing: '-0.02em'
                 }}>
-                  lunar<span style={{ color: 'var(--npm-red)' }}>.dev</span>
+                  Lunar<span style={{ color: 'var(--accent-cyan)', WebkitTextFillColor: 'initial' }}>.dev</span>
                 </span>
-                <span className="badge badge-npm">{currentTier}</span>
+                <span className={`badge ${currentTier === 'FREE' ? 'badge-purple' : 'badge-lunar'}`} style={{ fontSize: '0.65rem' }}>
+                  {currentTier} PLAN
+                </span>
               </div>
               <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                AI Code Security Registry & Auto-Fix
+                AI Code Audit & Security Engine
               </p>
             </div>
           </div>
 
-          {/* npm Style Giant Search Bar */}
+          {/* Search Bar */}
           <div style={{
             display: 'flex',
             flex: '1',
-            maxWidth: '520px',
+            maxWidth: '480px',
             minWidth: '220px',
             position: 'relative'
           }}>
@@ -119,16 +119,16 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
                   paddingLeft: '44px',
                   paddingRight: '100px',
                   width: '100%',
-                  borderRadius: '4px 0 0 4px',
-                  fontSize: '0.92rem',
+                  borderRadius: 'var(--radius-md) 0 0 var(--radius-md)',
+                  fontSize: '0.9rem',
                   borderColor: 'var(--border-color)',
-                  background: 'rgba(9, 12, 18, 0.95)'
+                  background: 'rgba(6, 8, 15, 0.9)'
                 }}
               />
               <button
                 className="btn btn-primary"
                 style={{
-                  borderRadius: '0 4px 4px 0',
+                  borderRadius: '0 var(--radius-md) var(--radius-md) 0',
                   padding: '0 20px',
                   fontSize: '0.88rem'
                 }}
@@ -146,7 +146,16 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
               style={{ padding: '8px 14px', fontSize: '0.88rem' }}
             >
               <Package size={16} />
-              Packages & Repos
+              Repos & Audit
+            </button>
+
+            <button
+              onClick={() => setActiveTab('community')}
+              className={`btn ${activeTab === 'community' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '8px 14px', fontSize: '0.88rem' }}
+            >
+              <Users size={16} color="#a855f7" />
+              Community
             </button>
 
             <button
@@ -161,7 +170,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
             <button
               onClick={onOpenPricing}
               className="btn btn-primary"
-              style={{ padding: '8px 14px', fontSize: '0.88rem', background: 'var(--gradient-rainbow)', border: 'none' }}
+              style={{ padding: '8px 14px', fontSize: '0.88rem', background: 'var(--gradient-lunar)', border: 'none' }}
             >
               <Zap size={16} />
               {currentTier === 'FREE' ? 'Nâng Cấp Pro' : `Gói ${currentTier}`}
@@ -177,7 +186,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
             </button>
 
             {currentUser ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255, 255, 255, 0.06)', padding: '4px 10px 4px 6px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255, 255, 255, 0.06)', padding: '4px 10px 4px 6px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
                 <img
                   src={currentUser.avatar}
                   alt={currentUser.name}

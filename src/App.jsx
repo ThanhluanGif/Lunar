@@ -13,7 +13,7 @@ import GitBotConfigModal from './components/GitBotConfigModal';
 import AuditReportExportModal from './components/AuditReportExportModal';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
-import { ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2 } from 'lucide-react';
+import { Moon, ShieldAlert, ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, ExternalLink } from 'lucide-react';
 
 export default function App() {
   const [projects, setProjects] = useState(SECURITY_PROJECTS_MOCK);
@@ -77,7 +77,7 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
-      {/* Top Navbar */}
+      {/* Top Figma-Grade Navbar */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -98,8 +98,8 @@ export default function App() {
       {/* Guest Mode Banner */}
       {!currentUser && (
         <div style={{
-          background: 'rgba(225, 29, 72, 0.15)',
-          borderBottom: '1px solid var(--npm-red)',
+          background: 'rgba(99, 102, 241, 0.12)',
+          borderBottom: '1px solid var(--border-highlight)',
           padding: '8px 24px',
           textAlign: 'center',
           fontSize: '0.82rem',
@@ -110,7 +110,7 @@ export default function App() {
           gap: '12px',
           flexWrap: 'wrap'
         }}>
-          <span>⚡ Bạn đang ở chế độ <strong>Khách vãng lai (Guest Mode)</strong>. Mở khóa 100% bản vá AI & GitHub Bot bằng cách Sign In hoặc Nâng cấp Pro.</span>
+          <span>🌙 Bạn đang ở chế độ <strong>Khách vãng lai (Guest Mode)</strong>. Mở khóa 100% bản vá AI & GitHub Bot bằng cách Sign In hoặc Nâng cấp Pro.</span>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
               onClick={() => setIsPricingOpen(true)}
@@ -119,6 +119,7 @@ export default function App() {
             >
               <Zap size={14} /> Nâng Cấp Pro
             </button>
+
             <button
               onClick={() => handleUpgradeSuccess('PRO')}
               className="btn btn-emerald btn-sm"
@@ -133,30 +134,30 @@ export default function App() {
       {/* Main Content Area */}
       <main style={{ flex: 1, padding: '0 24px 60px 24px' }}>
         
-        {/* TAB 1: EXPLORE PACKAGES (Graphic Ultra-Professional Layout) */}
+        {/* TAB 1: EXPLORE PACKAGES & HOMEPAGE (Figma Design Concept) */}
         {activeTab === 'explore' && (
           <div style={{ maxWidth: '1280px', margin: '0 auto', paddingTop: '32px' }}>
             
-            {/* Graphic Hero Section */}
+            {/* Ultra-Sleek Figma Hero Section */}
             <div className="glass-panel" style={{
               padding: '48px 40px',
               marginBottom: '40px',
-              background: 'linear-gradient(135deg, rgba(225, 29, 72, 0.15) 0%, rgba(168, 85, 247, 0.12) 50%, rgba(6, 182, 212, 0.12) 100%)',
-              border: '1px solid rgba(225, 29, 72, 0.3)',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.16) 0%, rgba(139, 92, 246, 0.14) 50%, rgba(6, 182, 212, 0.12) 100%)',
+              border: '1px solid rgba(99, 102, 241, 0.35)',
               borderRadius: 'var(--radius-xl)',
-              overflow: 'hidden'
+              boxShadow: 'var(--shadow-glow-purple)'
             }}>
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-                gap: '36px',
+                gap: '40px',
                 alignItems: 'center'
               }}>
                 
-                {/* Left Text & CTA */}
+                {/* Left Column: Headline, Slogan & Action Form */}
                 <div>
-                  <div className="badge badge-npm" style={{ marginBottom: '16px', fontSize: '0.8rem', padding: '6px 14px' }}>
-                    <Sparkles size={14} /> Next-Gen AI Security Registry
+                  <div className="badge badge-lunar" style={{ marginBottom: '16px', fontSize: '0.8rem', padding: '6px 14px' }}>
+                    <Moon size={14} /> Lunar AI Code Review Engine v2.0
                   </div>
 
                   <h1 style={{
@@ -168,7 +169,11 @@ export default function App() {
                     color: '#ffffff',
                     lineHeight: 1.12
                   }}>
-                    Take code security to the <span style={{ color: 'var(--npm-red)' }}>next level.</span>
+                    AI Code Review & <span style={{
+                      background: 'var(--gradient-lunar)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent'
+                    }}>Security Audit</span> for Developers
                   </h1>
 
                   <p style={{
@@ -177,60 +182,60 @@ export default function App() {
                     marginBottom: '32px',
                     lineHeight: '1.65'
                   }}>
-                    Lunar là nền tảng **AI Code Review Chuyên Sâu, Security SAST & Auto-Fix Workbench**. Quét lỗ hổng OWASP Top 10, sửa lỗi tự động 1-click và triển khai **GitHub Security Bot** tự động cho repository của bạn.
+                    Kiểm tra mã nguồn tự động theo chuẩn **OWASP Top 10**, chấm điểm 5 tiêu chí độc lập (**Naming, Architecture, Performance, Security, Readability**), và dùng bộ công cụ **1-Click Auto-Fix Patch** để vá lỗi mã nguồn trực tiếp trên GitHub.
                   </p>
 
-                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
                     <button onClick={() => setIsSubmitOpen(true)} className="btn btn-primary" style={{ padding: '14px 28px', fontSize: '1rem' }}>
-                      <Wrench size={18} /> Scan & Auto-Fix Package
+                      <Wrench size={18} /> Quét & Vá Code Ngay
                     </button>
+
                     <button onClick={() => setIsPricingOpen(true)} className="btn btn-secondary" style={{ padding: '14px 28px', fontSize: '1rem' }}>
-                      <Zap size={18} color="var(--npm-red)" /> Explore Pro & Enterprise
+                      <Zap size={18} color="var(--accent-indigo)" /> Khám Phá Gói Pro
                     </button>
                   </div>
                 </div>
 
-                {/* Right Graphic 3D Glassmorphic Shield Illustration */}
+                {/* Right Column: Interactive 3D Lunar Sentinel Shield Graphic */}
                 <div style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
                   <div className="glass-panel animate-float" style={{
-                    padding: '28px',
+                    padding: '30px',
                     borderRadius: 'var(--radius-xl)',
-                    border: '1.5px solid rgba(225, 29, 72, 0.4)',
-                    background: 'rgba(15, 20, 32, 0.85)',
-                    boxShadow: '0 0 50px rgba(225, 29, 72, 0.35)',
-                    maxWidth: '360px',
+                    border: '1.5px solid rgba(99, 102, 241, 0.45)',
+                    background: 'rgba(12, 16, 28, 0.9)',
+                    boxShadow: '0 0 50px rgba(99, 102, 241, 0.4)',
+                    maxWidth: '380px',
                     width: '100%',
                     textAlign: 'center'
                   }}>
-                    {/* Glowing Pulse Ring */}
                     <div style={{
                       width: '90px',
                       height: '90px',
                       borderRadius: '50%',
-                      background: 'radial-gradient(circle, rgba(225, 29, 72, 0.3) 0%, transparent 70%)',
-                      border: '2px solid var(--npm-red)',
+                      background: 'radial-gradient(circle, rgba(99, 102, 241, 0.35) 0%, transparent 75%)',
+                      border: '2px solid var(--accent-indigo)',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      boxShadow: '0 0 35px rgba(225, 29, 72, 0.6)',
+                      boxShadow: '0 0 35px rgba(99, 102, 241, 0.6)',
                       marginBottom: '16px'
                     }}>
                       <ShieldCheck size={48} color="#ffffff" />
                     </div>
 
-                    <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.3rem', fontWeight: '800', marginBottom: '4px', color: '#ffffff' }}>
-                      Lunar Sentinel AI
+                    <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.35rem', fontWeight: '800', marginBottom: '4px', color: '#ffffff' }}>
+                      Lunar Security Bot
                     </h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                      Real-time SAST & Auto-Patch Sentinel Active
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '18px' }}>
+                      Real-time SAST & Auto-Fix Sentinel Active
                     </p>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}>
-                      <div className="badge badge-emerald" style={{ justifyContent: 'center', padding: '6px' }}>
-                        <CheckCircle2 size={14} /> OWASP Top 10 Guard Active
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
+                      <div className="badge badge-emerald" style={{ justifyContent: 'center', padding: '7px' }}>
+                        <CheckCircle2 size={14} /> OWASP Top 10 Compliance Active
                       </div>
-                      <div className="badge badge-cyan" style={{ justifyContent: 'center', padding: '6px' }}>
-                        <Bot size={14} /> GitHub Bot Pull Request Ready
+                      <div className="badge badge-cyan" style={{ justifyContent: 'center', padding: '7px' }}>
+                        <Bot size={14} /> 1-Click Pull Request Auto-Patch
                       </div>
                     </div>
                   </div>
@@ -238,7 +243,7 @@ export default function App() {
 
               </div>
 
-              {/* Graphic Stats Counter Grid */}
+              {/* Graphic Stats Bar */}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -262,23 +267,85 @@ export default function App() {
               </div>
             </div>
 
-            {/* Graphic Package Cards List */}
+            {/* Feature Cards Grid (Figma Component Showcase) */}
+            <div style={{ marginBottom: '48px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+                <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.8rem', fontWeight: '800', color: '#ffffff' }}>
+                  Tính Năng Cốt Lõi Trên Lunar Security Platform
+                </h2>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                  Hệ thống bảo mật mã nguồn toàn diện từ kiểm tra tĩnh tới tự động tạo Pull Request vá lỗi
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+                <div className="glass-card" style={{ padding: '24px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(99, 102, 241, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                    <ShieldAlert size={24} color="var(--accent-indigo)" />
+                  </div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: '800', marginBottom: '8px', color: '#ffffff' }}>
+                    1. SAST Security Engine
+                  </h3>
+                  <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: '1.55' }}>
+                    Phân tích cú pháp tĩnh chuẩn OWASP Top 10, phát hiện SQL Injection, XSS, Hardcoded Credentials & Insecure JWT Verification.
+                  </p>
+                </div>
+
+                <div className="glass-card" style={{ padding: '24px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(139, 92, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                    <Activity size={24} color="var(--accent-purple)" />
+                  </div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: '800', marginBottom: '8px', color: '#ffffff' }}>
+                    2. 5-Metric Radar Score
+                  </h3>
+                  <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: '1.55' }}>
+                    Biểu đồ Radar Spider Chart đánh giá 5 khía cạnh độc lập: Naming, Architecture, Performance, Security & Readability.
+                  </p>
+                </div>
+
+                <div className="glass-card" style={{ padding: '24px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                    <Wrench size={24} color="#34d399" />
+                  </div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: '800', marginBottom: '8px', color: '#ffffff' }}>
+                    3. Auto-Fix Patch Workbench
+                  </h3>
+                  <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: '1.55' }}>
+                    Giao diện Side-by-Side Diff xem đối sánh mã lỗi vs mã đã vá safe code và 1-Click tự động tạo GitHub Pull Request.
+                  </p>
+                </div>
+
+                <div className="glass-card" style={{ padding: '24px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(6, 182, 212, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                    <Users size={24} color="var(--accent-cyan)" />
+                  </div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: '800', marginBottom: '8px', color: '#ffffff' }}>
+                    4. White-Hat Cyber Forum
+                  </h3>
+                  <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: '1.55' }}>
+                    Cộng đồng chuyên gia bảo mật và Pentesters trao đổi kinh nghiệm phòng thủ mã độc, thảo luận Zero-day và bảng xếp hạng Karma.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Figma-Style Package Cards List */}
             <div style={{ marginBottom: '40px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
                 <div>
                   <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>
-                    Featured Repositories & Security Audits
+                    Public Audited Repositories & Packages
                   </h2>
                   <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-                    Top scanned packages and public code audits on Lunar Registry
+                    Danh sách các dự án tiêu biểu đang được kiểm định bảo mật trên Lunar Registry
                   </p>
                 </div>
-                <span className="badge badge-npm" style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
+                <span className="badge badge-lunar" style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
                   PUBLIC REGISTRY
                 </span>
               </div>
 
-              {/* Graphic Package Cards List */}
+              {/* Package Card Grid */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                 {projects.map((proj) => (
                   <div
@@ -292,17 +359,17 @@ export default function App() {
                       gap: '24px',
                       flexWrap: 'wrap',
                       cursor: 'pointer',
-                      borderLeft: proj.cvssScore >= 8.0 ? '5px solid var(--npm-red)' : '5px solid #10b981'
+                      borderLeft: proj.cvssScore >= 8.0 ? '5px solid var(--accent-rose)' : '5px solid #10b981'
                     }}
                     onClick={() => handleSelectProject(proj)}
                   >
                     <div style={{ flex: 1, minWidth: '280px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                        <Package size={22} color="var(--npm-red)" />
+                        <Package size={22} color="var(--accent-indigo)" />
                         <h3 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#ffffff', fontFamily: 'var(--font-mono)' }}>
                           {proj.title.toLowerCase().replace(/\s+/g, '-')}
                         </h3>
-                        <span className="badge badge-npm">v1.2.0</span>
+                        <span className="badge badge-lunar">v1.2.0</span>
                         <span className={`badge ${proj.cvssScore >= 8.0 ? 'badge-rose' : 'badge-emerald'}`}>
                           CVSS {proj.cvssScore || 0.0}
                         </span>
@@ -333,7 +400,7 @@ export default function App() {
                     <div>
                       <button className="btn btn-secondary btn-sm" style={{ gap: '6px' }}>
                         <span>Inspect & Auto-Fix</span>
-                        <ArrowRight size={14} color="var(--npm-red)" />
+                        <ArrowRight size={14} color="var(--accent-indigo)" />
                       </button>
                     </div>
                   </div>
@@ -369,6 +436,7 @@ export default function App() {
                 <button onClick={() => setIsGitBotOpen(true)} className="btn btn-secondary btn-sm">
                   <Bot size={16} color="var(--accent-cyan)" /> GitHub Action Bot
                 </button>
+
                 <button onClick={() => setIsReportOpen(true)} className="btn btn-primary btn-sm">
                   <ShieldCheck size={16} /> Audit Report & Badge
                 </button>
@@ -378,11 +446,11 @@ export default function App() {
             {/* Package Title Header */}
             <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                <Package size={28} color="var(--npm-red)" />
+                <Package size={28} color="var(--accent-indigo)" />
                 <h1 style={{ fontFamily: 'var(--font-mono)', fontSize: '1.8rem', fontWeight: '800' }}>
                   {selectedProject.title.toLowerCase().replace(/\s+/g, '-')}
                 </h1>
-                <span className="badge badge-npm">v1.2.0</span>
+                <span className="badge badge-lunar">v1.2.0</span>
               </div>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
                 {selectedProject.description}
@@ -461,10 +529,10 @@ export default function App() {
         scanResult={scanResult}
       />
 
-      {/* npm Style Graphic Footer */}
+      {/* Figma-Style Graphic Footer */}
       <footer style={{
         borderTop: '1px solid var(--border-color)',
-        background: '#07090e',
+        background: '#05070d',
         padding: '36px 24px',
         color: 'var(--text-muted)',
         fontSize: '0.85rem'
@@ -474,19 +542,19 @@ export default function App() {
             <div style={{
               width: '32px',
               height: '32px',
-              borderRadius: '4px',
-              background: 'var(--npm-red)',
+              borderRadius: '8px',
+              background: 'var(--gradient-lunar)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: '#fff',
               fontWeight: '900',
               fontSize: '1rem',
-              boxShadow: '0 0 15px var(--npm-red-glow)'
+              boxShadow: '0 0 15px rgba(99, 102, 241, 0.5)'
             }}>
-              lnr
+              <Moon size={18} color="#fff" />
             </div>
-            <span>lunar.dev • An open source security registry for JavaScript, Python & Go.</span>
+            <span>Lunar.dev • AI Code Audit & Automated Security Bot Platform.</span>
           </div>
 
           <div style={{ display: 'flex', gap: '20px' }}>
