@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { Wrench, Sparkles, Code, CheckCircle, Download, Copy, GitPullRequest, ArrowRight, ShieldCheck, Cpu, Eye } from 'lucide-react';
+import { Wrench, Sparkles, Code, CheckCircle, Download, Copy, GitPullRequest, ArrowRight, ShieldCheck, Cpu, Eye, Loader2, ExternalLink } from 'lucide-react';
+import { createGitHubSecurityPR } from '../services/githubBotService';
 
-export default function CodeRepairWorkbench({ activeFile, activeVuln, onApplyFix }) {
+export default function CodeRepairWorkbench({ activeFile, activeVuln, repoUrl, onOpenPricing }) {
   const [repairStyle, setRepairStyle] = useState('security'); // 'security' | 'performance' | 'clean'
   const [customPrompt, setCustomPrompt] = useState('');
   const [viewMode, setViewMode] = useState('side-by-side'); // 'side-by-side' | 'unified'
-  const [isApplying, setIsApplying] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [prCreated, setPrCreated] = useState(false);
+  const [isCreatingPR, setIsCreatingPR] = useState(false);
+  const [prResult, setPrResult] = useState(null);
 
   if (!activeVuln) {
     return (
@@ -26,9 +27,16 @@ export default function CodeRepairWorkbench({ activeFile, activeVuln, onApplyFix
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleCreatePR = () => {
-    setPrCreated(true);
-    setTimeout(() => setPrCreated(false), 4000);
+  const handleCreatePR = async () => {
+    setIsCreatingPR(true);
+    try {
+      const res = await createGitHubSecurityPR(repoUrl, originalCode, patchedCode, activeVuln);
+      setPrResult(res);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsCreatingPR(false);
+    }
   };
 
   const handleDownload = () => {
@@ -55,7 +63,7 @@ export default function CodeRepairWorkbench({ activeFile, activeVuln, onApplyFix
         gap: '12px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Sparkles size={22} color="var(--accent-cyan)" />
+          <Sparkles size={22} color="var(--accent-purple)" />
           <div>
             <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.2rem', fontWeight: '800' }}>
               Bộ Công Cụ Sửa Code Tự Động (AI Code Repair Workbench)
@@ -96,7 +104,7 @@ export default function CodeRepairWorkbench({ activeFile, activeVuln, onApplyFix
             style={{ justifyContent: 'flex-start' }}
           >
             <ShieldCheck size={16} />
-            🔒 Max Security (OWASP Top 10)
+            🔒 Max Security (OWASP Standard)
           </button>
 
           <button
@@ -189,8 +197,8 @@ export default function CodeRepairWorkbench({ activeFile, activeVuln, onApplyFix
       )}
 
       {/* AI Architectural Remediation Explanation */}
-      <div className="glass-card" style={{ padding: '16px', marginBottom: '20px', background: 'rgba(99, 102, 241, 0.08)' }}>
-        <div style={{ fontWeight: '700', color: 'var(--accent-cyan)', fontSize: '0.88rem', marginBottom: '6px' }}>
+      <div className="glass-card" style={{ padding: '16px', marginBottom: '20px', background: 'rgba(168, 85, 247, 0.08)' }}>
+        <div style={{ fontWeight: '700', color: 'var(--accent-purple)', fontSize: '0.88rem', marginBottom: '6px' }}>
           💡 Giải Thích Phương Án Vá Lỗi Chi Tiết Của AI:
         </div>
         <p style={{ fontSize: '0.84rem', color: 'var(--text-primary)', lineHeight: '1.5' }}>
@@ -210,27 +218,38 @@ export default function CodeRepairWorkbench({ activeFile, activeVuln, onApplyFix
           Tải File Code Đã Vá
         </button>
 
-        <button onClick={handleCreatePR} className="btn btn-emerald">
-          <GitPullRequest size={16} />
-          Tạo GitHub Pull Request Tự Động
+        <button onClick={handleCreatePR} disabled={isCreatingPR} className="btn btn-emerald">
+          {isCreatingPR ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <GitPullRequest size={16} />}
+          {isCreatingPR ? 'Đang Tạo Pull Request...' : 'Tự Động Tạo GitHub Pull Request'}
         </button>
       </div>
 
-      {prCreated && (
+      {prResult && (
         <div style={{
-          marginTop: '12px',
-          padding: '10px 14px',
+          marginTop: '16px',
+          padding: '14px',
           background: 'rgba(16, 185, 129, 0.15)',
           border: '1px solid rgba(16, 185, 129, 0.4)',
-          borderRadius: 'var(--radius-sm)',
+          borderRadius: 'var(--radius-md)',
           color: '#34d399',
-          fontSize: '0.85rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
+          fontSize: '0.85rem'
         }}>
-          <CheckCircle size={16} />
-          <span>Tạo Pull Request thành công trên GitHub! Đang đợi CI/CD test chạy.</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', marginBottom: '4px' }}>
+            <CheckCircle size={16} />
+            <span>Tạo Pull Request #{prResult.prNumber} Thành Công Trên GitHub!</span>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+            Branch: <code style={{ color: 'var(--accent-cyan)' }}>{prResult.branchName}</code>
+          </div>
+          <a
+            href={prResult.prUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="btn btn-emerald btn-sm"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            Xem PR Trên GitHub <ExternalLink size={14} />
+          </a>
         </div>
       )}
 

@@ -8,10 +8,12 @@ import CodeRepairWorkbench from './components/CodeRepairWorkbench';
 import PaywallGate from './components/PaywallGate';
 import SubmitModal from './components/SubmitModal';
 import AuthModal from './components/AuthModal';
+import PricingModal from './components/PricingModal';
+import GitBotConfigModal from './components/GitBotConfigModal';
 import AuditReportExportModal from './components/AuditReportExportModal';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
-import { Moon, ShieldAlert, ShieldCheck, Wrench, Users, ArrowRight, Zap, AlertTriangle, ChevronRight, UserCheck, Sparkles } from 'lucide-react';
+import { Moon, ShieldAlert, ShieldCheck, Wrench, Users, Zap, Bot, UserCheck } from 'lucide-react';
 
 export default function App() {
   const [projects, setProjects] = useState(SECURITY_PROJECTS_MOCK);
@@ -19,12 +21,15 @@ export default function App() {
   const [selectedProject, setSelectedProject] = useState(SECURITY_PROJECTS_MOCK[0]);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Auth state (defaults to null for Guest mode testing)
+  // Auth state & Subscription tier
   const [currentUser, setCurrentUser] = useState(null);
+  const [currentTier, setCurrentTier] = useState('FREE'); // 'FREE' | 'PRO' | 'ENTERPRISE'
   
   // Modals
   const [isSubmitOpen, setIsSubmitOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [isGitBotOpen, setIsGitBotOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
 
   // Active File & Scan Analysis
@@ -55,6 +60,20 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleUpgradeSuccess = (newTier) => {
+    setCurrentTier(newTier);
+    if (!currentUser) {
+      setCurrentUser({
+        id: 'user-pro',
+        name: 'Nguyễn Văn Đạt (Pro Dev)',
+        email: 'dat.nguyen@lunar.dev',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+        role: `MEMBER_${newTier}`,
+        karma: 1500
+      });
+    }
+  };
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
@@ -66,11 +85,17 @@ export default function App() {
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         currentUser={currentUser}
+        currentTier={currentTier}
         onOpenAuth={() => setIsAuthOpen(true)}
-        onLogout={() => setCurrentUser(null)}
+        onLogout={() => {
+          setCurrentUser(null);
+          setCurrentTier('FREE');
+        }}
+        onOpenPricing={() => setIsPricingOpen(true)}
+        onOpenGitBot={() => setIsGitBotOpen(true)}
       />
 
-      {/* Guest Mode Testing Helper Banner */}
+      {/* Guest Mode Banner */}
       {!currentUser && (
         <div style={{
           background: 'linear-gradient(90deg, rgba(168, 85, 247, 0.2), rgba(6, 182, 212, 0.2))',
@@ -82,25 +107,26 @@ export default function App() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '12px'
+          gap: '12px',
+          flexWrap: 'wrap'
         }}>
-          <span>🌙 Bạn đang ở chế độ <strong>Khách vãng lai (Lunar Guest)</strong>. Một số tính năng xem chi tiết code & vá lỗi sẽ bị khóa.</span>
-          <button
-            onClick={() => {
-              setCurrentUser({
-                id: 'user-demo',
-                name: 'Nguyễn Văn Đạt (Dev)',
-                email: 'dat.nguyen@lunar.dev',
-                avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-                role: 'MEMBER_PRO',
-                karma: 1250
-              });
-            }}
-            className="btn btn-emerald btn-sm"
-            style={{ padding: '2px 10px', fontSize: '0.75rem' }}
-          >
-            <UserCheck size={14} /> Chuyển Sang Thành Viên Đã Đăng Nhập
-          </button>
+          <span>🌙 Bạn đang ở gói <strong>FREE (Guest Mode)</strong>. Quét 3 lượt/ngày. Nâng cấp Pro để mở khóa 100% tính năng vá lỗi tự động.</span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setIsPricingOpen(true)}
+              className="btn btn-primary btn-sm"
+              style={{ padding: '2px 10px', fontSize: '0.75rem', background: 'linear-gradient(135deg, #f59e0b, #ec4899)' }}
+            >
+              <Zap size={14} /> Xem Bảng Giá Pro
+            </button>
+            <button
+              onClick={() => handleUpgradeSuccess('PRO')}
+              className="btn btn-emerald btn-sm"
+              style={{ padding: '2px 10px', fontSize: '0.75rem' }}
+            >
+              <UserCheck size={14} /> Thử Đăng Nhập Demo Pro
+            </button>
+          </div>
         </div>
       )}
 
@@ -120,7 +146,7 @@ export default function App() {
             }}>
               <div style={{ maxWidth: '840px' }}>
                 <span className="badge badge-purple" style={{ marginBottom: '14px' }}>
-                  <Moon size={14} /> Lunar AI - Code Security & Auto-Patch Workbench
+                  <Moon size={14} /> Lunar AI - Security SAST Engine & Auto-Patch Bot
                 </span>
 
                 <h1 style={{
@@ -133,19 +159,22 @@ export default function App() {
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent'
                 }}>
-                  Lunar - Nền Tảng AI Review Code Chuyên Sâu, Vá Lỗi OWASP & Security Audit
+                  Lunar - Tích Hợp Thanh Toán Mua Phí, AI Review & Tự Động Vá Lỗi Mã Nguồn บน GitHub
                 </h1>
 
                 <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: '1.6' }}>
-                  Kiểm tra mã nguồn tự động với <strong>Lunar AI Engine</strong>, phát hiện các mối đe dọa OWASP Top 10, cung cấp bộ công cụ <strong>1-Click Auto-Fix Patch</strong> xem Diff trực quan và hỗ trợ tạo Pull Request về GitHub.
+                  Hỗ trợ thanh toán QR Code VietQR/MoMo nâng cấp gói Pro/Enterprise. Tích hợp <strong>Lunar GitHub Security Bot</strong> tự động tạo <strong>Pull Request</strong> chứa bản vá mã nguồn safe code ngay khi có commit mới.
                 </p>
 
                 <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
                   <button onClick={() => setIsSubmitOpen(true)} className="btn btn-primary">
-                    <Wrench size={18} /> Quét & Vá Code Với Lunar AI
+                    <Wrench size={18} /> Quét & Vá Code Dự Án Của Bạn
                   </button>
-                  <button onClick={() => setActiveTab('community')} className="btn btn-secondary">
-                    <Users size={18} color="#a855f7" /> Tham Gia Cộng Đồng Cybersecurity
+                  <button onClick={() => setIsPricingOpen(true)} className="btn btn-secondary">
+                    <Zap size={18} color="#fbbf24" /> Xem Bảng Giá Gói Cước Pro
+                  </button>
+                  <button onClick={() => setIsGitBotOpen(true)} className="btn btn-secondary">
+                    <Bot size={18} color="var(--accent-cyan)" /> Cấu Hình GitHub Bot
                   </button>
                 </div>
               </div>
@@ -212,7 +241,6 @@ export default function App() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent-purple)', fontSize: '0.85rem', fontWeight: '600' }}>
                       <span>Soi & Vá Code</span>
-                      <ChevronRight size={16} />
                     </div>
                   </div>
                 </div>
@@ -242,9 +270,14 @@ export default function App() {
                 ← Quay lại Danh Sách Repo
               </button>
 
-              <button onClick={() => setIsReportOpen(true)} className="btn btn-primary btn-sm">
-                <ShieldCheck size={16} /> Xuất Báo Cáo Audit & Badge GitHub
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setIsGitBotOpen(true)} className="btn btn-secondary btn-sm">
+                  <Bot size={16} color="var(--accent-cyan)" /> GitHub Action Bot
+                </button>
+                <button onClick={() => setIsReportOpen(true)} className="btn btn-primary btn-sm">
+                  <ShieldCheck size={16} /> Xuất Báo Cáo Audit & Badge GitHub
+                </button>
+              </div>
             </div>
 
             {/* Project Header */}
@@ -266,15 +299,15 @@ export default function App() {
             {/* Code Viewer with Line Annotations */}
             <CodeViewer
               files={selectedProject.files}
-              isLoggedIn={!!currentUser}
+              isLoggedIn={currentTier !== 'FREE' || !!currentUser}
               onOpenAuth={() => setIsAuthOpen(true)}
             />
 
             {/* Paywall Gate for Auto-Fix Hub */}
             <PaywallGate
-              isLoggedIn={!!currentUser}
-              onOpenAuth={() => setIsAuthOpen(true)}
-              title="Mở Khóa Bộ Công Cụ Sửa Code Tự Động Lunar AI (Code Repair Workbench)"
+              isLoggedIn={currentTier !== 'FREE' || !!currentUser}
+              onOpenAuth={() => setIsPricingOpen(true)}
+              title="Mở Khóa Bộ Công Cụ Sửa Code Tự Động Lunar AI & GitHub Bot PR"
             >
               <VulnerabilityPatcher
                 vulnerabilities={scanResult.vulnerabilities}
@@ -283,6 +316,8 @@ export default function App() {
               <CodeRepairWorkbench
                 activeFile={activeFile}
                 activeVuln={scanResult.vulnerabilities[0]}
+                repoUrl={selectedProject.githubUrl}
+                onOpenPricing={() => setIsPricingOpen(true)}
               />
             </PaywallGate>
 
@@ -301,7 +336,23 @@ export default function App() {
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
-        onLoginSuccess={(user) => setCurrentUser(user)}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          setCurrentTier('PRO');
+        }}
+      />
+
+      <PricingModal
+        isOpen={isPricingOpen}
+        onClose={() => setIsPricingOpen(false)}
+        currentTier={currentTier}
+        onUpgradeSuccess={handleUpgradeSuccess}
+      />
+
+      <GitBotConfigModal
+        isOpen={isGitBotOpen}
+        onClose={() => setIsGitBotOpen(false)}
+        repoUrl={selectedProject?.githubUrl}
       />
 
       <AuditReportExportModal
@@ -319,7 +370,7 @@ export default function App() {
         color: 'var(--text-muted)',
         fontSize: '0.85rem'
       }}>
-        Lunar.dev • Nền Tảng AI Review Code Chuyên Sâu, Vá Lỗi OWASP & Cyber Security Audit
+        Lunar.dev • Nền Tảng AI Review Code Chuyên Sâu, Thanh Toán Mua Phí & GitHub Security Bot
       </footer>
 
     </div>

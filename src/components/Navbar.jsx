@@ -1,7 +1,7 @@
 import React from 'react';
-import { Moon, ShieldCheck, Users, PlusCircle, Search, LogIn, LogOut, User, Sparkles, Wrench } from 'lucide-react';
+import { Moon, ShieldCheck, Users, Search, LogIn, LogOut, Sparkles, Wrench, Zap, Bot } from 'lucide-react';
 
-export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQuery, setSearchQuery, currentUser, onOpenAuth, onLogout }) {
+export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQuery, setSearchQuery, currentUser, currentTier, onOpenAuth, onLogout, onOpenPricing, onOpenGitBot }) {
   return (
     <header style={{
       position: 'sticky',
@@ -52,7 +52,9 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
               }}>
                 Lunar<span style={{ color: 'var(--accent-cyan)', WebkitTextFillColor: 'initial' }}>.dev</span>
               </span>
-              <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>AI Security</span>
+              <span className={`badge ${currentTier === 'FREE' ? 'badge-purple' : 'badge-gold'}`} style={{ fontSize: '0.65rem' }}>
+                {currentTier} PLAN
+              </span>
             </div>
             <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
               AI Code Audit, Auto-Patch Workbench & Cyber Community
@@ -64,8 +66,8 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
         <div style={{
           position: 'relative',
           flex: '1',
-          maxWidth: '300px',
-          minWidth: '180px'
+          maxWidth: '280px',
+          minWidth: '160px'
         }}>
           <Search size={16} color="var(--text-secondary)" style={{
             position: 'absolute',
@@ -75,7 +77,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
           }} />
           <input
             type="text"
-            placeholder="Tìm kiếm repo, CVSS, lỗ hổng..."
+            placeholder="Tìm repo, CVSS, lỗ hổng..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="input-control"
@@ -90,14 +92,14 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
         </div>
 
         {/* Navigation & Auth Controls */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <nav style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             onClick={() => setActiveTab('explore')}
             className={`btn ${activeTab === 'explore' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ padding: '8px 14px', fontSize: '0.88rem' }}
           >
             <ShieldCheck size={16} />
-            Dự Án Security
+            Dự Án
           </button>
 
           <button
@@ -109,47 +111,54 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, searchQu
             Cộng Đồng
           </button>
 
+          {/* Pricing Upgrade Button */}
           <button
-            onClick={onOpenSubmit}
-            className="btn btn-emerald"
-            style={{ padding: '8px 16px', fontSize: '0.88rem' }}
+            onClick={onOpenPricing}
+            className="btn btn-primary"
+            style={{ padding: '8px 14px', fontSize: '0.88rem', background: 'linear-gradient(135deg, #f59e0b, #ec4899)' }}
           >
-            <Wrench size={16} />
-            Quét & Vá Code
+            <Zap size={16} />
+            {currentTier === 'FREE' ? 'Nâng Cấp Pro' : `Gói ${currentTier}`}
           </button>
 
+          {/* Git Bot Action Modal Trigger */}
+          <button
+            onClick={onOpenGitBot}
+            className="btn btn-secondary"
+            style={{ padding: '8px 12px', fontSize: '0.88rem' }}
+            title="Cấu Hình GitHub Action Bot"
+          >
+            <Bot size={16} color="var(--accent-cyan)" />
+          </button>
+
+          {/* User Profile / Login */}
           {currentUser ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255, 255, 255, 0.06)', padding: '4px 10px 4px 6px', borderRadius: '999px', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255, 255, 255, 0.06)', padding: '4px 10px 4px 6px', borderRadius: '999px', border: '1px solid var(--border-color)' }}>
               <img
                 src={currentUser.avatar}
                 alt={currentUser.name}
-                style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
+                style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }}
               />
-              <div style={{ textAlign: 'left', lineHeight: 1.2 }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#ffffff', display: 'block' }}>
-                  {currentUser.name}
-                </span>
-                <span style={{ fontSize: '0.68rem', color: 'var(--accent-cyan)' }}>
-                  Lunar PRO • {currentUser.karma} pts
-                </span>
-              </div>
+              <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#ffffff' }}>
+                {currentUser.name.split(' ')[0]}
+              </span>
 
               <button
                 onClick={onLogout}
                 title="Đăng xuất"
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}
               >
-                <LogOut size={16} />
+                <LogOut size={15} />
               </button>
             </div>
           ) : (
             <button
               onClick={onOpenAuth}
-              className="btn btn-primary"
-              style={{ padding: '8px 16px', fontSize: '0.88rem' }}
+              className="btn btn-secondary"
+              style={{ padding: '8px 14px', fontSize: '0.88rem' }}
             >
               <LogIn size={16} />
-              Đăng Nhập / Đăng Ký
+              Đăng Nhập
             </button>
           )}
         </nav>
