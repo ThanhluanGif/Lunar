@@ -48,15 +48,15 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
       severity: isParametrizedOrSchema ? 'MEDIUM' : 'CRITICAL',
       cvss: isParametrizedOrSchema ? 4.3 : 9.8,
       aiVerdict: isParametrizedOrSchema ? 'False Positive' : 'True Positive',
-      aiConfidence: '10/10',
+      aiConfidence: '7/10',
       aiReason: isParametrizedOrSchema
-        ? 'Quy tắc cảnh báo về việc nối chuỗi với biến không phải là hằng số trong câu lệnh SQL của node-postgres. Tuy nhiên, hàm queryDb được thiết kế để chấp nhận cả text (câu lệnh SQL) và params (tham số cho câu lệnh). Mặc dù không có ví dụ sử dụng params trong đoạn mã được cung cấp, nhưng cách khai báo của hàm queryDb (sử dụng pool.query(text, params)) cho thấy nó dự định sử dụng các truy vấn được tham số hóa, là phương pháp an toàn để ngăn chặn SQL injection. Do đó, việc nối chuỗi trực tiếp với biến như quy tắc cảnh báo ngụ ý là không xảy ra trong cách sử dụng dự kiến của hàm này.'
+        ? 'Quy tắc cảnh báo về việc nối chuỗi với biến không phải là hằng số trong câu lệnh SQL cho Node-Postgres. Tuy nhiên, hàm `queryDb` được thiết kế để nhận vào `text` (câu lệnh SQL) và `params` (tham số) như là đối số. Cách sử dụng chuẩn của thư viện `node-postgres` với `client.query(text, params)` sẽ tự động xử lý việc nội suy tham số một cách an toàn, ngăn chặn SQL injection. Đoạn mã không trực tiếp nối chuỗi người dùng vào câu lệnh SQL mà dựa vào cơ chế của thư viện để xử lý. Do đó, đây không phải là lỗ hổng SQL injection thực tế mà là cảnh báo về một mẫu mã có thể sai lầm nếu không sử dụng đúng cách với tham số.'
         : 'Truy vấn SQL ghép chuỗi trực tiếp với input mà không có tham số hóa.',
       description: 'Cảnh báo về cách thức truyền câu lệnh SQL trong node-postgres.',
       impact: 'Nếu không được tham số hóa, kẻ tấn công có thể chèn các câu lệnh SQL độc hại.',
       originalCode: `const schemaSql = fs.readFileSync(path.join(__dirname, '../schema.sql'), 'utf8');\nawait client.query(schemaSql);`,
-      patchedCode: `// Sử dụng Parameterized Queries chính chuẩn:\nconst result = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);`,
-      recommendation: 'Giữ nguyên Parameterized Queries (pool.query(text, params)).'
+      patchedCode: `// Cách sử dụng chuẩn an toàn của node-postgres:\nconst result = await client.query('SELECT * FROM users WHERE id = $1', [userId]);`,
+      recommendation: 'Giữ nguyên Parameterized Queries (client.query(text, params)).'
     });
   }
 
