@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import FigmaLunarLanding from './components/FigmaLunarLanding';
 import SecurityDashboard from './components/SecurityDashboard';
@@ -12,9 +12,11 @@ import AuthModal from './components/AuthModal';
 import PricingModal from './components/PricingModal';
 import GitBotConfigModal from './components/GitBotConfigModal';
 import AuditReportExportModal from './components/AuditReportExportModal';
+import QuotaDepletedModal from './components/QuotaDepletedModal';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
-import { ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github } from 'lucide-react';
+import { initDatabase, renewFreeQuota } from './services/sqlDataService';
+import { ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
 
 export default function App() {
   const [projects, setProjects] = useState(SECURITY_PROJECTS_MOCK);
@@ -32,6 +34,12 @@ export default function App() {
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isGitBotOpen, setIsGitBotOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
+
+  // Initialize SQL Data Store
+  useEffect(() => {
+    initDatabase();
+  }, []);
 
   // Active File & Scan Analysis
   const activeFile = selectedProject?.files?.[0] || { content: '', path: 'app.ts' };
@@ -65,13 +73,40 @@ export default function App() {
     setCurrentTier(newTier);
     if (!currentUser) {
       setCurrentUser({
-        id: 'user-pro',
+        id: 'usr-pro-1',
+        nickname: '@sarah_stripe',
         name: 'Sarah Chen (Stripe Eng)',
         email: 'sarah.chen@stripe.com',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-        role: `MEMBER_${newTier}`,
-        karma: 2400
+        tier: newTier,
+        karma_points: 2400,
+        avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+        daily_scans_used: 0
       });
+    } else {
+      setCurrentUser({
+        ...currentUser,
+        tier: newTier
+      });
+    }
+  };
+
+  const handleRenewFreeQuota = () => {
+    if (!currentUser) {
+      setIsAuthOpen(true);
+      return;
+    }
+    const updatedUser = renewFreeQuota(currentUser.id, 'COMMUNITY_FREE_RENEWAL');
+    if (updatedUser) {
+      setCurrentUser({ ...updatedUser });
+      alert(`🎉 Bạn đã gia hạn thành công! Nhận thêm +3 lượt AI Scan trong ngày và +50 Karma (Tổng Karma: ${updatedUser.karma_points}).`);
+    } else {
+      // Fallback local update
+      setCurrentUser({
+        ...currentUser,
+        daily_scans_used: Math.max(0, (currentUser.daily_scans_used || 0) - 3),
+        karma_points: (currentUser.karma_points || 100) + 50
+      });
+      alert(`🎉 Đã gia hạn thành công +3 lượt AI Scan Free trong ngày!`);
     }
   };
 
@@ -94,6 +129,7 @@ export default function App() {
         }}
         onOpenPricing={() => setIsPricingOpen(true)}
         onOpenGitBot={() => setIsGitBotOpen(true)}
+        onRenewFreeQuota={handleRenewFreeQuota}
       />
 
       {/* Guest Mode Helper Pill */}
@@ -342,6 +378,14 @@ export default function App() {
         onClose={() => setIsReportOpen(false)}
         project={selectedProject}
         scanResult={scanResult}
+      />
+
+      <QuotaDepletedModal
+        isOpen={isQuotaModalOpen}
+        onClose={() => setIsQuotaModalOpen(false)}
+        onRenewFreeQuota={handleRenewFreeQuota}
+        onOpenPricing={() => setIsPricingOpen(true)}
+        currentUser={currentUser}
       />
 
       {/* Exact Figma Style Footer */}

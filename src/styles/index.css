@@ -1,31 +1,32 @@
 :root {
-  /* Exact Figma Lunar Theme Palette */
-  --bg-primary: #07090e;
-  --bg-secondary: #0c0f17;
-  --bg-tertiary: #131722;
-  --bg-card: rgba(15, 18, 28, 0.75);
-  --bg-card-hover: rgba(22, 27, 42, 0.85);
-  --bg-glass: rgba(18, 22, 34, 0.6);
+  /* Balanced Modern Dark Palette */
+  --bg-primary: #080b11;
+  --bg-secondary: #0e121b;
+  --bg-tertiary: #141926;
+  --bg-card: rgba(16, 21, 33, 0.85);
+  --bg-card-hover: rgba(24, 31, 48, 0.95);
+  --bg-glass: rgba(18, 24, 38, 0.75);
   
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-highlight: rgba(124, 58, 237, 0.35);
-  --border-purple: rgba(167, 139, 250, 0.3);
+  --border-color: rgba(255, 255, 255, 0.1);
+  --border-highlight: rgba(34, 211, 238, 0.4);
+  --border-purple: rgba(167, 139, 250, 0.35);
   
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
   
-  --accent-purple: #7c3aed;
-  --accent-purple-light: #a78bfa;
+  --accent-purple: #8b5cf6;
+  --accent-purple-light: #c084fc;
   --accent-indigo: #6366f1;
   --accent-cyan: #22d3ee;
+  --accent-blue: #3b82f6;
   --accent-emerald: #34d399;
   --accent-amber: #fbbf24;
   --accent-rose: #f87171;
   
-  --gradient-purple: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
-  --gradient-text: linear-gradient(135deg, #c084fc 0%, #a78bfa 40%, #818cf8 100%);
-  --gradient-glow: radial-gradient(circle at 50% 30%, rgba(124, 58, 237, 0.15) 0%, transparent 60%);
+  --gradient-purple: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
+  --gradient-text: linear-gradient(135deg, #38bdf8 0%, #a78bfa 50%, #34d399 100%);
+  --gradient-glow: radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.1) 0%, transparent 60%);
   
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -34,7 +35,7 @@
   
   --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.6);
-  --shadow-glow: 0 0 30px rgba(124, 58, 237, 0.4);
+  --shadow-glow: 0 0 25px rgba(56, 189, 248, 0.25);
   
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-heading: 'Outfit', 'Inter', sans-serif;
@@ -55,9 +56,9 @@ body {
   line-height: 1.6;
   overflow-x: hidden;
   background-image: 
-    radial-gradient(circle at 50% 15%, rgba(124, 58, 237, 0.12) 0%, transparent 50%),
-    radial-gradient(circle at 85% 75%, rgba(99, 102, 241, 0.08) 0%, transparent 45%),
-    radial-gradient(circle at 15% 85%, rgba(34, 211, 238, 0.05) 0%, transparent 45%);
+    radial-gradient(circle at 50% 12%, rgba(56, 189, 248, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 85% 75%, rgba(99, 102, 241, 0.06) 0%, transparent 45%),
+    radial-gradient(circle at 15% 85%, rgba(52, 211, 153, 0.05) 0%, transparent 45%);
   background-attachment: fixed;
 }
 

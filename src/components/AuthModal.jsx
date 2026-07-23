@@ -1,37 +1,65 @@
 import React, { useState } from 'react';
-import { X, Github, Mail, Lock, User, ShieldCheck, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, Github, Mail, Lock, User, ShieldCheck, Sparkles, AtSign, CheckCircle2, AlertCircle } from 'lucide-react';
+import { registerUser, getUserByEmail } from '../services/sqlDataService';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [selectedTier, setSelectedTier] = useState('FREE');
+  const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const user = {
-      id: 'user-' + Date.now(),
-      name: authMode === 'register' ? (fullName || 'Developer') : (email.split('@')[0] || 'Hoàng Nam'),
-      email: email || 'dev@seccode.vn',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-      role: 'MEMBER_PRO',
-      karma: 350
-    };
+    setErrorMsg('');
 
-    onLoginSuccess(user);
-    onClose();
+    try {
+      if (authMode === 'register') {
+        const newUser = registerUser({
+          name: fullName || 'Developer',
+          nickname: nickname || `@dev_${Date.now().toString().slice(-4)}`,
+          email: email || `dev_${Date.now()}@lunar.io`,
+          tier: selectedTier
+        });
+        onLoginSuccess(newUser);
+      } else {
+        let existingUser = getUserByEmail(email);
+        if (!existingUser) {
+          existingUser = {
+            id: 'usr-' + Date.now(),
+            nickname: `@${email.split('@')[0] || 'developer'}`,
+            name: email.split('@')[0] || 'Developer',
+            email: email || 'dev@lunar.io',
+            tier: 'FREE',
+            karma_points: 350,
+            avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+            daily_scans_used: 1,
+            last_scan_reset_at: new Date().toISOString()
+          };
+        }
+        onLoginSuccess(existingUser);
+      }
+      onClose();
+    } catch (err) {
+      setErrorMsg(err.message || 'Đã có lỗi xảy ra');
+    }
   };
 
   const handleDemoLogin = () => {
     const demoUser = {
-      id: 'user-demo',
-      name: 'Nguyễn Văn Đạt (Dev)',
-      email: 'dat.nguyen@seccode.vn',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-      role: 'MEMBER_PRO',
-      karma: 1250
+      id: 'usr-demo-1',
+      nickname: '@sarah_stripe',
+      name: 'Sarah Chen (Stripe Eng)',
+      email: 'sarah.chen@stripe.com',
+      tier: 'PRO',
+      karma_points: 2400,
+      avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+      daily_scans_used: 0,
+      last_scan_reset_at: new Date().toISOString()
     };
     onLoginSuccess(demoUser);
     onClose();
@@ -79,23 +107,41 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
             width: '48px',
             height: '48px',
             borderRadius: '14px',
-            background: 'linear-gradient(135deg, #6366f1 0%, #f43f5e 100%)',
+            background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: '12px',
-            boxShadow: '0 0 20px rgba(99, 102, 241, 0.5)'
+            boxShadow: '0 0 20px rgba(124, 58, 237, 0.5)'
           }}>
             <ShieldCheck size={28} color="#fff" />
           </div>
 
           <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.5rem', fontWeight: '800' }}>
-            {authMode === 'login' ? 'Đăng Nhập SecCode.vn' : 'Tạo Tài Khoản Thành Viên'}
+            {authMode === 'login' ? 'Đăng Nhập Lunar Code Review' : 'Đăng Ký Tài Khoản & Nhận Quota Free'}
           </h2>
           <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Mở khóa toàn bộ tính năng AI Code Review chi tiết & Vá Lỗi Tự Động
+            Tạo Developer Profile @nickname & mở khóa lượt AI Security Scan hàng ngày
           </p>
         </div>
+
+        {errorMsg && (
+          <div style={{
+            background: 'rgba(248, 113, 113, 0.15)',
+            border: '1px solid rgba(248, 113, 113, 0.4)',
+            color: '#f87171',
+            borderRadius: 'var(--radius-md)',
+            padding: '10px 14px',
+            fontSize: '0.82rem',
+            marginBottom: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <AlertCircle size={16} />
+            <span>{errorMsg}</span>
+          </div>
+        )}
 
         {/* GitHub 1-Click Login Button */}
         <button
@@ -131,21 +177,39 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
         {/* Form */}
         <form onSubmit={handleSubmit}>
           {authMode === 'register' && (
-            <div className="input-group">
-              <label className="input-label">Họ và Tên</label>
-              <div style={{ position: 'relative' }}>
-                <User size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  type="text"
-                  placeholder="VD: Nguyễn Văn A"
-                  className="input-control"
-                  style={{ paddingLeft: '40px' }}
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required
-                />
+            <>
+              <div className="input-group">
+                <label className="input-label">Họ và Tên</label>
+                <div style={{ position: 'relative' }}>
+                  <User size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    placeholder="VD: Hoàng Nam"
+                    className="input-control"
+                    style={{ paddingLeft: '40px' }}
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                  />
+                </div>
               </div>
-            </div>
+
+              <div className="input-group">
+                <label className="input-label">Developer Nickname (Hiển thị Bảng xếp hạng & Karma)</label>
+                <div style={{ position: 'relative' }}>
+                  <AtSign size={16} color="var(--accent-cyan)" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    placeholder="alex_sec (Hệ thống tự động thêm @)"
+                    className="input-control"
+                    style={{ paddingLeft: '40px', color: 'var(--accent-cyan)', fontWeight: '600' }}
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+            </>
           )}
 
           <div className="input-group">
@@ -180,9 +244,29 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
             </div>
           </div>
 
+          {authMode === 'register' && (
+            <div style={{
+              marginBottom: '20px',
+              padding: '12px',
+              background: 'rgba(124, 58, 237, 0.12)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid rgba(124, 58, 237, 0.3)',
+              fontSize: '0.82rem'
+            }}>
+              <div style={{ fontWeight: '700', color: 'var(--accent-purple-light)', marginBottom: '4px' }}>
+                🎁 Trải nghiệm Gói FREE (Được tặng 5 lượt Scan/ngày):
+              </div>
+              <ul style={{ paddingLeft: '18px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <li>Quét lỗ hổng bảo mật AST chuyên sâu</li>
+                <li>Lưu trữ 3 dự án vào CSDL SQL</li>
+                <li>Tự động gia hạn lượt Free khi gửi bài review cộng đồng</li>
+              </ul>
+            </div>
+          )}
+
           <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '12px', fontSize: '0.95rem' }}>
             <Sparkles size={16} />
-            {authMode === 'login' ? 'Đăng Nhập Ngay' : 'Tạo Tài Khoản Trải Nghiệm'}
+            {authMode === 'login' ? 'Đăng Nhập Ngay' : 'Đăng Ký & Tạo Developer Profile'}
           </button>
         </form>
 
@@ -198,9 +282,9 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
           alignItems: 'center',
           justifyContent: 'space-between'
         }}>
-          <span>💡 Thử nhanh tài khoản Demo Member?</span>
+          <span>💡 Đăng nhập nhanh tài khoản Pro Demo?</span>
           <button onClick={handleDemoLogin} style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontWeight: '700', cursor: 'pointer' }}>
-            Đăng nhập Demo
+            Đăng nhập Pro Demo
           </button>
         </div>
 
@@ -208,10 +292,13 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
         <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
           {authMode === 'login' ? 'Chưa có tài khoản? ' : 'Đã có tài khoản? '}
           <button
-            onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+            onClick={() => {
+              setAuthMode(authMode === 'login' ? 'register' : 'login');
+              setErrorMsg('');
+            }}
             style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontWeight: '700', cursor: 'pointer' }}
           >
-            {authMode === 'login' ? 'Đăng ký ngay' : 'Đăng nhập'}
+            {authMode === 'login' ? 'Đăng ký nhận Quota Free' : 'Đăng nhập'}
           </button>
         </div>
 

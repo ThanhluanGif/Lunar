@@ -2,3 +2,11 @@ node_modules
 dist
 .DS_Store
 *.log
+.env
+.env.local
+
+# /flow run-state (generated; safe to ignore)
+MODE
+PROJECT_TYPE
+.flow/
+flow/.lock
