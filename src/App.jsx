@@ -13,7 +13,7 @@ import GitBotConfigModal from './components/GitBotConfigModal';
 import AuditReportExportModal from './components/AuditReportExportModal';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
-import { Moon, ShieldAlert, ShieldCheck, Wrench, Users, Zap, Bot, UserCheck } from 'lucide-react';
+import { ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award } from 'lucide-react';
 
 export default function App() {
   const [projects, setProjects] = useState(SECURITY_PROJECTS_MOCK);
@@ -77,7 +77,7 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
-      {/* Top Navbar */}
+      {/* Top npm Style Navbar */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -98,8 +98,8 @@ export default function App() {
       {/* Guest Mode Banner */}
       {!currentUser && (
         <div style={{
-          background: 'linear-gradient(90deg, rgba(168, 85, 247, 0.2), rgba(6, 182, 212, 0.2))',
-          borderBottom: '1px solid var(--border-color)',
+          background: 'rgba(203, 56, 55, 0.15)',
+          borderBottom: '1px solid var(--npm-red)',
           padding: '8px 24px',
           textAlign: 'center',
           fontSize: '0.82rem',
@@ -110,21 +110,21 @@ export default function App() {
           gap: '12px',
           flexWrap: 'wrap'
         }}>
-          <span>🌙 Bạn đang ở gói <strong>FREE (Guest Mode)</strong>. Quét 3 lượt/ngày. Nâng cấp Pro để mở khóa 100% tính năng vá lỗi tự động.</span>
+          <span>⚡ Bạn đang ở chế độ <strong>Khách vãng lai (Guest Mode)</strong>. Mở khóa 100% bản vá AI & GitHub Bot bằng cách Sign In hoặc Nâng cấp Pro.</span>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
               onClick={() => setIsPricingOpen(true)}
               className="btn btn-primary btn-sm"
-              style={{ padding: '2px 10px', fontSize: '0.75rem', background: 'linear-gradient(135deg, #f59e0b, #ec4899)' }}
+              style={{ padding: '2px 10px', fontSize: '0.75rem' }}
             >
-              <Zap size={14} /> Xem Bảng Giá Pro
+              <Zap size={14} /> Nâng Cấp Pro
             </button>
             <button
               onClick={() => handleUpgradeSuccess('PRO')}
               className="btn btn-emerald btn-sm"
               style={{ padding: '2px 10px', fontSize: '0.75rem' }}
             >
-              <UserCheck size={14} /> Thử Đăng Nhập Demo Pro
+              <UserCheck size={14} /> Sign In Demo Pro
             </button>
           </div>
         </div>
@@ -133,118 +133,157 @@ export default function App() {
       {/* Main Content Area */}
       <main style={{ flex: 1, padding: '0 24px 60px 24px' }}>
         
-        {/* TAB 1: EXPLORE SECURITY PROJECTS */}
+        {/* TAB 1: EXPLORE PACKAGES (npm Homepage Style) */}
         {activeTab === 'explore' && (
-          <div style={{ maxWidth: '1280px', margin: '0 auto', paddingTop: '28px' }}>
+          <div style={{ maxWidth: '1280px', margin: '0 auto', paddingTop: '32px' }}>
             
-            {/* Hero Section */}
-            <div className="glass-panel" style={{
-              padding: '40px',
-              marginBottom: '32px',
-              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.18), rgba(99, 102, 241, 0.15), rgba(6, 182, 212, 0.12))',
-              border: '1px solid rgba(168, 85, 247, 0.3)'
+            {/* Hero Section (npm Slogan Style) */}
+            <div style={{
+              textAlign: 'center',
+              padding: '60px 20px 48px 20px',
+              background: 'linear-gradient(180deg, rgba(203, 56, 55, 0.12) 0%, transparent 100%)',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid var(--border-color)',
+              marginBottom: '40px',
+              position: 'relative'
             }}>
-              <div style={{ maxWidth: '840px' }}>
-                <span className="badge badge-purple" style={{ marginBottom: '14px' }}>
-                  <Moon size={14} /> Lunar AI - Security SAST Engine & Auto-Patch Bot
-                </span>
+              <h1 style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: '3.2rem',
+                fontWeight: '900',
+                letterSpacing: '-0.03em',
+                marginBottom: '16px',
+                color: '#ffffff',
+                lineHeight: 1.15
+              }}>
+                Take code security to the <span style={{ color: 'var(--npm-red)' }}>next level.</span>
+              </h1>
 
-                <h1 style={{
-                  fontFamily: 'var(--font-heading)',
-                  fontSize: '2.5rem',
-                  fontWeight: '800',
-                  lineHeight: '1.25',
-                  marginBottom: '16px',
-                  background: 'linear-gradient(135deg, #ffffff 40%, #c084fc 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-                }}>
-                  Lunar - Tích Hợp Thanh Toán Mua Phí, AI Review & Tự Động Vá Lỗi Mã Nguồn บน GitHub
-                </h1>
+              <p style={{
+                fontSize: '1.15rem',
+                color: 'var(--text-secondary)',
+                maxWidth: '720px',
+                margin: '0 auto 32px auto',
+                lineHeight: '1.6'
+              }}>
+                Lunar is the open source code review & security registry. Audit OWASP vulnerabilities, auto-fix patches in 1-click, and deploy GitHub Security Bots to your repositories.
+              </p>
 
-                <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: '1.6' }}>
-                  Hỗ trợ thanh toán QR Code VietQR/MoMo nâng cấp gói Pro/Enterprise. Tích hợp <strong>Lunar GitHub Security Bot</strong> tự động tạo <strong>Pull Request</strong> chứa bản vá mã nguồn safe code ngay khi có commit mới.
-                </p>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                <button onClick={() => setIsSubmitOpen(true)} className="btn btn-primary" style={{ padding: '14px 28px', fontSize: '1rem' }}>
+                  <Wrench size={18} /> Scan & Auto-Fix Package
+                </button>
+                <button onClick={() => setIsPricingOpen(true)} className="btn btn-secondary" style={{ padding: '14px 28px', fontSize: '1rem' }}>
+                  <Zap size={18} color="var(--npm-red)" /> Explore Pro & Enterprise
+                </button>
+              </div>
 
-                <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-                  <button onClick={() => setIsSubmitOpen(true)} className="btn btn-primary">
-                    <Wrench size={18} /> Quét & Vá Code Dự Án Của Bạn
-                  </button>
-                  <button onClick={() => setIsPricingOpen(true)} className="btn btn-secondary">
-                    <Zap size={18} color="#fbbf24" /> Xem Bảng Giá Gói Cước Pro
-                  </button>
-                  <button onClick={() => setIsGitBotOpen(true)} className="btn btn-secondary">
-                    <Bot size={18} color="var(--accent-cyan)" /> Cấu Hình GitHub Bot
-                  </button>
+              {/* npm Stats Bar */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '20px',
+                marginTop: '48px',
+                paddingTop: '24px',
+                borderTop: '1px solid var(--border-color)'
+              }}>
+                <div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#ffffff' }}>2,450,000+</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Scanned Code Lines</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--accent-cyan)' }}>100% OWASP</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Coverage Standard</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#34d399' }}>1-Click PR</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Auto-Fix GitHub Bot</div>
                 </div>
               </div>
             </div>
 
-            {/* Project Grid */}
-            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.4rem', fontWeight: '700', marginBottom: '20px' }}>
-              Danh Sách Dự Án Đang Được Audit Bảo Mật Trên Lunar
-            </h2>
-
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
-              gap: '24px'
-            }}>
-              {projects.map((proj) => (
-                <div
-                  key={proj.id}
-                  className="glass-card"
-                  style={{
-                    padding: '24px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    borderColor: proj.cvssScore >= 8.0 ? 'rgba(244, 63, 94, 0.4)' : 'var(--border-color)'
-                  }}
-                  onClick={() => handleSelectProject(proj)}
-                >
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                      <span className="badge badge-cyan">{proj.language}</span>
-                      <span className={`badge ${proj.cvssScore >= 8.0 ? 'badge-rose' : 'badge-emerald'}`}>
-                        CVSS {proj.cvssScore || 0.0} Base Score
-                      </span>
-                    </div>
-
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: '700', marginBottom: '8px', color: '#ffffff' }}>
-                      {proj.title}
-                    </h3>
-
-                    <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '16px' }}>
-                      {proj.description}
-                    </p>
-                  </div>
-
-                  <div style={{
-                    borderTop: '1px solid var(--border-color)',
-                    paddingTop: '14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <img
-                        src={proj.author?.avatar}
-                        alt={proj.author?.name}
-                        style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
-                      />
-                      <span style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-primary)' }}>
-                        {proj.author?.name}
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent-purple)', fontSize: '0.85rem', fontWeight: '600' }}>
-                      <span>Soi & Vá Code</span>
-                    </div>
-                  </div>
+            {/* Relied On By Developers Grid (npm Section Style) */}
+            <div style={{ marginBottom: '40px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <div>
+                  <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.5rem', fontWeight: '800', color: '#ffffff' }}>
+                    Featured Repositories & Security Audits
+                  </h2>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    Top scanned packages and public code audits on Lunar Registry
+                  </p>
                 </div>
-              ))}
+                <span className="badge badge-npm" style={{ fontSize: '0.8rem', padding: '6px 12px' }}>
+                  PUBLIC REGISTRY
+                </span>
+              </div>
+
+              {/* npm Style Package Search Cards List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {projects.map((proj) => (
+                  <div
+                    key={proj.id}
+                    className="glass-card"
+                    style={{
+                      padding: '20px 24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '20px',
+                      flexWrap: 'wrap',
+                      cursor: 'pointer',
+                      borderLeft: proj.cvssScore >= 8.0 ? '4px solid var(--npm-red)' : '4px solid #10b981'
+                    }}
+                    onClick={() => handleSelectProject(proj)}
+                  >
+                    {/* Left Info: Package Title, Version, Author, Keywords */}
+                    <div style={{ flex: 1, minWidth: '280px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
+                        <Package size={20} color="var(--npm-red)" />
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#ffffff', fontFamily: 'var(--font-mono)' }}>
+                          {proj.title.toLowerCase().replace(/\s+/g, '-')}
+                        </h3>
+                        <span className="badge badge-npm">v1.2.0</span>
+                        <span className={`badge ${proj.cvssScore >= 8.0 ? 'badge-rose' : 'badge-emerald'}`}>
+                          CVSS {proj.cvssScore || 0.0}
+                        </span>
+                      </div>
+
+                      <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: '1.5' }}>
+                        {proj.description}
+                      </p>
+
+                      {/* Package Meta Info */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.78rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <img
+                            src={proj.author?.avatar}
+                            alt={proj.author?.name}
+                            style={{ width: '20px', height: '20px', borderRadius: '50%', objectFit: 'cover' }}
+                          />
+                          <span>published by <strong>{proj.author?.username}</strong></span>
+                        </div>
+                        <span>•</span>
+                        <span>⭐ {proj.stars} stars</span>
+                        <span>•</span>
+                        <span>🍴 {proj.forks} forks</span>
+                        <span>•</span>
+                        <span className="badge badge-purple">{proj.language}</span>
+                      </div>
+                    </div>
+
+                    {/* Right CTA Button */}
+                    <div>
+                      <button className="btn btn-secondary btn-sm" style={{ gap: '6px' }}>
+                        <span>Inspect & Auto-Fix</span>
+                        <ArrowRight size={14} color="var(--npm-red)" />
+                      </button>
+                    </div>
+
+                  </div>
+                ))}
+              </div>
+
             </div>
 
           </div>
@@ -267,7 +306,7 @@ export default function App() {
             {/* Header Actions */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
               <button onClick={() => setActiveTab('explore')} className="btn btn-secondary btn-sm">
-                ← Quay lại Danh Sách Repo
+                ← Back to Package Search
               </button>
 
               <div style={{ display: 'flex', gap: '10px' }}>
@@ -275,16 +314,20 @@ export default function App() {
                   <Bot size={16} color="var(--accent-cyan)" /> GitHub Action Bot
                 </button>
                 <button onClick={() => setIsReportOpen(true)} className="btn btn-primary btn-sm">
-                  <ShieldCheck size={16} /> Xuất Báo Cáo Audit & Badge GitHub
+                  <ShieldCheck size={16} /> Audit Report & Badge
                 </button>
               </div>
             </div>
 
-            {/* Project Header */}
+            {/* Package Title Header */}
             <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
-              <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.8rem', fontWeight: '800', marginBottom: '6px' }}>
-                {selectedProject.title}
-              </h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <Package size={28} color="var(--npm-red)" />
+                <h1 style={{ fontFamily: 'var(--font-mono)', fontSize: '1.8rem', fontWeight: '800' }}>
+                  {selectedProject.title.toLowerCase().replace(/\s+/g, '-')}
+                </h1>
+                <span className="badge badge-npm">v1.2.0</span>
+              </div>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
                 {selectedProject.description}
               </p>
@@ -307,7 +350,7 @@ export default function App() {
             <PaywallGate
               isLoggedIn={currentTier !== 'FREE' || !!currentUser}
               onOpenAuth={() => setIsPricingOpen(true)}
-              title="Mở Khóa Bộ Công Cụ Sửa Code Tự Động Lunar AI & GitHub Bot PR"
+              title="Unlock Lunar AI Code Repair Workbench & GitHub PR Bot"
             >
               <VulnerabilityPatcher
                 vulnerabilities={scanResult.vulnerabilities}
@@ -362,15 +405,39 @@ export default function App() {
         scanResult={scanResult}
       />
 
-      {/* Footer */}
+      {/* npm Style Footer */}
       <footer style={{
         borderTop: '1px solid var(--border-color)',
-        padding: '24px',
-        textAlign: 'center',
+        background: '#090c12',
+        padding: '32px 24px',
         color: 'var(--text-muted)',
         fontSize: '0.85rem'
       }}>
-        Lunar.dev • Nền Tảng AI Review Code Chuyên Sâu, Thanh Toán Mua Phí & GitHub Security Bot
+        <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '4px',
+              background: 'var(--npm-red)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontWeight: '900',
+              fontSize: '0.9rem'
+            }}>
+              lnr
+            </div>
+            <span>lunar.dev • An open source security registry for JavaScript, Python & Go.</span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <a href="#github" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>GitHub</a>
+            <a href="#terms" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Terms of Service</a>
+            <a href="#privacy" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Privacy Policy</a>
+          </div>
+        </div>
       </footer>
 
     </div>
