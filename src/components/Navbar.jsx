@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Github, Sparkles, LogOut, Search, Terminal, Cpu } from 'lucide-react';
+import { Moon, ShieldCheck, Github, Sparkles, LogOut, Terminal, Cpu } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, currentUser, onOpenAuth, onLogout, onOpenPricing, onOpenGitBot }) {
   return (
@@ -21,7 +21,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, currentU
         gap: '20px'
       }}>
         
-        {/* Left: SecuSense Brand Logo */}
+        {/* Left: Lunar Brand Logo */}
         <div 
           onClick={() => setActiveTab('explore')}
           style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
@@ -29,39 +29,39 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, currentU
           <div style={{
             width: '36px',
             height: '36px',
-            borderRadius: '10px',
-            background: 'var(--gradient-brand)',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.4) 0%, rgba(56, 189, 248, 0.3) 100%)',
+            border: '1px solid rgba(167, 139, 250, 0.4)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#ffffff',
-            boxShadow: '0 0 20px rgba(56, 189, 248, 0.4)'
+            boxShadow: '0 0 20px rgba(124, 58, 237, 0.4)'
           }}>
-            <ShieldCheck size={22} color="#ffffff" />
+            <Moon size={20} color="#c084fc" />
           </div>
 
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{
                 fontFamily: 'var(--font-heading)',
-                fontSize: '1.35rem',
+                fontSize: '1.4rem',
                 fontWeight: '800',
                 color: '#ffffff',
                 letterSpacing: '-0.02em'
               }}>
-                SecuSense
+                Lunar<span style={{ color: 'var(--accent-cyan)' }}>.dev</span>
               </span>
-              <span className="badge badge-cyan" style={{ fontSize: '0.65rem', padding: '2px 8px' }}>
-                SAST Assistant
+              <span className="badge badge-purple" style={{ fontSize: '0.65rem', padding: '2px 8px' }}>
+                AI SAST Platform
               </span>
             </div>
             <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: 0 }}>
-              AI Triage & Semgrep Explanation Engine
+              AI Code Review & Security Engine
             </p>
           </div>
         </div>
 
-        {/* Center: Navigation Links (Scans, Findings & Triage, Semgrep Rules, Community) */}
+        {/* Center: Navigation Links */}
         <nav style={{ display: 'flex', alignItems: 'center', gap: '28px' }}>
           <button
             onClick={() => setActiveTab('explore')}
@@ -78,7 +78,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, currentU
             }}
           >
             <Terminal size={15} color={activeTab === 'explore' ? 'var(--accent-cyan)' : 'var(--text-muted)'} />
-            Scans & Overview
+            Overview & Scans
           </button>
 
           <button
@@ -131,14 +131,14 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, currentU
           </button>
         </nav>
 
-        {/* Right: Quick Scan & Auth Buttons */}
+        {/* Right: Quick Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <button
             onClick={onOpenSubmit}
             className="btn btn-emerald btn-sm"
           >
             <Sparkles size={15} />
-            Run SAST Scan
+            Scan & Review Code
           </button>
 
           {currentUser ? (

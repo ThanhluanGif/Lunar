@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Github, Sparkles, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Bot, Code, Cpu, Eye, Activity, RefreshCw, Check } from 'lucide-react';
+import { Github, Sparkles, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Bot, Code, Cpu, Eye, Activity, RefreshCw, Check, Moon } from 'lucide-react';
 
 export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitBot, onSelectDemoProject }) {
-  // State for Interactive "Watch SecuSense Work" Live Demo Editor
+  // State for Interactive "Watch Lunar Work" Live Demo Editor
   const [demoState, setDemoState] = useState('before'); // 'before' | 'after'
   const [isAutoFixing, setIsAutoFixing] = useState(false);
 
@@ -56,15 +56,15 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
   const capabilities = [
     {
       icon: Sparkles,
-      color: '#38bdf8',
-      title: 'AI Triage True/False Positive',
-      desc: 'Giảm thiểu tới 90% cảnh báo giả (False Positive) từ Semgrep và phân tích lý do bằng tiếng Việt.'
+      color: '#c084fc',
+      title: 'AI Code Review & 5-Metric Score',
+      desc: 'Phân tích sâu ngữ nghĩa mã nguồn qua 5 khía cạnh độc lập: Naming, Architecture, Performance, Security & Readability.'
     },
     {
       icon: RefreshCw,
-      color: '#a855f7',
-      title: 'Auto-Patch Engine',
-      desc: 'Tự động tạo đoạn mã sửa lỗi safe code và tạo Pull Request chứa bản vá 1-Click trên GitHub.'
+      color: '#38bdf8',
+      title: 'Auto-Fix Engine & PR Bot',
+      desc: 'Một chạm tự động tạo mã sửa lỗi safe code và tạo Pull Request chứa bản vá 1-Click trên GitHub.'
     },
     {
       icon: Github,
@@ -75,7 +75,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
     {
       icon: ShieldCheck,
       color: '#f87171',
-      title: 'OWASP Top 10 & CWE Coverage',
+      title: 'OWASP Top 10 Security Scanning',
       desc: 'Quét toàn bộ lỗ hổng SQLi, XSS, CSRF, Hardcoded Secrets, JWT Signature Failure & RCE.'
     },
     {
@@ -94,22 +94,22 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
 
   const testimonials = [
     {
-      quote: 'SecuSense đã giúp đội ngũ phát triển của chúng tôi giảm 85% thời gian xem cảnh báo giả từ Semgrep và tự động vá lỗi CSRF chỉ trong 2 phút.',
-      name: 'Nguyễn Hoàng Nam',
-      role: 'Head of Security @ TechCorp',
-      initials: 'HN'
+      quote: 'Lunar caught a critical injection vulnerability in our payment service that had been sitting undetected for 8 months. The auto-fix PR was merged within 10 minutes.',
+      name: 'Sarah Chen',
+      role: 'Senior Engineer @ Stripe',
+      initials: 'SC'
     },
     {
-      quote: 'Giao diện AI Triage bằng tiếng Việt cực kỳ rõ ràng. Cả Dev và Security Team đều hiểu chính xác nguyên nhân vì sao nguy hiểm.',
-      name: 'Trần Minh Đức',
-      role: 'Tech Lead @ Vercel Team',
-      initials: 'MĐ'
+      quote: 'We went from 6-hour manual reviews to 12-minute automated ones. Our team\'s velocity doubled in the first sprint alone.',
+      name: 'Marcus Reid',
+      role: 'CTO @ Vercel',
+      initials: 'MR'
     },
     {
-      quote: 'Tích hợp GitHub PR Bot rất mượt mà. Mọi Pull Request đều được kiểm tra SAST tự động trước khi merge.',
-      name: 'Lê Thu Trang',
-      role: 'Senior DevSecOps @ Stripe',
-      initials: 'TT'
+      quote: 'The GitHub integration is seamless. Every PR gets a thorough review before any human even looks at it. Our codebase quality score went from 61 to 94 in 3 months.',
+      name: 'Priya Nair',
+      role: 'Lead Developer @ Linear',
+      initials: 'PN'
     }
   ];
 
@@ -121,9 +121,9 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
         
         {/* Hero Announcement Pill */}
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
-          <div className="badge badge-cyan" style={{ padding: '6px 16px', fontSize: '0.82rem', borderRadius: '999px' }}>
-            <Sparkles size={14} color="var(--accent-cyan)" />
-            <span>🛡️ SecuSense SAST Assistant v2.0 • AI Triage Engine</span>
+          <div className="badge badge-purple" style={{ padding: '6px 16px', fontSize: '0.82rem', borderRadius: '999px' }}>
+            <Sparkles size={14} color="#c084fc" />
+            <span>✦ Lunar.dev AI Engine v2.0 • Code review that fixes itself</span>
           </div>
         </div>
 
@@ -137,7 +137,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
           marginBottom: '20px',
           color: '#ffffff'
         }}>
-          Tự Động AI Triage & <span className="gradient-text">Vá Lỗ Hổng Bảo Mật</span>
+          Code review that <span className="gradient-text">fixes itself</span>
         </h1>
 
         {/* Hero Subtitle */}
@@ -148,27 +148,26 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
           margin: '0 auto 36px auto',
           lineHeight: '1.65'
         }}>
-          SecuSense phân tích cảnh báo Semgrep, tự động đánh giá True Positive / False Positive và đề xuất phương án sửa lỗi mã nguồn trực tiếp bằng tiếng Việt.
+          Lunar connects to your GitHub repos, reviews every PR with AI, and opens auto-fix pull requests — so your team ships faster with fewer bugs.
         </p>
 
         {/* Hero CTA Buttons */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '56px' }}>
           <button
-            onClick={onOpenSubmit}
+            onClick={onOpenAuth}
             className="btn btn-primary"
             style={{ padding: '14px 28px', fontSize: '1rem', borderRadius: '999px' }}
           >
-            <ShieldCheck size={18} />
-            Khởi Chạy Quét SAST Ngay
+            <Github size={18} />
+            Connect GitHub — it's free
           </button>
 
           <button
-            onClick={onOpenAuth}
+            onClick={onOpenSubmit}
             className="btn btn-secondary"
             style={{ padding: '14px 28px', fontSize: '1rem', borderRadius: '999px' }}
           >
-            <Github size={18} />
-            Kết Nối GitHub OAuth →
+            View live demo →
           </button>
         </div>
 
@@ -181,48 +180,48 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
           margin: '0 auto'
         }}>
           <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: '#ffffff', lineHeight: 1.1 }}>
+              14.2M
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Lines reviewed
+            </div>
+          </div>
+
+          <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: 'var(--accent-purple)', lineHeight: 1.1 }}>
+              98,000+
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Bugs fixed
+            </div>
+          </div>
+
+          <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: 'var(--accent-cyan)', lineHeight: 1.1 }}>
-              14.2M+
+              4.3 min
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Dòng Code Đã Kiểm Định
-            </div>
-          </div>
-
-          <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: '#34d399', lineHeight: 1.1 }}>
-              90%
-            </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Giảm Cảnh Báo Giả (False Positives)
-            </div>
-          </div>
-
-          <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: '#c084fc', lineHeight: 1.1 }}>
-              1-Click
-            </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Auto-Fix GitHub Pull Request
+              Avg review time
             </div>
           </div>
         </div>
 
       </div>
 
-      {/* SECTION 2: LIVE DEMO "Watch SecuSense work" */}
+      {/* SECTION 2: LIVE DEMO "Watch Lunar work" */}
       <div style={{ marginBottom: '100px' }}>
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div className="badge badge-cyan" style={{ marginBottom: '12px' }}>
-            SecuSense Live Demo
+          <div className="badge badge-purple" style={{ marginBottom: '12px' }}>
+            Live Demo
           </div>
 
           <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.6rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em', marginBottom: '10px' }}>
-            Trải Nghiệm SecuSense AI Triage
+            Watch Lunar work
           </h2>
 
           <p style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>
-            Xem SecuSense tự động phân tích lỗ hổng Semgrep và đề xuất bản vá trực tiếp.
+            Real issues found in a real function. Click "Auto-fix" to see Lunar repair it.
           </p>
         </div>
 
@@ -251,7 +250,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
                 <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#fbbf24' }} />
                 <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#34d399' }} />
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--text-secondary)', marginLeft: '12px' }}>
-                  server/index.js
+                  userService.ts
                 </span>
               </div>
 
@@ -260,7 +259,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
                 <button
                   onClick={() => setDemoState('before')}
                   style={{
-                    background: demoState === 'before' ? 'rgba(56, 189, 248, 0.3)' : 'transparent',
+                    background: demoState === 'before' ? 'rgba(124, 58, 237, 0.4)' : 'transparent',
                     border: 'none',
                     color: demoState === 'before' ? '#ffffff' : 'var(--text-secondary)',
                     fontSize: '0.78rem',
@@ -320,20 +319,20 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
                 style={{ width: '100%', padding: '12px' }}
               >
                 <Zap size={16} />
-                {isAutoFixing ? 'SecuSense AI is Auto-patching...' : '⚡ Auto-fix & Apply Patch'}
+                {isAutoFixing ? 'Fixing with Lunar AI...' : '⚡ Auto-fix all issues'}
               </button>
             </div>
 
           </div>
 
-          {/* Right Column: SecuSense AI Analysis Issues Panel */}
+          {/* Right Column: AI Analysis Issues Panel */}
           <div className="glass-panel" style={{ padding: '20px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: '#ffffff' }}>
-                SecuSense AI Triage
+                Lunar AI Analysis
               </h3>
-              <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>
-                {demoState === 'before' ? '5 findings' : '0 findings (Verified)'}
+              <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#f87171', fontFamily: 'var(--font-mono)' }}>
+                {demoState === 'before' ? '5 issues' : '0 issues (Verified)'}
               </span>
             </div>
 
@@ -370,15 +369,15 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
 
             {/* AI Suggestion Banner */}
             <div style={{
-              background: 'rgba(56, 189, 248, 0.1)',
-              border: '1px solid rgba(56, 189, 248, 0.3)',
+              background: 'rgba(124, 58, 237, 0.1)',
+              border: '1px solid rgba(124, 58, 237, 0.3)',
               borderRadius: 'var(--radius-sm)',
               padding: '12px 14px',
               fontSize: '0.82rem',
-              color: '#38bdf8',
+              color: '#c084fc',
               lineHeight: '1.5'
             }}>
-              <strong>SecuSense AI Verdict:</strong> Lỗ hổng có mức độ rủi ro cao. SecuSense đề xuất giải pháp vá lỗi tự động bằng csurf middleware và Parameterized Queries.
+              <strong>Lunar suggests:</strong> This is a critical issue. Lunar can generate a secure replacement with proper sanitization and error boundaries.
             </div>
           </div>
 
@@ -388,16 +387,16 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
       {/* SECTION 3: CAPABILITIES */}
       <div style={{ marginBottom: '100px' }}>
         <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <div className="badge badge-cyan" style={{ marginBottom: '14px' }}>
-            SecuSense Capabilities
+          <div className="badge badge-purple" style={{ marginBottom: '14px' }}>
+            Lunar Capabilities
           </div>
 
           <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.8rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em', marginBottom: '12px' }}>
-            Tính Năng Cốt Lõi Của SecuSense SAST
+            Everything your code needs
           </h2>
 
           <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)' }}>
-            Giải pháp bảo mật mã nguồn tối ưu cho các đội ngũ lập trình hiện đại.
+            Built for teams that ship fast and can't afford to compromise on quality.
           </p>
         </div>
 
@@ -441,12 +440,12 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
       {/* SECTION 4: TESTIMONIALS */}
       <div style={{ marginBottom: '80px' }}>
         <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <div className="badge badge-cyan" style={{ marginBottom: '14px' }}>
+          <div className="badge badge-purple" style={{ marginBottom: '14px' }}>
             Testimonials
           </div>
 
           <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.8rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>
-            Được Đội Ngũ Kỹ Sư Tin Dùng
+            Trusted by engineering teams
           </h2>
         </div>
 
@@ -459,7 +458,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
           {testimonials.map((test, idx) => (
             <div key={idx} className="glass-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
-                <span style={{ fontSize: '1.8rem', color: 'var(--accent-cyan)', lineHeight: 1, display: 'block', marginBottom: '16px' }}>
+                <span style={{ fontSize: '1.8rem', color: 'var(--accent-purple)', lineHeight: 1, display: 'block', marginBottom: '16px' }}>
                   “
                 </span>
 
@@ -473,14 +472,14 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
                   width: '36px',
                   height: '36px',
                   borderRadius: '50%',
-                  background: 'rgba(56, 189, 248, 0.2)',
-                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                  background: 'rgba(124, 58, 237, 0.2)',
+                  border: '1px solid rgba(167, 139, 250, 0.4)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '0.8rem',
                   fontWeight: '700',
-                  color: '#38bdf8'
+                  color: '#c084fc'
                 }}>
                   {test.initials}
                 </div>
