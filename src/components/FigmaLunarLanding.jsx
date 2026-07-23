@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Github, Sparkles, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Bot, Code, Cpu, Eye, Activity, RefreshCw, Check } from 'lucide-react';
 
 export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitBot, onSelectDemoProject }) {
-  // State for Interactive "Watch Lunar Work" Live Demo Editor
+  // State for Interactive "Watch SecuSense Work" Live Demo Editor
   const [demoState, setDemoState] = useState('before'); // 'before' | 'after'
   const [isAutoFixing, setIsAutoFixing] = useState(false);
 
@@ -41,89 +41,89 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
   const aiIssues = [
     { type: 'critical', title: 'Command Injection', line: 6, desc: 'Unsanitized cmd passed to executeAdminCommand', color: '#f87171' },
     { type: 'critical', title: 'Missing await', line: 3, desc: 'res.json() returns a Promise — missing await', color: '#f87171' },
-    { type: 'warning', title: 'Loose Equality', line: 5, desc: 'Use === instead of ==', color: '#fbbf24' },
-    { type: 'warning', title: 'No Error Handling', line: 2, desc: 'HTTP errors not checked before parsing', color: '#fbbf24' },
-    { type: 'info', title: 'Type Safety', line: 1, desc: 'Add TypeScript types for safety', color: '#60a5fa' }
+    { type: 'warning', title: 'Express Csurf Middleware Usage', line: 8, desc: 'CWE-352: Thiếu middleware chống CSRF csurf', color: '#fbbf24' },
+    { type: 'warning', title: 'Node Postgres Sqli Triage', line: 38, desc: 'CWE-89: AI Verdict False Positive (10/10)', color: '#38bdf8' },
+    { type: 'info', title: 'Type Safety', line: 1, desc: 'Add TypeScript types for safety', color: '#34d399' }
   ];
 
   const connectedRepos = [
-    { name: 'frontend', lang: 'TypeScript', issues: '3 issues', score: 94, status: 'passing', color: '#22d3ee' },
-    { name: 'api-server', lang: 'Go', issues: '7 issues', score: 81, status: 'reviewing', color: '#c084fc' },
-    { name: 'mobile-app', lang: 'Swift', issues: '1 issues', score: 97, status: 'passing', color: '#22d3ee' },
+    { name: 'frontend-app', lang: 'TypeScript', issues: '3 issues', score: 94, status: 'passing', color: '#34d399' },
+    { name: 'api-server-express', lang: 'Go / Node', issues: '7 issues', score: 81, status: 'reviewing', color: '#38bdf8' },
+    { name: 'auth-service', lang: 'Swift / TS', issues: '1 issues', score: 97, status: 'passing', color: '#34d399' },
     { name: 'data-pipeline', lang: 'Python', issues: '12 issues', score: 68, status: 'failed', color: '#f87171' }
   ];
 
   const capabilities = [
     {
       icon: Sparkles,
-      color: '#a78bfa',
-      title: 'AI Code Review',
-      desc: 'Deep semantic analysis powered by LLMs. Lunar reads context across your entire codebase, not just the diff.'
+      color: '#38bdf8',
+      title: 'AI Triage True/False Positive',
+      desc: 'Giảm thiểu tới 90% cảnh báo giả (False Positive) từ Semgrep và phân tích lý do bằng tiếng Việt.'
     },
     {
       icon: RefreshCw,
-      color: '#c084fc',
-      title: 'Auto-Fix Engine',
-      desc: 'One-click fixes for detected issues. Lunar generates corrected code with explanations and opens a PR automatically.'
+      color: '#a855f7',
+      title: 'Auto-Patch Engine',
+      desc: 'Tự động tạo đoạn mã sửa lỗi safe code và tạo Pull Request chứa bản vá 1-Click trên GitHub.'
     },
     {
       icon: Github,
-      color: '#60a5fa',
-      title: 'GitHub Integration',
-      desc: 'Connects to any repo in seconds. Reviews run on every push, PR, and merge request — no config required.'
+      color: '#6366f1',
+      title: 'GitHub CI/CD Integration',
+      desc: 'Tự động chạy quy trình kiểm tra bảo mật SAST mỗi khi có Push / Pull Request mới.'
     },
     {
       icon: ShieldCheck,
       color: '#f87171',
-      title: 'Security Scanning',
-      desc: 'OWASP Top 10, dependency vulnerabilities, secret leaks, and injection vectors detected before merge.'
+      title: 'OWASP Top 10 & CWE Coverage',
+      desc: 'Quét toàn bộ lỗ hổng SQLi, XSS, CSRF, Hardcoded Secrets, JWT Signature Failure & RCE.'
     },
     {
       icon: Code,
       color: '#34d399',
-      title: 'Style Enforcement',
-      desc: 'Learns your team\'s conventions from existing code. No .eslintrc required — Lunar adapts to you.'
+      title: 'Code Patch Diff View',
+      desc: 'Giao diện xem đối sánh mã nguồn gốc RED BEFORE vs mã đã vá GREEN AFTER trực quan.'
     },
     {
       icon: Activity,
       color: '#fbbf24',
-      title: 'Team Analytics',
-      desc: 'Track code quality over time. See which authors, files, and issue types need the most attention.'
+      title: 'White-Hat Cyber Community',
+      desc: 'Cộng đồng các chuyên gia an toàn thông tin thảo luận Zero-day, Pentest và chia sẻ kinh nghiệm phòng thủ.'
     }
   ];
 
   const testimonials = [
     {
-      quote: 'Lunar caught a critical injection vulnerability in our payment service that had been sitting undetected for 8 months. The auto-fix PR was merged within 10 minutes.',
-      name: 'Sarah Chen',
-      role: 'Senior Engineer @ Stripe',
-      initials: 'SC'
+      quote: 'SecuSense đã giúp đội ngũ phát triển của chúng tôi giảm 85% thời gian xem cảnh báo giả từ Semgrep và tự động vá lỗi CSRF chỉ trong 2 phút.',
+      name: 'Nguyễn Hoàng Nam',
+      role: 'Head of Security @ TechCorp',
+      initials: 'HN'
     },
     {
-      quote: 'We went from 6-hour manual reviews to 12-minute automated ones. Our team\'s velocity doubled in the first sprint alone.',
-      name: 'Marcus Reid',
-      role: 'CTO @ Vercel',
-      initials: 'MR'
+      quote: 'Giao diện AI Triage bằng tiếng Việt cực kỳ rõ ràng. Cả Dev và Security Team đều hiểu chính xác nguyên nhân vì sao nguy hiểm.',
+      name: 'Trần Minh Đức',
+      role: 'Tech Lead @ Vercel Team',
+      initials: 'MĐ'
     },
     {
-      quote: 'The GitHub integration is seamless. Every PR gets a thorough review before any human even looks at it. Our codebase quality score went from 61 to 94 in 3 months.',
-      name: 'Priya Nair',
-      role: 'Lead Developer @ Linear',
-      initials: 'PN'
+      quote: 'Tích hợp GitHub PR Bot rất mượt mà. Mọi Pull Request đều được kiểm tra SAST tự động trước khi merge.',
+      name: 'Lê Thu Trang',
+      role: 'Senior DevSecOps @ Stripe',
+      initials: 'TT'
     }
   ];
 
   return (
     <div style={{ maxWidth: '1240px', margin: '0 auto', paddingTop: '40px' }}>
       
-      {/* SECTION 1: HERO (Matching Screenshot 1) */}
+      {/* SECTION 1: HERO */}
       <div style={{ textAlign: 'center', marginBottom: '80px', position: 'relative' }}>
         
         {/* Hero Announcement Pill */}
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
-          <div className="badge badge-purple" style={{ padding: '6px 16px', fontSize: '0.82rem', borderRadius: '999px' }}>
-            <Sparkles size={14} color="#a78bfa" />
-            <span>✦ Now with GPT-4o · Auto-fix v3.0</span>
+          <div className="badge badge-cyan" style={{ padding: '6px 16px', fontSize: '0.82rem', borderRadius: '999px' }}>
+            <Sparkles size={14} color="var(--accent-cyan)" />
+            <span>🛡️ SecuSense SAST Assistant v2.0 • AI Triage Engine</span>
           </div>
         </div>
 
@@ -137,37 +137,38 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
           marginBottom: '20px',
           color: '#ffffff'
         }}>
-          Code review that <span className="gradient-text">fixes itself</span>
+          Tự Động AI Triage & <span className="gradient-text">Vá Lỗ Hổng Bảo Mật</span>
         </h1>
 
         {/* Hero Subtitle */}
         <p style={{
           fontSize: '1.15rem',
           color: 'var(--text-secondary)',
-          maxWidth: '680px',
+          maxWidth: '720px',
           margin: '0 auto 36px auto',
           lineHeight: '1.65'
         }}>
-          Lunar connects to your GitHub repos, reviews every PR with AI, and opens auto-fix pull requests — so your team ships faster with fewer bugs.
+          SecuSense phân tích cảnh báo Semgrep, tự động đánh giá True Positive / False Positive và đề xuất phương án sửa lỗi mã nguồn trực tiếp bằng tiếng Việt.
         </p>
 
         {/* Hero CTA Buttons */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '56px' }}>
           <button
-            onClick={onOpenAuth}
+            onClick={onOpenSubmit}
             className="btn btn-primary"
             style={{ padding: '14px 28px', fontSize: '1rem', borderRadius: '999px' }}
           >
-            <Github size={18} />
-            Connect GitHub — it's free
+            <ShieldCheck size={18} />
+            Khởi Chạy Quét SAST Ngay
           </button>
 
           <button
-            onClick={onOpenSubmit}
+            onClick={onOpenAuth}
             className="btn btn-secondary"
             style={{ padding: '14px 28px', fontSize: '1rem', borderRadius: '999px' }}
           >
-            View live demo →
+            <Github size={18} />
+            Kết Nối GitHub OAuth →
           </button>
         </div>
 
@@ -180,48 +181,48 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
           margin: '0 auto'
         }}>
           <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: '#ffffff', lineHeight: 1.1 }}>
-              14.2M
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: 'var(--accent-cyan)', lineHeight: 1.1 }}>
+              14.2M+
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Lines reviewed
+              Dòng Code Đã Kiểm Định
             </div>
           </div>
 
           <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: '#ffffff', lineHeight: 1.1 }}>
-              98,000+
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: '#34d399', lineHeight: 1.1 }}>
+              90%
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Bugs fixed
+              Giảm Cảnh Báo Giả (False Positives)
             </div>
           </div>
 
           <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: '#ffffff', lineHeight: 1.1 }}>
-              4.3 min
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: '#c084fc', lineHeight: 1.1 }}>
+              1-Click
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Avg review time
+              Auto-Fix GitHub Pull Request
             </div>
           </div>
         </div>
 
       </div>
 
-      {/* SECTION 2: LIVE DEMO "Watch Lunar work" (Matching Screenshot 2) */}
+      {/* SECTION 2: LIVE DEMO "Watch SecuSense work" */}
       <div style={{ marginBottom: '100px' }}>
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div className="badge badge-purple" style={{ marginBottom: '12px' }}>
-            Live Demo
+          <div className="badge badge-cyan" style={{ marginBottom: '12px' }}>
+            SecuSense Live Demo
           </div>
 
           <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.6rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em', marginBottom: '10px' }}>
-            Watch Lunar work
+            Trải Nghiệm SecuSense AI Triage
           </h2>
 
           <p style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>
-            Real issues found in a real function. Click "Auto-fix" to see Lunar repair it.
+            Xem SecuSense tự động phân tích lỗ hổng Semgrep và đề xuất bản vá trực tiếp.
           </p>
         </div>
 
@@ -250,7 +251,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
                 <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#fbbf24' }} />
                 <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#34d399' }} />
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--text-secondary)', marginLeft: '12px' }}>
-                  userService.ts
+                  server/index.js
                 </span>
               </div>
 
@@ -259,7 +260,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
                 <button
                   onClick={() => setDemoState('before')}
                   style={{
-                    background: demoState === 'before' ? 'rgba(124, 58, 237, 0.4)' : 'transparent',
+                    background: demoState === 'before' ? 'rgba(56, 189, 248, 0.3)' : 'transparent',
                     border: 'none',
                     color: demoState === 'before' ? '#ffffff' : 'var(--text-secondary)',
                     fontSize: '0.78rem',
@@ -319,20 +320,20 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
                 style={{ width: '100%', padding: '12px' }}
               >
                 <Zap size={16} />
-                {isAutoFixing ? 'Fixing with Lunar AI...' : '⚡ Auto-fix all issues'}
+                {isAutoFixing ? 'SecuSense AI is Auto-patching...' : '⚡ Auto-fix & Apply Patch'}
               </button>
             </div>
 
           </div>
 
-          {/* Right Column: AI Analysis Issues Panel */}
+          {/* Right Column: SecuSense AI Analysis Issues Panel */}
           <div className="glass-panel" style={{ padding: '20px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: '#ffffff' }}>
-                AI Analysis
+                SecuSense AI Triage
               </h3>
-              <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#f87171', fontFamily: 'var(--font-mono)' }}>
-                {demoState === 'before' ? '5 issues' : '0 issues (Passed)'}
+              <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>
+                {demoState === 'before' ? '5 findings' : '0 findings (Verified)'}
               </span>
             </div>
 
@@ -369,127 +370,34 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
 
             {/* AI Suggestion Banner */}
             <div style={{
-              background: 'rgba(124, 58, 237, 0.1)',
-              border: '1px solid rgba(124, 58, 237, 0.3)',
+              background: 'rgba(56, 189, 248, 0.1)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
               borderRadius: 'var(--radius-sm)',
               padding: '12px 14px',
               fontSize: '0.82rem',
-              color: '#c084fc',
+              color: '#38bdf8',
               lineHeight: '1.5'
             }}>
-              <strong>Lunar suggests:</strong> This is a critical issue. Lunar can generate a secure replacement with proper sanitization and error boundaries.
+              <strong>SecuSense AI Verdict:</strong> Lỗ hổng có mức độ rủi ro cao. SecuSense đề xuất giải pháp vá lỗi tự động bằng csurf middleware và Parameterized Queries.
             </div>
           </div>
 
         </div>
       </div>
 
-      {/* SECTION 3: GITHUB INTEGRATION "Connect in 30 seconds" (Matching Screenshot 3) */}
-      <div style={{ marginBottom: '100px' }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '40px',
-          alignItems: 'center'
-        }}>
-          
-          {/* Left Text */}
-          <div>
-            <div className="badge badge-cyan" style={{ marginBottom: '16px' }}>
-              GitHub Integration
-            </div>
-
-            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.8rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em', marginBottom: '16px' }}>
-              Connect in 30 seconds
-            </h2>
-
-            <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)', marginBottom: '28px', lineHeight: '1.6' }}>
-              OAuth with GitHub. Select your repos. Lunar handles the rest — webhooks, CI checks, PR comments, and auto-fix branches are all configured automatically.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '32px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.92rem', color: 'var(--text-primary)' }}>
-                <span style={{ color: 'var(--accent-cyan)' }}>🌐</span>
-                <span>OAuth 2.0 — no passwords stored</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.92rem', color: 'var(--text-primary)' }}>
-                <span style={{ color: 'var(--accent-cyan)' }}>💠</span>
-                <span>Fine-grained repo permissions</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.92rem', color: 'var(--text-primary)' }}>
-                <span style={{ color: 'var(--accent-cyan)' }}>⬡</span>
-                <span>Automatic webhook setup</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.92rem', color: 'var(--text-primary)' }}>
-                <span style={{ color: 'var(--accent-cyan)' }}>💠</span>
-                <span>Works with GitHub.com and Enterprise</span>
-              </div>
-            </div>
-
-            <button onClick={onOpenAuth} className="btn btn-secondary" style={{ padding: '12px 24px' }}>
-              <Github size={18} />
-              Connect with GitHub
-            </button>
-          </div>
-
-          {/* Right Repositories Status Card */}
-          <div className="glass-panel" style={{ padding: '24px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Github size={20} color="#ffffff" />
-                <span style={{ fontWeight: '700', fontSize: '1rem', color: '#ffffff' }}>acme-corp</span>
-              </div>
-              <span className="badge badge-emerald" style={{ fontSize: '0.72rem' }}>
-                connected
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {connectedRepos.map((repo) => (
-                <div key={repo.name} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <div>
-                      <span style={{ fontWeight: '700', color: '#ffffff', fontSize: '0.95rem' }}>{repo.name}</span>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '10px' }}>
-                        {repo.lang} · <span style={{ color: repo.status === 'failed' ? '#f87171' : 'var(--text-secondary)' }}>{repo.issues}</span>
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: '800', fontSize: '0.9rem', color: repo.color }}>
-                        {repo.score}
-                      </span>
-                      <span style={{ fontSize: '0.75rem', color: repo.color }}>
-                        • {repo.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Meter Bar */}
-                  <div style={{ height: '4px', width: '100%', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${repo.score}%`, background: repo.color, borderRadius: '2px' }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      {/* SECTION 4: CAPABILITIES "Everything your code needs" (Matching Screenshot 4) */}
+      {/* SECTION 3: CAPABILITIES */}
       <div style={{ marginBottom: '100px' }}>
         <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <div className="badge badge-purple" style={{ marginBottom: '14px' }}>
-            Capabilities
+          <div className="badge badge-cyan" style={{ marginBottom: '14px' }}>
+            SecuSense Capabilities
           </div>
 
           <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.8rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em', marginBottom: '12px' }}>
-            Everything your code needs
+            Tính Năng Cốt Lõi Của SecuSense SAST
           </h2>
 
           <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)' }}>
-            Built for teams that ship fast and can't afford to compromise on quality.
+            Giải pháp bảo mật mã nguồn tối ưu cho các đội ngũ lập trình hiện đại.
           </p>
         </div>
 
@@ -530,15 +438,15 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
         </div>
       </div>
 
-      {/* SECTION 5: TESTIMONIALS "Trusted by engineering teams" (Matching Screenshot 4) */}
+      {/* SECTION 4: TESTIMONIALS */}
       <div style={{ marginBottom: '80px' }}>
         <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <div className="badge badge-purple" style={{ marginBottom: '14px' }}>
+          <div className="badge badge-cyan" style={{ marginBottom: '14px' }}>
             Testimonials
           </div>
 
           <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.8rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>
-            Trusted by engineering teams
+            Được Đội Ngũ Kỹ Sư Tin Dùng
           </h2>
         </div>
 
@@ -551,7 +459,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
           {testimonials.map((test, idx) => (
             <div key={idx} className="glass-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
-                <span style={{ fontSize: '1.8rem', color: 'var(--accent-purple)', lineHeight: 1, display: 'block', marginBottom: '16px' }}>
+                <span style={{ fontSize: '1.8rem', color: 'var(--accent-cyan)', lineHeight: 1, display: 'block', marginBottom: '16px' }}>
                   “
                 </span>
 
@@ -565,14 +473,14 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
                   width: '36px',
                   height: '36px',
                   borderRadius: '50%',
-                  background: 'rgba(124, 58, 237, 0.2)',
-                  border: '1px solid rgba(167, 139, 250, 0.4)',
+                  background: 'rgba(56, 189, 248, 0.2)',
+                  border: '1px solid rgba(56, 189, 248, 0.4)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '0.8rem',
                   fontWeight: '700',
-                  color: '#c084fc'
+                  color: '#38bdf8'
                 }}>
                   {test.initials}
                 </div>

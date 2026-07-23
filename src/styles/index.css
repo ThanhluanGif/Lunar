@@ -1,45 +1,43 @@
 :root {
-  /* Balanced Modern Dark Palette */
-  --bg-primary: #080b11;
-  --bg-secondary: #0e121b;
-  --bg-tertiary: #141926;
-  --bg-card: rgba(16, 21, 33, 0.85);
-  --bg-card-hover: rgba(24, 31, 48, 0.95);
-  --bg-glass: rgba(18, 24, 38, 0.75);
+  /* SecuSense — SAST Assistant Theme Palette (GitHub Primer & Mona Sans Style) */
+  --bg-primary: #090d16;
+  --bg-secondary: #0f172a;
+  --bg-tertiary: #1e293b;
+  --bg-card: rgba(17, 24, 39, 0.85);
+  --bg-card-hover: rgba(30, 41, 59, 0.9);
+  --bg-glass: rgba(15, 23, 42, 0.75);
   
   --border-color: rgba(255, 255, 255, 0.1);
-  --border-highlight: rgba(34, 211, 238, 0.4);
-  --border-purple: rgba(167, 139, 250, 0.35);
+  --border-highlight: rgba(56, 189, 248, 0.4);
+  --border-purple: rgba(168, 85, 247, 0.35);
   
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
   
-  --accent-purple: #8b5cf6;
-  --accent-purple-light: #c084fc;
+  --accent-cyan: #38bdf8;
   --accent-indigo: #6366f1;
-  --accent-cyan: #22d3ee;
-  --accent-blue: #3b82f6;
+  --accent-purple: #a855f7;
   --accent-emerald: #34d399;
   --accent-amber: #fbbf24;
   --accent-rose: #f87171;
   
-  --gradient-purple: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
-  --gradient-text: linear-gradient(135deg, #38bdf8 0%, #a78bfa 50%, #34d399 100%);
-  --gradient-glow: radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.1) 0%, transparent 60%);
+  --gradient-brand: linear-gradient(135deg, #0284c7 0%, #6366f1 50%, #a855f7 100%);
+  --gradient-text: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+  --gradient-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
   
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
   
   --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.6);
-  --shadow-glow: 0 0 25px rgba(56, 189, 248, 0.25);
+  --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 30px rgba(56, 189, 248, 0.35);
   
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-heading: 'Outfit', 'Inter', sans-serif;
-  --font-mono: 'Fira Code', monospace;
+  --font-sans: 'Mona Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-heading: 'Mona Sans', 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
 * {
@@ -56,9 +54,9 @@ body {
   line-height: 1.6;
   overflow-x: hidden;
   background-image: 
-    radial-gradient(circle at 50% 12%, rgba(56, 189, 248, 0.08) 0%, transparent 45%),
-    radial-gradient(circle at 85% 75%, rgba(99, 102, 241, 0.06) 0%, transparent 45%),
-    radial-gradient(circle at 15% 85%, rgba(52, 211, 153, 0.05) 0%, transparent 45%);
+    radial-gradient(circle at 50% 10%, rgba(56, 189, 248, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 85% 75%, rgba(99, 102, 241, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 15% 85%, rgba(168, 85, 247, 0.06) 0%, transparent 45%);
   background-attachment: fixed;
 }
 
@@ -88,8 +86,8 @@ body {
 /* Glass Panels & Cards */
 .glass-panel {
   background: var(--bg-glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
@@ -97,10 +95,10 @@ body {
 
 .glass-card {
   background: var(--bg-card);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
 }
@@ -112,16 +110,16 @@ body {
   box-shadow: var(--shadow-glow);
 }
 
-/* Figma Lunar Style Buttons */
+/* SecuSense Modern Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 20px;
+  padding: 9px 18px;
   font-family: var(--font-sans);
   font-weight: 600;
-  font-size: 0.92rem;
+  font-size: 0.9rem;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   cursor: pointer;
@@ -131,13 +129,13 @@ body {
 }
 
 .btn-primary {
-  background: var(--gradient-purple);
+  background: var(--gradient-brand);
   color: #fff;
-  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
+  box-shadow: 0 4px 18px rgba(56, 189, 248, 0.35);
 }
 .btn-primary:hover {
   filter: brightness(1.15);
-  box-shadow: 0 6px 25px rgba(124, 58, 237, 0.6);
+  box-shadow: 0 6px 22px rgba(56, 189, 248, 0.5);
   transform: translateY(-1px);
 }
 
@@ -161,8 +159,8 @@ body {
 }
 
 .btn-sm {
-  padding: 6px 14px;
-  font-size: 0.85rem;
+  padding: 6px 13px;
+  font-size: 0.84rem;
   border-radius: var(--radius-sm);
 }
 
@@ -171,21 +169,21 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
+  padding: 4px 10px;
   border-radius: 999px;
   font-size: 0.76rem;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-.badge-purple {
-  background: rgba(124, 58, 237, 0.15);
-  color: #c084fc;
-  border: 1px solid rgba(124, 58, 237, 0.35);
-}
 .badge-cyan {
-  background: rgba(34, 211, 238, 0.15);
-  color: #22d3ee;
-  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+.badge-purple {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.35);
 }
 .badge-emerald {
   background: rgba(52, 211, 153, 0.15);
@@ -216,27 +214,17 @@ body {
   color: var(--text-secondary);
 }
 .input-control {
-  background: rgba(12, 15, 23, 0.9);
+  background: rgba(15, 23, 42, 0.9);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 12px 16px;
+  padding: 10px 16px;
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   outline: none;
   transition: border-color 0.2s ease;
 }
 .input-control:focus {
-  border-color: var(--accent-purple);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
-}
-
-/* Animations */
-@keyframes floatAnim {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-6px); }
-}
-
-.animate-float {
-  animation: floatAnim 5s infinite ease-in-out;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
 }
