@@ -23,13 +23,13 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
       severity: 'HIGH',
       cvss: 7.5,
       aiVerdict: 'True Positive',
-      aiConfidence: '7/10',
-      aiReason: 'Ứng dụng Express này không sử dụng middleware chống CSRF như `csurf` hoặc `csrf`. Mặc dù có cấu hình CORS, điều này không trực tiếp giải quyết lỗ hổng CSRF mà không có cơ chế xác thực token CSRF. Do đó, có khả năng ứng dụng dễ bị tấn công CSRF vì thiếu cơ chế bảo vệ chống lại các yêu cầu trái phép.',
-      description: 'Ứng dụng Express này không sử dụng bất kỳ middleware nào để chống lại tấn công Cross-Site Request Forgery (CSRF).',
-      impact: 'Kẻ tấn công có thể lừa người dùng đã đăng nhập thực hiện các hành động không mong muốn trên ứng dụng bằng cách gửi các yêu cầu độc hại từ một trang web khác. Điều này có thể dẫn đến việc thay đổi dữ liệu nhạy cảm, thực hiện giao dịch trái phép hoặc chiếm đoạt tài khoản người dùng.',
-      originalCode: `const app = express();\napp.use(cors({ origin: ['http://localhost:3000'], credentials: true }));\napp.use(express.json());`,
-      patchedCode: `const csrf = require('csurf');\napp.use(csrf({ cookie: true }));\napp.use((req, res, next) => {\n  res.cookie('XSRF-TOKEN', req.csrfToken());\n  next();\n});`,
-      recommendation: 'Thêm middleware csurf và gửi XSRF-TOKEN cookie về phía client.'
+      aiConfidence: '4/10',
+      aiReason: 'Ứng dụng Express này không sử dụng middleware CSRF như `csurf` hoặc `csrf`. Mặc dù có thể có các biện pháp bảo vệ CSRF khác không được hiển thị trong ngữ cảnh này, nhưng việc thiếu middleware CSRF chuyên dụng là một điểm yếu tiềm ẩn theo khuyến nghị của quy tắc. Do đó, đây là một dương tính thật vì không có bằng chứng về việc triển khai kiểm tra CSRF hoặc middleware bảo vệ.',
+      description: 'Khi không sử dụng middleware CSRF, ứng dụng có thể dễ bị tấn công Cross-Site Request Forgery (CSRF). Kẻ tấn công có thể lừa người dùng đang đăng nhập thực hiện các hành động không mong muốn trên ứng dụng.',
+      impact: 'Kẻ tấn công có thể lừa người dùng đang đăng nhập thực hiện các hành động không mong muốn trên ứng dụng, chẳng hạn như thay đổi mật khẩu, thực hiện giao dịch hoặc xóa dữ liệu, bằng cách gửi các yêu cầu độc hại từ một trang web khác.',
+      originalCode: `const express = require('express');\nconst cors = require('cors');\nconst authRoutes = require('./routes/authRoutes');\n\nconst app = express();\napp.use(cors({ origin: ['http://localhost:3000'], credentials: true }));\napp.use(express.json());`,
+      patchedCode: `const express = require('express');\nconst cors = require('cors');\nconst authRoutes = require('./routes/authRoutes');\n+const cookieParser = require('cookie-parser');\n+const csrf = require('csurf');\n\nconst app = express();\napp.use(express.json());\n+// CSRF protection\n+app.use(cookieParser());\n+app.use(csrf({ cookie: true }));`,
+      recommendation: 'Thêm cookie-parser và csurf middleware để bảo vệ các endpoints Express.'
     });
   }
 
@@ -118,30 +118,6 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
         originalCode: displayLine,
         patchedCode: getPatchedLine(displayLine, 'sqli'),
         recommendation: 'Dùng Parameterized Queries (vd: db.query("SELECT * FROM users WHERE id = $1", [userId])).'
-      });
-    }
-
-    // 3. Cross-Site Scripting - XSS (CWE-79)
-    if (
-      (lower.includes('dangerouslysetinnerhtml') || lower.includes('.innerhtml =') || lower.includes('document.write(') || lower.includes('v-html')) &&
-      !lower.includes('dompurify.sanitize')
-    ) {
-      vulnerabilities.push({
-        id: `vuln-${lineNum}-3`,
-        line: lineNum,
-        cwe: 'CWE-79',
-        category: 'Cross-Site Scripting - XSS (OWASP A03:2021)',
-        title: 'Lỗ Hổng Render HTML Độc Hại Không Phân Tách (XSS)',
-        severity: 'HIGH',
-        cvss: 7.5,
-        aiVerdict: 'True Positive',
-        aiConfidence: '8/10',
-        aiReason: 'Render HTML trực tiếp từ dữ liệu chưa qua khử trùng DOMPurify.',
-        description: 'Sử dụng innerHTML hoặc dangerouslySetInnerHTML trực tiếp với dữ liệu chưa qua lọc (sanitization).',
-        impact: 'Kẻ tấn công có thể chèn đoạn mã JavaScript độc hại để đánh cắp Cookie, Session Token.',
-        originalCode: displayLine,
-        patchedCode: getPatchedLine(displayLine, 'xss'),
-        recommendation: 'Sử dụng thư viện DOMPurify.sanitize() hoặc render text thuần túy (textContent).'
       });
     }
   });
