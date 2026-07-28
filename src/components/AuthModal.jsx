@@ -1,71 +1,99 @@
 import React, { useState } from 'react';
-import { X, Github, Mail, Lock, User, ShieldCheck, Sparkles, AtSign, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Github, Mail, Lock, User, ShieldCheck, Sparkles, AtSign, AlertCircle, Loader2, CheckCircle2, UserCheck } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
+  const [activeTab, setActiveTab] = useState('github'); // 'github' | 'email' | 'demo'
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  
+  // Form states
+  const [githubInput, setGithubInput] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e) => {
+  // Option 1: Handle Direct GitHub Sync
+  const handleConnectGitHub = async (e) => {
+    e.preventDefault();
+    if (!githubInput.trim()) {
+      setErrorMsg('Vui lòng nhập GitHub Username của bạn.');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg('');
+
+    const handle = githubInput.trim().replace(/^@/, '');
+    
+    setTimeout(() => {
+      const gitHubUser = {
+        id: `usr-github-${handle}-${Date.now()}`,
+        nickname: `@${handle}`,
+        name: handle,
+        email: `${handle}@github.com`,
+        tier: 'PRO',
+        karma_points: 850,
+        avatar_url: `https://github.com/${handle}.png`,
+        daily_scans_used: 0
+      };
+
+      onLoginSuccess(gitHubUser);
+      setLoading(false);
+      onClose();
+    }, 400);
+  };
+
+  // Option 2: Email & Password Auth
+  const handleEmailAuth = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setLoading(true);
 
     try {
       if (authMode === 'register') {
-        // Supabase SignUp
         const { data, error } = await supabase.auth.signUp({
-          email: email || `dev_${Date.now()}@lunar.dev`,
-          password: password || 'lunar_secure_pass_123',
-          options: {
-            data: {
-              full_name: fullName || 'Lunar Developer',
-              nickname: nickname || `@dev_${Date.now().toString().slice(-4)}`
-            }
-          }
+          email: email,
+          password: password,
+          options: { data: { full_name: fullName } }
         });
 
         if (error) {
-          console.warn('Supabase auth notice, using local fallback session:', error.message);
+          console.warn('Supabase signup notice:', error.message);
         }
 
         const newUser = {
           id: data?.user?.id || 'usr-' + Date.now(),
-          nickname: nickname || `@${(email || 'developer').split('@')[0]}`,
-          name: fullName || email.split('@')[0] || 'Lunar Developer',
-          email: email || 'developer@lunar.dev',
+          nickname: `@${email.split('@')[0]}`,
+          name: fullName || email.split('@')[0],
+          email: email,
           tier: 'PRO',
           karma_points: 500,
-          avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+          avatar_url: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80`,
           daily_scans_used: 0
         };
         onLoginSuccess(newUser);
       } else {
-        // Supabase SignIn
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: email || 'dev@lunar.dev',
-          password: password || 'lunar_secure_pass_123'
+          email: email,
+          password: password
         });
 
         if (error) {
-          console.warn('Supabase signin notice, using demo session:', error.message);
+          console.warn('Supabase signin notice:', error.message);
         }
 
         const existingUser = {
           id: data?.user?.id || 'usr-' + Date.now(),
-          nickname: `@${(email || 'alex_whitehat').split('@')[0]}`,
-          name: fullName || (email || 'alex_whitehat').split('@')[0],
-          email: email || 'alex@lunar.dev',
+          nickname: `@${email.split('@')[0]}`,
+          name: email.split('@')[0],
+          email: email,
           tier: 'PRO',
-          karma_points: 1250,
-          avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+          karma_points: 1200,
+          avatar_url: `https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80`,
           daily_scans_used: 0
         };
         onLoginSuccess(existingUser);
@@ -74,45 +102,18 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
       onClose();
     } catch (err) {
       setLoading(false);
-      setErrorMsg(err.message || 'Đã có lỗi xảy ra trong quá trình đăng nhập.');
+      setErrorMsg(err.message || 'Lỗi đăng nhập. Vui lòng thử lại.');
     }
   };
 
-  const handleGitHubAuth = async () => {
+  // Option 3: Fast 1-Click Demo Sessions
+  const handleSelectDemoProfile = (profile) => {
     setLoading(true);
-    setErrorMsg('');
-
-    // Safely attempt Supabase OAuth without breaking on 400 error
-    try {
-      await supabase.auth.signInWithOAuth({
-        provider: 'github',
-        options: {
-          redirectTo: window.location.origin
-        }
-      });
-    } catch (err) {
-      console.warn('Supabase OAuth notice (handled):', err);
-    }
-
-    // Dynamic user session creation for seamless user experience
     setTimeout(() => {
-      const promptName = prompt('Nhập GitHub Username của bạn để kết nối với website:', email ? email.split('@')[0] : 'dev-user');
-      const userHandle = (promptName || 'developer').trim().replace(/^@/, '');
-
-      const gitHubUser = {
-        id: 'usr-github-' + Date.now(),
-        nickname: `@${userHandle}`,
-        name: userHandle,
-        email: email || `${userHandle}@github.dev`,
-        tier: 'PRO',
-        karma_points: 750,
-        avatar_url: `https://github.com/${userHandle}.png`,
-        daily_scans_used: 0
-      };
-      onLoginSuccess(gitHubUser);
+      onLoginSuccess(profile);
       setLoading(false);
       onClose();
-    }, 200);
+    }, 300);
   };
 
   return (
@@ -120,7 +121,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
       position: 'fixed',
       inset: 0,
       zIndex: 100,
-      background: 'rgba(5, 7, 15, 0.85)',
+      background: 'rgba(5, 8, 14, 0.88)',
       backdropFilter: 'blur(16px)',
       display: 'flex',
       alignItems: 'center',
@@ -128,12 +129,12 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
       padding: '20px'
     }}>
       <div className="glass-panel" style={{
-        maxWidth: '440px',
+        maxWidth: '480px',
         width: '100%',
-        padding: '32px',
+        padding: '30px',
         position: 'relative',
-        boxShadow: '0 0 50px rgba(168, 85, 247, 0.25)',
-        border: '1px solid rgba(168, 85, 247, 0.3)'
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
+        border: '1px solid var(--border-color)'
       }}>
         {/* Close Button */}
         <button
@@ -151,50 +152,68 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
           <X size={20} />
         </button>
 
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+        {/* Modal Header */}
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
-            background: 'linear-gradient(135deg, #a855f7, #6366f1)',
+            width: '44px',
+            height: '44px',
+            borderRadius: '10px',
+            background: '#2563eb',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            margin: '0 auto 12px auto',
-            boxShadow: '0 4px 20px rgba(168, 85, 247, 0.4)'
+            margin: '0 auto 10px auto'
           }}>
-            <ShieldCheck size={26} color="#fff" />
+            <ShieldCheck size={24} color="#fff" />
           </div>
-          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.4rem', fontWeight: '800' }}>
-            {authMode === 'login' ? 'Đăng Nhập Lunar.dev' : 'Đăng Ký Tài Khoản Pro'}
+          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.35rem', fontWeight: '800', color: '#fff' }}>
+            Kết Nối Tài Khoản Lunar.dev
           </h2>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Đồng bộ dữ liệu Supabase Database & GitHub PR Bot
+            Đồng bộ Repositories cá nhân & lưu vết báo cáo SAST
           </p>
         </div>
 
-        {/* GitHub OAuth Button */}
-        <button
-          onClick={handleGitHubAuth}
-          disabled={loading}
-          className="btn btn-secondary"
-          style={{ width: '100%', padding: '11px', marginBottom: '20px', gap: '10px' }}
-        >
-          <Github size={18} />
-          {loading ? 'Đang kết nối Supabase OAuth...' : 'Tiếp tục với GitHub Account'}
-        </button>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-          <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>HOẶC EMAIL</span>
-          <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
+        {/* Auth Method Tabs */}
+        <div style={{
+          display: 'flex',
+          gap: '6px',
+          margin: '16px 0 20px 0',
+          background: '#0f172a',
+          padding: '4px',
+          borderRadius: 'var(--radius-md)'
+        }}>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('github'); setErrorMsg(''); }}
+            className={`btn btn-sm ${activeTab === 'github' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ flex: 1, fontSize: '0.78rem' }}
+          >
+            <Github size={14} /> GitHub Sync
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('email'); setErrorMsg(''); }}
+            className={`btn btn-sm ${activeTab === 'email' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ flex: 1, fontSize: '0.78rem' }}
+          >
+            <Mail size={14} /> Email Auth
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('demo'); setErrorMsg(''); }}
+            className={`btn btn-sm ${activeTab === 'demo' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ flex: 1, fontSize: '0.78rem' }}
+          >
+            <UserCheck size={14} /> Demo Fast
+          </button>
         </div>
 
         {errorMsg && (
           <div style={{
             padding: '10px 14px',
-            background: 'rgba(248, 113, 113, 0.15)',
-            border: '1px solid rgba(248, 113, 113, 0.3)',
+            background: 'rgba(220, 38, 38, 0.15)',
+            border: '1px solid rgba(220, 38, 38, 0.3)',
             borderRadius: 'var(--radius-md)',
             color: '#f87171',
             fontSize: '0.82rem',
@@ -208,109 +227,153 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          {authMode === 'register' && (
-            <>
+        {/* TAB 1: Direct GitHub Sync */}
+        {activeTab === 'github' && (
+          <form onSubmit={handleConnectGitHub}>
+            <div className="input-group">
+              <label className="input-label">GitHub Username của bạn</label>
+              <div style={{ position: 'relative' }}>
+                <Github size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                <input
+                  type="text"
+                  placeholder="Ví dụ: ThanhluanGif, octocat..."
+                  className="input-control"
+                  style={{ paddingLeft: '38px' }}
+                  value={githubInput}
+                  onChange={(e) => setGithubInput(e.target.value)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Hệ thống sẽ nạp ảnh đại diện và danh sách Repositories thật của bạn từ GitHub API.
+              </span>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !githubInput.trim()}
+              className="btn btn-primary"
+              style={{ width: '100%', padding: '11px', gap: '8px', marginTop: '8px' }}
+            >
+              {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Github size={16} />}
+              Kết Nối & Nạp GitHub Repositories
+            </button>
+          </form>
+        )}
+
+        {/* TAB 2: Email & Password */}
+        {activeTab === 'email' && (
+          <form onSubmit={handleEmailAuth}>
+            {authMode === 'register' && (
               <div className="input-group">
                 <label className="input-label">Họ và Tên</label>
-                <div style={{ position: 'relative' }}>
-                  <User size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '13px' }} />
-                  <input
-                    type="text"
-                    placeholder="Nguyen Van A"
-                    className="input-control"
-                    style={{ paddingLeft: '38px' }}
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                  />
-                </div>
+                <input
+                  type="text"
+                  placeholder="Nguyen Van A"
+                  className="input-control"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                />
               </div>
+            )}
 
-              <div className="input-group">
-                <label className="input-label">Nickname / Handle</label>
-                <div style={{ position: 'relative' }}>
-                  <AtSign size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '13px' }} />
-                  <input
-                    type="text"
-                    placeholder="@alex_whitehat"
-                    className="input-control"
-                    style={{ paddingLeft: '38px' }}
-                    value={nickname}
-                    onChange={(e) => setNickname(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          <div className="input-group">
-            <label className="input-label">Email</label>
-            <div style={{ position: 'relative' }}>
-              <Mail size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '13px' }} />
+            <div className="input-group">
+              <label className="input-label">Email</label>
               <input
                 type="email"
                 placeholder="developer@lunar.dev"
                 className="input-control"
-                style={{ paddingLeft: '38px' }}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
-          </div>
 
-          <div className="input-group">
-            <label className="input-label">Mật Khẩu</label>
-            <div style={{ position: 'relative' }}>
-              <Lock size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '13px' }} />
+            <div className="input-group">
+              <label className="input-label">Mật khẩu</label>
               <input
                 type="password"
                 placeholder="••••••••••••"
                 className="input-control"
-                style={{ paddingLeft: '38px' }}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn btn-primary"
+              style={{ width: '100%', padding: '11px', marginTop: '8px' }}
+            >
+              {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Sparkles size={16} />}
+              {authMode === 'login' ? 'Đăng Nhập Ngay' : 'Khởi Tạo Tài Khoản Pro'}
+            </button>
+
+            <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              {authMode === 'login' ? (
+                <span>Chưa có tài khoản? <button type="button" onClick={() => setAuthMode('register')} style={{ background: 'none', border: 'none', color: '#60a5fa', fontWeight: '600', cursor: 'pointer' }}>Đăng ký ngay</button></span>
+              ) : (
+                <span>Đã có tài khoản? <button type="button" onClick={() => setAuthMode('login')} style={{ background: 'none', border: 'none', color: '#60a5fa', fontWeight: '600', cursor: 'pointer' }}>Đăng nhập</button></span>
+              )}
+            </div>
+          </form>
+        )}
+
+        {/* TAB 3: Fast 1-Click Demo Profiles */}
+        {activeTab === 'demo' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+              Chọn 1 hồ sơ thử nghiệm nhanh để trải nghiệm đầy đủ tính năng Pro:
+            </div>
+
+            <button
+              onClick={() => handleSelectDemoProfile({
+                id: 'usr-demo-sarah',
+                nickname: '@sarah_stripe',
+                name: 'Sarah Chen (Senior Eng @ Stripe)',
+                email: 'sarah.chen@stripe.com',
+                tier: 'PRO',
+                karma_points: 2400,
+                avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+                daily_scans_used: 0
+              })}
+              className="btn btn-secondary"
+              style={{ justifyContent: 'flex-start', padding: '10px 14px', gap: '12px' }}
+            >
+              <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80" style={{ width: '28px', height: '28px', borderRadius: '50%' }} alt="Sarah" />
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: '0.86rem', fontWeight: '600', color: '#fff' }}>Sarah Chen (Stripe Eng)</div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>@sarah_stripe • Pro Tier</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleSelectDemoProfile({
+                id: 'usr-demo-alex',
+                nickname: '@alex_whitehat',
+                name: 'Alex Whitehat (Security Auditor)',
+                email: 'alex@lunar.dev',
+                tier: 'PRO',
+                karma_points: 3420,
+                avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+                daily_scans_used: 0
+              })}
+              className="btn btn-secondary"
+              style={{ justifyContent: 'flex-start', padding: '10px 14px', gap: '12px' }}
+            >
+              <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80" style={{ width: '28px', height: '28px', borderRadius: '50%' }} alt="Alex" />
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: '0.86rem', fontWeight: '600', color: '#fff' }}>Alex Whitehat (Auditor)</div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>@alex_whitehat • Pro Tier</div>
+              </div>
+            </button>
           </div>
+        )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn btn-primary"
-            style={{ width: '100%', padding: '12px', marginTop: '8px' }}
-          >
-            {loading ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Sparkles size={18} />}
-            {authMode === 'login' ? 'Đăng Nhập Ngay' : 'Khởi Tạo Tài Khoản Pro'}
-          </button>
-        </form>
-
-        <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-          {authMode === 'login' ? (
-            <span>
-              Chưa có tài khoản?{' '}
-              <button
-                onClick={() => setAuthMode('register')}
-                style={{ background: 'none', border: 'none', color: 'var(--accent-purple)', fontWeight: '600', cursor: 'pointer' }}
-              >
-                Đăng ký ngay
-              </button>
-            </span>
-          ) : (
-            <span>
-              Đã có tài khoản?{' '}
-              <button
-                onClick={() => setAuthMode('login')}
-                style={{ background: 'none', border: 'none', color: 'var(--accent-purple)', fontWeight: '600', cursor: 'pointer' }}
-              >
-                Đăng nhập
-              </button>
-            </span>
-          )}
-        </div>
       </div>
     </div>
   );

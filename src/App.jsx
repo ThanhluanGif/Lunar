@@ -29,8 +29,24 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   
   // Auth state & Subscription tier
-  const [currentUser, setCurrentUser] = useState(null);
-  const [currentTier, setCurrentTier] = useState('FREE'); // 'FREE' | 'PRO' | 'ENTERPRISE'
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('lunar_auth_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+  const [currentTier, setCurrentTier] = useState(() => {
+    try {
+      const saved = localStorage.getItem('lunar_auth_session');
+      if (saved) {
+        const u = JSON.parse(saved);
+        return u.tier || 'PRO';
+      }
+    } catch (e) {}
+    return 'FREE';
+  });
   
   // Modals
   const [isSubmitOpen, setIsSubmitOpen] = useState(false);
@@ -40,19 +56,37 @@ export default function App() {
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
 
-  // Initialize Supabase Audits Sync
+  // Initialize Supabase Audits & Restore Auth Session
   useEffect(() => {
-    async function loadSupabaseData() {
+    async function loadInitialData() {
       try {
         const audits = await supabaseDb.getCodeAudits();
         if (audits && audits.length > 0) {
           console.log('Loaded Supabase Audits:', audits.length);
         }
+
+        // Restore Supabase Auth session if active
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const userHandle = session.user.email?.split('@')[0] || 'developer';
+          const sbUser = {
+            id: session.user.id,
+            nickname: `@${userHandle}`,
+            name: session.user.user_metadata?.full_name || userHandle,
+            email: session.user.email,
+            tier: 'PRO',
+            karma_points: 1000,
+            avatar_url: session.user.user_metadata?.avatar_url || `https://github.com/${userHandle}.png`
+          };
+          setCurrentUser(sbUser);
+          setCurrentTier('PRO');
+          localStorage.setItem('lunar_auth_session', JSON.stringify(sbUser));
+        }
       } catch (e) {
-        console.warn('Supabase initial fetch notice:', e);
+        console.warn('Initial session restore notice:', e);
       }
     }
-    loadSupabaseData();
+    loadInitialData();
   }, []);
 
   // Active File & Scan Analysis
@@ -83,25 +117,35 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleLoginSuccess = (user) => {
+    setCurrentUser(user);
+    setCurrentTier(user.tier || 'PRO');
+    localStorage.setItem('lunar_auth_session', JSON.stringify(user));
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setCurrentTier('FREE');
+    localStorage.removeItem('lunar_auth_session');
+    try {
+      supabase.auth.signOut();
+    } catch (e) {}
+  };
+
   const handleUpgradeSuccess = (newTier) => {
     setCurrentTier(newTier);
-    if (!currentUser) {
-      setCurrentUser({
-        id: 'usr-pro-1',
-        nickname: '@sarah_stripe',
-        name: 'Sarah Chen (Stripe Eng)',
-        email: 'sarah.chen@stripe.com',
-        tier: newTier,
-        karma_points: 2400,
-        avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-        daily_scans_used: 0
-      });
-    } else {
-      setCurrentUser({
-        ...currentUser,
-        tier: newTier
-      });
-    }
+    const updated = currentUser ? { ...currentUser, tier: newTier } : {
+      id: 'usr-pro-1',
+      nickname: '@sarah_stripe',
+      name: 'Sarah Chen (Stripe Eng)',
+      email: 'sarah.chen@stripe.com',
+      tier: newTier,
+      karma_points: 2400,
+      avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+      daily_scans_used: 0
+    };
+    setCurrentUser(updated);
+    localStorage.setItem('lunar_auth_session', JSON.stringify(updated));
   };
 
   const handleRenewFreeQuota = () => {
@@ -109,11 +153,13 @@ export default function App() {
       setIsAuthOpen(true);
       return;
     }
-    setCurrentUser({
+    const updated = {
       ...currentUser,
       daily_scans_used: Math.max(0, (currentUser.daily_scans_used || 0) - 3),
       karma_points: (currentUser.karma_points || 100) + 50
-    });
+    };
+    setCurrentUser(updated);
+    localStorage.setItem('lunar_auth_session', JSON.stringify(updated));
     alert(`🎉 Bạn đã gia hạn thành công! Nhận thêm +3 lượt AI Scan trong ngày và +50 Karma.`);
   };
 
@@ -130,10 +176,7 @@ export default function App() {
         currentUser={currentUser}
         currentTier={currentTier}
         onOpenAuth={() => setIsAuthOpen(true)}
-        onLogout={() => {
-          setCurrentUser(null);
-          setCurrentTier('FREE');
-        }}
+        onLogout={handleLogout}
         onOpenPricing={() => setIsPricingOpen(true)}
         onOpenGitBot={() => setIsGitBotOpen(true)}
         onRenewFreeQuota={handleRenewFreeQuota}
@@ -378,10 +421,7 @@ export default function App() {
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
-        onLoginSuccess={(user) => {
-          setCurrentUser(user);
-          setCurrentTier('PRO');
-        }}
+        onLoginSuccess={handleLoginSuccess}
       />
 
       <PricingModal
