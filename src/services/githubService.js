@@ -1,6 +1,6 @@
 /**
  * GitHub API Helper Service
- * Enables fetching repository structure & file content directly from GitHub REST API
+ * Enables fetching repository structure, user repositories & file content directly from GitHub REST API
  */
 
 export function parseGitHubUrl(urlStr) {
@@ -15,6 +15,38 @@ export function parseGitHubUrl(urlStr) {
     return { owner: parts[0], repo: parts[1] };
   }
   return null;
+}
+
+// Fetch all Repositories owned by any GitHub User
+export async function fetchUserGitHubRepos(username) {
+  if (!username) return [];
+  const cleanUsername = username.replace(/^@/, '').trim();
+  
+  try {
+    const res = await fetch(`https://api.github.com/users/${cleanUsername}/repos?sort=updated&per_page=20`);
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error(`Không tìm thấy người dùng GitHub "${cleanUsername}".`);
+      }
+      throw new Error(`Lỗi kết nối GitHub API (${res.status})`);
+    }
+    const repos = await res.json();
+    return repos.map(r => ({
+      id: `gh-repo-${r.id}`,
+      name: r.name,
+      fullName: r.full_name,
+      htmlUrl: r.html_url,
+      description: r.description || 'Public GitHub Repository',
+      stars: r.stargazers_count,
+      forks: r.forks_count,
+      language: r.language || 'JavaScript',
+      updatedAt: new Date(r.updated_at).toLocaleDateString('vi-VN'),
+      isPrivate: r.private
+    }));
+  } catch (err) {
+    console.warn('GitHub User Repos fetch notice:', err.message);
+    throw err;
+  }
 }
 
 export async function fetchGitHubRepoDetails(urlStr) {

@@ -15,8 +15,12 @@ import AuditReportExportModal from './components/AuditReportExportModal';
 import QuotaDepletedModal from './components/QuotaDepletedModal';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
-import { initDatabase, renewFreeQuota } from './services/sqlDataService';
+import { supabaseDb, supabase } from './services/supabaseClient';
 import { Moon, ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
+
+import UserGitHubWorkspace from './components/UserGitHubWorkspace';
+import SystemArchitectureDiagram from './components/SystemArchitectureDiagram';
+import RealTimeStatsBanner from './components/RealTimeStatsBanner';
 
 export default function App() {
   const [projects, setProjects] = useState(SECURITY_PROJECTS_MOCK);
@@ -36,13 +40,19 @@ export default function App() {
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
 
-  // Initialize SQL Data Store
+  // Initialize Supabase Audits Sync
   useEffect(() => {
-    try {
-      initDatabase();
-    } catch (e) {
-      console.warn('initDatabase notice:', e);
+    async function loadSupabaseData() {
+      try {
+        const audits = await supabaseDb.getCodeAudits();
+        if (audits && audits.length > 0) {
+          console.log('Loaded Supabase Audits:', audits.length);
+        }
+      } catch (e) {
+        console.warn('Supabase initial fetch notice:', e);
+      }
     }
+    loadSupabaseData();
   }, []);
 
   // Active File & Scan Analysis
@@ -99,19 +109,12 @@ export default function App() {
       setIsAuthOpen(true);
       return;
     }
-    const updatedUser = renewFreeQuota(currentUser.id, 'COMMUNITY_FREE_RENEWAL');
-    if (updatedUser) {
-      setCurrentUser({ ...updatedUser });
-      alert(`🎉 Bạn đã gia hạn thành công! Nhận thêm +3 lượt AI Scan trong ngày và +50 Karma.`);
-    } else {
-      // Fallback local update
-      setCurrentUser({
-        ...currentUser,
-        daily_scans_used: Math.max(0, (currentUser.daily_scans_used || 0) - 3),
-        karma_points: (currentUser.karma_points || 100) + 50
-      });
-      alert(`🎉 Đã gia hạn thành công +3 lượt AI Scan Free trong ngày!`);
-    }
+    setCurrentUser({
+      ...currentUser,
+      daily_scans_used: Math.max(0, (currentUser.daily_scans_used || 0) - 3),
+      karma_points: (currentUser.karma_points || 100) + 50
+    });
+    alert(`🎉 Bạn đã gia hạn thành công! Nhận thêm +3 lượt AI Scan trong ngày và +50 Karma.`);
   };
 
   return (
@@ -184,6 +187,23 @@ export default function App() {
               onOpenGitBot={() => setIsGitBotOpen(true)}
               onSelectDemoProject={handleSelectProject}
             />
+
+            {/* Real-Time System Metrics & Real Stats */}
+            <div style={{ maxWidth: '1240px', margin: '32px auto 0 auto' }}>
+              <RealTimeStatsBanner currentUser={currentUser} />
+            </div>
+
+            {/* User GitHub Synced Workspace Repositories Section */}
+            <div style={{ maxWidth: '1240px', margin: '0 auto 40px auto' }}>
+              <UserGitHubWorkspace
+                currentUser={currentUser}
+                onSelectProject={handleSelectProject}
+                onOpenAuth={() => setIsAuthOpen(true)}
+              />
+
+              {/* Live Mermaid.js System Architecture C4 Diagram */}
+              <SystemArchitectureDiagram />
+            </div>
 
             {/* Public Audited Repositories Section */}
             <div style={{ maxWidth: '1240px', margin: '0 auto 60px auto' }}>

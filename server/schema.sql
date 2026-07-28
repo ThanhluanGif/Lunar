@@ -69,3 +69,37 @@ CREATE TABLE IF NOT EXISTS quota_logs (
     scans_added INT DEFAULT 0,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 6. Community Audits & Discussions Table
+CREATE TABLE IF NOT EXISTS community_audits (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    author_nickname VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    target_repo VARCHAR(255),
+    vulnerability_type VARCHAR(100),
+    severity VARCHAR(20) DEFAULT 'critical',
+    content TEXT NOT NULL,
+    upvotes INT DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 7. Community Audit Comments Table
+CREATE TABLE IF NOT EXISTS audit_comments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    audit_id UUID REFERENCES community_audits(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    author_nickname VARCHAR(50) NOT NULL,
+    comment TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 8. Karma Transactions Table
+CREATE TABLE IF NOT EXISTS karma_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    points INT NOT NULL,
+    reason VARCHAR(255) NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+

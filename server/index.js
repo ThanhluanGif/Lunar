@@ -3,6 +3,10 @@ const express = require('express');
 const cors = require('cors');
 const authRoutes = require('./routes/authRoutes');
 const scanRoutes = require('./routes/scanRoutes');
+const githubRoutes = require('./routes/githubRoutes');
+const reportRoutes = require('./routes/reportRoutes');
+const communityRoutes = require('./routes/communityRoutes');
+const policyRoutes = require('./routes/policyRoutes');
 const { initPgDatabase } = require('./db/connection');
 
 const app = express();
@@ -19,6 +23,10 @@ app.use(express.json());
 // Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/scans', scanRoutes);
+app.use('/api/v1/github', githubRoutes);
+app.use('/api/v1/reports', reportRoutes);
+app.use('/api/v1/community', communityRoutes);
+app.use('/api/v1/policies', policyRoutes);
 
 // Health check endpoint
 app.get('/api/v1/health', (req, res) => {

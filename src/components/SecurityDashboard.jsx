@@ -1,9 +1,16 @@
-import React from 'react';
-import { ShieldAlert, ShieldCheck, AlertTriangle, Cpu, CheckCircle2, Lock, Terminal, Zap, Activity } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, Cpu, CheckCircle2, Lock, Terminal, Zap, Activity, Sparkles } from 'lucide-react';
+import { AI_PROVIDERS } from '../services/multiLlmEngine';
 
-export default function SecurityDashboard({ scanResult, projectTitle }) {
+export default function SecurityDashboard({ scanResult, projectTitle, selectedProvider = 'gemini-1.5-pro', onSelectProvider }) {
   const stats = scanResult?.stats || { total: 0, maxCvss: 0, criticalCount: 0, highCount: 0, mediumCount: 0 };
   const cvss = stats.maxCvss || 0;
+  const [activeProvider, setActiveProvider] = useState(selectedProvider);
+
+  const handleProviderChange = (id) => {
+    setActiveProvider(id);
+    if (onSelectProvider) onSelectProvider(id);
+  };
 
   const getCvssTheme = (score) => {
     if (score >= 9.0) return { label: 'CRITICAL RISK', color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.15)', border: '#f43f5e' };
@@ -25,6 +32,60 @@ export default function SecurityDashboard({ scanResult, projectTitle }) {
   return (
     <div className="glass-panel" style={{ padding: '32px', marginBottom: '24px', overflow: 'hidden' }}>
       
+      {/* AI Multi-LLM Provider Selector Bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '12px 18px',
+        background: 'rgba(15, 23, 42, 0.6)',
+        borderRadius: 'var(--radius-md)',
+        border: '1px solid var(--border-color)',
+        marginBottom: '24px',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Sparkles size={18} color="var(--accent-purple)" />
+          <span style={{ fontSize: '0.85rem', fontWeight: '800', fontFamily: 'var(--font-heading)' }}>
+            AI Security Orchestrator LLM Engine:
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {AI_PROVIDERS.map(p => (
+            <button
+              key={p.id}
+              onClick={() => handleProviderChange(p.id)}
+              style={{
+                background: activeProvider === p.id ? 'linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%)' : 'rgba(255, 255, 255, 0.05)',
+                color: activeProvider === p.id ? '#ffffff' : 'var(--text-secondary)',
+                border: activeProvider === p.id ? 'none' : '1px solid var(--border-color)',
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '0.78rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Cpu size={14} />
+              <span>{p.name}</span>
+              <span style={{
+                fontSize: '0.65rem',
+                opacity: 0.8,
+                background: 'rgba(0,0,0,0.3)',
+                padding: '2px 6px',
+                borderRadius: '10px'
+              }}>{p.speed}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Top Graphic Dashboard Banner */}
       <div style={{
         display: 'grid',
@@ -170,3 +231,4 @@ export default function SecurityDashboard({ scanResult, projectTitle }) {
     </div>
   );
 }
+

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Moon, ShieldCheck, Github, Sparkles, LogOut, Terminal, Cpu } from 'lucide-react';
+import { Moon, ShieldCheck, Github, Sparkles, LogOut, Terminal, Cpu, Plus, Layers } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, currentUser, onOpenAuth, onLogout, onOpenPricing, onOpenGitBot }) {
   return (
@@ -7,10 +7,9 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, currentU
       position: 'sticky',
       top: 0,
       zIndex: 50,
-      background: 'rgba(9, 13, 22, 0.92)',
-      backdropFilter: 'blur(16px)',
+      background: '#0f172a',
       borderBottom: '1px solid var(--border-color)',
-      padding: '12px 32px'
+      padding: '12px 24px'
     }}>
       <div style={{
         maxWidth: '1280px',
@@ -24,150 +23,98 @@ export default function Navbar({ activeTab, setActiveTab, onOpenSubmit, currentU
         {/* Left: Lunar Brand Logo */}
         <div 
           onClick={() => setActiveTab('explore')}
-          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
         >
           <div style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.4) 0%, rgba(56, 189, 248, 0.3) 100%)',
-            border: '1px solid rgba(167, 139, 250, 0.4)',
+            width: '38px',
+            height: '38px',
+            borderRadius: '8px',
+            background: '#2563eb',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 0 20px rgba(124, 58, 237, 0.4)'
+            boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)'
           }}>
-            <Moon size={20} color="#c084fc" />
+            <Moon size={20} color="#ffffff" />
           </div>
 
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{
                 fontFamily: 'var(--font-heading)',
-                fontSize: '1.4rem',
+                fontSize: '1.35rem',
                 fontWeight: '800',
                 color: '#ffffff',
                 letterSpacing: '-0.02em'
               }}>
-                Lunar<span style={{ color: 'var(--accent-cyan)' }}>.dev</span>
+                Lunar<span style={{ color: '#60a5fa' }}>.dev</span>
               </span>
-              <span className="badge badge-purple" style={{ fontSize: '0.65rem', padding: '2px 8px' }}>
-                AI SAST Platform
+              <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>
+                HỆ THỐNG GIÁM SÁT MÃ NGUỒN QUỐC GIA
               </span>
             </div>
-            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: 0 }}>
-              AI Code Review & Security Engine
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>
+              AI Code Review, SAST Security Audit & 1-Click Auto-Fix Workbench
             </p>
           </div>
         </div>
 
-        {/* Center: Navigation Links */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '28px' }}>
+        {/* Center: Clean Navigation Tabs */}
+        <nav style={{ display: 'flex', gap: '8px', background: '#1e293b', padding: '4px', borderRadius: 'var(--radius-md)' }}>
           <button
             onClick={() => setActiveTab('explore')}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: activeTab === 'explore' ? '#ffffff' : 'var(--text-secondary)',
-              fontWeight: activeTab === 'explore' ? '700' : '500',
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
+            className={`btn btn-sm ${activeTab === 'explore' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ fontSize: '0.8rem' }}
           >
-            <Terminal size={15} color={activeTab === 'explore' ? 'var(--accent-cyan)' : 'var(--text-muted)'} />
-            Overview & Scans
-          </button>
-
-          <button
-            onClick={() => setActiveTab('detail')}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: activeTab === 'detail' ? '#ffffff' : 'var(--text-secondary)',
-              fontWeight: activeTab === 'detail' ? '700' : '500',
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <ShieldCheck size={15} color={activeTab === 'detail' ? 'var(--accent-cyan)' : 'var(--text-muted)'} />
-            Findings & AI Triage
+            <Layers size={14} /> Tổng Quan Dự Án
           </button>
 
           <button
             onClick={() => setActiveTab('community')}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: activeTab === 'community' ? '#ffffff' : 'var(--text-secondary)',
-              fontWeight: activeTab === 'community' ? '700' : '500',
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
+            className={`btn btn-sm ${activeTab === 'community' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ fontSize: '0.8rem' }}
           >
-            <Cpu size={15} color={activeTab === 'community' ? 'var(--accent-purple)' : 'var(--text-muted)'} />
-            Cyber Community
-          </button>
-
-          <button
-            onClick={onOpenPricing}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              fontSize: '0.9rem',
-              cursor: 'pointer'
-            }}
-          >
-            Pricing & Pro
+            <ShieldCheck size={14} /> Cộng Đồng Security
           </button>
         </nav>
 
-        {/* Right: Quick Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        {/* Right Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             onClick={onOpenSubmit}
             className="btn btn-emerald btn-sm"
+            style={{ gap: '6px' }}
           >
-            <Sparkles size={15} />
-            Scan & Review Code
+            <Plus size={14} /> Tải Repo / Quét Code Local
           </button>
 
           {currentUser ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255, 255, 255, 0.06)', padding: '4px 12px 4px 6px', borderRadius: '999px', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1e293b', padding: '4px 10px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
                 <img
-                  src={currentUser.avatar_url || currentUser.avatar}
+                  src={currentUser.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
                   alt={currentUser.name}
-                  style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'cover' }}
+                  style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
                 />
-                <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#ffffff' }}>
-                  {currentUser.name.split(' ')[0]}
-                </span>
+                <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#fff' }}>{currentUser.name}</span>
+                <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>PRO</span>
               </div>
+
               <button
                 onClick={onLogout}
-                title="Log out"
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
+                className="btn btn-secondary btn-sm"
+                title="Đăng xuất"
               >
-                <LogOut size={16} />
+                <LogOut size={14} />
               </button>
             </div>
           ) : (
             <button
               onClick={onOpenAuth}
               className="btn btn-primary btn-sm"
+              style={{ gap: '6px' }}
             >
-              <Github size={15} />
-              Connect GitHub
+              <Github size={14} /> Đăng Nhập GitHub / Supabase
             </button>
           )}
         </div>

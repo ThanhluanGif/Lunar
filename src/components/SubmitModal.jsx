@@ -2,16 +2,30 @@ import React, { useState } from 'react';
 import { X, Github, Sparkles, Loader2, Code, ShieldCheck, AlertCircle } from 'lucide-react';
 import { fetchGitHubRepoDetails } from '../services/githubService';
 import { analyzeProjectWithAI } from '../services/aiReviewEngine';
+import { supabaseDb } from '../services/supabaseClient';
 
 export default function SubmitModal({ isOpen, onClose, onAddProject }) {
   const [githubUrl, setGithubUrl] = useState('');
   const [customCode, setCustomCode] = useState('');
-  const [activeMode, setActiveMode] = useState('github'); // 'github' | 'snippet'
+  const [activeMode, setActiveMode] = useState('github'); // 'github' | 'snippet' | 'local'
+  const [localFileName, setLocalFileName] = useState('');
   const [loading, setLoading] = useState(false);
   const [stepText, setStepText] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLocalFileName(file.name);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setCustomCode(event.target?.result || '');
+      };
+      reader.readAsText(file);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,6 +44,35 @@ export default function SubmitModal({ isOpen, onClose, onAddProject }) {
         await new Promise(r => setTimeout(r, 600));
 
         rawProjectData = await fetchGitHubRepoDetails(githubUrl);
+      } else if (activeMode === 'local') {
+        if (!customCode.trim()) {
+          throw new Error('Vui lòng chọn file mã nguồn local từ máy tính.');
+        }
+
+        setStepText('Đang đọc và khởi tạo dữ liệu tệp tin Local...');
+        rawProjectData = {
+          title: localFileName ? `Local: ${localFileName}` : 'Local Project File',
+          githubUrl: '#local',
+          description: `Tệp mã nguồn local (${localFileName || 'File'}) được quét bởi Lunar SAST Engine`,
+          stars: 1,
+          forks: 0,
+          language: localFileName.split('.').pop()?.toUpperCase() || 'JavaScript',
+          author: {
+            name: 'Bạn (Local Developer)',
+            username: 'local-dev',
+            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+            badge: 'Local Workspace',
+            karma: 150
+          },
+          files: [
+            {
+              path: localFileName || 'src/app.js',
+              language: localFileName.split('.').pop() || 'javascript',
+              content: customCode,
+              annotations: []
+            }
+          ]
+        };
       } else {
         if (!customCode.trim()) {
           throw new Error('Vui lòng dán đoạn mã nguồn của bạn.');
@@ -61,13 +104,20 @@ export default function SubmitModal({ isOpen, onClose, onAddProject }) {
         };
       }
 
-      setStepText('Đang chạy AI Engine: Phân tích 5 chỉ số (Naming, Architecture, Performance, Security, Readability)...');
+      setStepText('Đang chạy AI Engine: Phân tích SAST (OWASP, CVSS v3.1, Bug Check & Auto Fix)...');
       await new Promise(r => setTimeout(r, 1000));
 
       const analyzedProject = analyzeProjectWithAI(rawProjectData);
       analyzedProject.id = 'proj-' + Date.now();
       analyzedProject.submittedAt = 'Vừa xong';
       analyzedProject.communityReviews = [];
+
+      // Save record in Supabase / Local Storage
+      await supabaseDb.saveCodeAudit({
+        title: analyzedProject.title,
+        cvss: analyzedProject.cvssScore || 7.5,
+        scanned_at: new Date().toISOString()
+      });
 
       onAddProject(analyzedProject);
       setLoading(false);
@@ -141,27 +191,38 @@ export default function SubmitModal({ isOpen, onClose, onAddProject }) {
         {/* Mode Selector Tabs */}
         <div style={{
           display: 'flex',
-          gap: '8px',
+          gap: '6px',
           margin: '20px 0',
           background: 'rgba(0, 0, 0, 0.4)',
           padding: '4px',
           borderRadius: 'var(--radius-md)'
         }}>
           <button
+            type="button"
             onClick={() => setActiveMode('github')}
             className={`btn btn-sm ${activeMode === 'github' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ flex: 1 }}
+            style={{ flex: 1, fontSize: '0.78rem' }}
             disabled={loading}
           >
-            <Github size={16} /> Link GitHub Repo
+            <Github size={14} /> Git Repo
           </button>
           <button
-            onClick={() => setActiveMode('snippet')}
-            className={`btn btn-sm ${activeMode === 'snippet' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ flex: 1 }}
+            type="button"
+            onClick={() => setActiveMode('local')}
+            className={`btn btn-sm ${activeMode === 'local' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ flex: 1, fontSize: '0.78rem' }}
             disabled={loading}
           >
-            <Code size={16} /> Dán Mã Code Directly
+            <Sparkles size={14} /> Local File
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMode('snippet')}
+            className={`btn btn-sm ${activeMode === 'snippet' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ flex: 1, fontSize: '0.78rem' }}
+            disabled={loading}
+          >
+            <Code size={14} /> Paste Snippet
           </button>
         </div>
 
@@ -184,7 +245,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject }) {
         )}
 
         <form onSubmit={handleSubmit}>
-          {activeMode === 'github' ? (
+          {activeMode === 'github' && (
             <div className="input-group">
               <label className="input-label">GitHub Repository URL (Public)</label>
               <input
@@ -200,7 +261,52 @@ export default function SubmitModal({ isOpen, onClose, onAddProject }) {
                 Ví dụ: https://github.com/facebook/react hoặc username/repo
               </span>
             </div>
-          ) : (
+          )}
+
+          {activeMode === 'local' && (
+            <div className="input-group">
+              <label className="input-label">Chọn File Mã Nguồn Local (.js, .jsx, .ts, .py, .json...)</label>
+              <div style={{
+                border: '2px dashed rgba(167, 139, 250, 0.4)',
+                borderRadius: 'var(--radius-md)',
+                padding: '24px',
+                textAlign: 'center',
+                background: 'rgba(15, 23, 42, 0.5)',
+                cursor: 'pointer'
+              }}>
+                <input
+                  type="file"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                  id="local-file-input"
+                  accept=".js,.jsx,.ts,.tsx,.py,.sql,.json,.css,.html"
+                />
+                <label htmlFor="local-file-input" style={{ cursor: 'pointer', display: 'block' }}>
+                  <Code size={32} color="var(--accent-purple-light)" style={{ marginBottom: '8px' }} />
+                  <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#fff' }}>
+                    {localFileName ? `📄 ${localFileName}` : 'Nhấp vào đây để chọn file local từ máy tính'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Hỗ trợ .js, .jsx, .ts, .tsx, .py, .sql, .json, .css
+                  </div>
+                </label>
+              </div>
+              {customCode && (
+                <div style={{ marginTop: '12px' }}>
+                  <label className="input-label">Xem Trước Mã File Local:</label>
+                  <textarea
+                    rows="5"
+                    className="input-control"
+                    value={customCode}
+                    onChange={(e) => setCustomCode(e.target.value)}
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem' }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeMode === 'snippet' && (
             <div className="input-group">
               <label className="input-label">Mã nguồn của bạn (JavaScript, Python, Go, TypeScript...)</label>
               <textarea
