@@ -7,13 +7,30 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.
 
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
-// Initialize Supabase Client
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+const unavailableSupabase = {
   auth: {
-    persistSession: true,
-    autoRefreshToken: true,
+    getSession: async () => ({ data: { session: null }, error: null }),
+    onAuthStateChange: () => ({
+      data: { subscription: { unsubscribe() {} } }
+    }),
+    signOut: async () => ({ error: null }),
+    signInWithOAuth: async () => ({
+      data: null,
+      error: new Error('Supabase OAuth is not configured for this environment.')
+    })
   }
-});
+};
+
+// Supabase is optional in the Docker stack. Keep the frontend usable with its
+// local-storage fallback when public Supabase credentials are not supplied.
+export const supabase = isSupabaseConfigured
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      }
+    })
+  : unavailableSupabase;
 
 // Realtime Listener Helper for Code Audits
 export function subscribeToRealtimeAudits(onAuditChange) {

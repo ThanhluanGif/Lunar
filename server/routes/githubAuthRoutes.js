@@ -118,6 +118,15 @@ async function syncRepositories(client, userId, repositories) {
   }
 }
 
+router.get('/config', (req, res) => {
+  const config = getOAuthConfig();
+  return res.json({
+    success: true,
+    configured: Boolean(config),
+    callbackUrl: config ? config.callbackUrl : null
+  });
+});
+
 router.get('/start', (req, res) => {
   const config = getOAuthConfig();
   if (!config) {

@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "qa": "npm run build && node scripts/qa-smoke.cjs"
+    "qa": "npm run build && node scripts/qa-smoke.cjs",
+    "qa:docker": "node scripts/qa-docker.cjs",
+    "qa:ui:mac": "node scripts/ui-smoke-mac.mjs"
   },
   "dependencies": {
     "@babel/parser": "^7.29.7",

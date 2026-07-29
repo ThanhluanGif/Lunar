@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import { X, Github, Mail, Lock, User, ShieldCheck, Sparkles, AtSign, AlertCircle, Loader2, CheckCircle2, UserCheck, Chrome } from 'lucide-react';
-import { supabase } from '../services/supabaseClient';
-import { sendWelcomeGmail } from '../services/gmailMailerService';
+import { X, Github, Mail, ShieldCheck, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
@@ -9,8 +7,6 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
   
   // Form states
-  const [gmailInput, setGmailInput] = useState('');
-  const [githubInput, setGithubInput] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -19,89 +15,21 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
 
   if (!isOpen) return null;
 
-  // Option 0: Real Google OAuth Redirect via Supabase
-  const handleRealGoogleOAuthRedirect = async () => {
-    setErrorMsg('');
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: window.location.origin }
-      });
-      if (error) {
-        setErrorMsg(error.message);
-        setLoading(false);
-      }
-    } catch (err) {
-      setErrorMsg(err.message || 'Lỗi mở trang Google OAuth.');
-      setLoading(false);
-    }
-  };
-
-  // Option 0b: Fast Gmail Single Sign-On without redirect
-  const handleGmailAuth = async (e) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setLoading(true);
-
-    const targetEmail = gmailInput.trim() || 'dev.lunar@gmail.com';
-    const userName = targetEmail.split('@')[0] || 'Developer';
-
-    setTimeout(async () => {
-      const gmailUser = {
-        id: `usr-gmail-${Date.now()}`,
-        nickname: `@${userName}`,
-        name: fullName || userName,
-        email: targetEmail,
-        tier: 'FREE',
-        karma_points: 600,
-        avatar_url: `https://lh3.googleusercontent.com/a/default-user=s96-c`,
-        daily_scans_used: 0
-      };
-
-      await sendWelcomeGmail(targetEmail, gmailUser.name);
-      onLoginSuccess(gmailUser);
-      setLoading(false);
-      onClose();
-    }, 600);
-  };
-
-  // Option 1: Handle Direct GitHub Sync
+  // Option 1: GitHub OAuth
   const handleConnectGitHub = async (e) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
-    window.location.assign('/api/v1/auth/github/start');
-    return;
-
-    if (!githubInput.trim()) {
-      setErrorMsg('Vui lòng nhập GitHub Username của bạn.');
-      return;
-    }
-
-    setLoading(true);
-    setErrorMsg('');
-
-    const handle = githubInput.trim().replace(/^@/, '');
-    
-    setTimeout(() => {
-      const gitHubUser = {
-        id: `usr-github-${handle}-${Date.now()}`,
-        nickname: `@${handle}`,
-        name: handle,
-        email: `${handle}@gmail.com`,
-        tier: 'FREE',
-        karma_points: 850,
-        avatar_url: `https://github.com/${handle}.png`,
-        daily_scans_used: 0
-      };
-
-      sendWelcomeGmail(gitHubUser.email, gitHubUser.name);
-
-      onLoginSuccess(gitHubUser);
+    try {
+      const config = await lunarApi.getGitHubConfig();
+      if (!config.configured) {
+        throw new Error('GitHub OAuth chưa được cấu hình. Hãy đặt các biến LUNAR_GITHUB_* trong file .env.');
+      }
+      window.location.assign('/api/v1/auth/github/start');
+    } catch (error) {
       setLoading(false);
-      onClose();
-    }, 400);
+      setErrorMsg(error.message || 'Không thể khởi tạo kết nối GitHub.');
+    }
   };
 
   // Option 2: Email & Password Auth
@@ -177,16 +105,6 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
     }
   };
 
-  // Option 3: Fast 1-Click Demo Sessions
-  const handleSelectDemoProfile = (profile) => {
-    setLoading(true);
-    setTimeout(() => {
-      onLoginSuccess(profile);
-      setLoading(false);
-      onClose();
-    }, 300);
-  };
-
   return (
     <div style={{
       position: 'fixed',
@@ -199,7 +117,13 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
       justifyContent: 'center',
       padding: '20px'
     }}>
-      <div className="glass-panel" style={{
+      <div
+        id="auth-modal"
+        className="glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-modal-title"
+        style={{
         maxWidth: '480px',
         width: '100%',
         padding: '30px',
@@ -210,6 +134,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
         {/* Close Button */}
         <button
           onClick={onClose}
+          aria-label="Đóng hộp đăng nhập"
           style={{
             position: 'absolute',
             top: '20px',
@@ -236,13 +161,13 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
             margin: '0 auto 10px auto',
             boxShadow: '0 0 20px rgba(234, 67, 53, 0.4)'
           }}>
-            <Mail size={24} color="#fff" />
+            <ShieldCheck size={24} color="#fff" />
           </div>
-          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.35rem', fontWeight: '800', color: '#fff' }}>
-            Kết Nối Gmail & Lunar.dev
+          <h2 id="auth-modal-title" style={{ fontFamily: 'var(--font-heading)', fontSize: '1.35rem', fontWeight: '800', color: '#fff' }}>
+            Đăng Nhập Lunar.dev
           </h2>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Nhận thông báo an ninh, báo cáo Audit & Hóa đơn gói Pro về Gmail
+            Dùng email và mật khẩu hoặc kết nối an toàn qua GitHub OAuth
           </p>
         </div>
 
@@ -261,23 +186,15 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
             className={`btn btn-sm ${activeTab === 'email' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ flex: 1, fontSize: '0.78rem' }}
           >
-            <Mail size={14} /> Gmail Single Sign-On
+            <Mail size={14} /> Email
           </button>
           <button
             type="button"
             onClick={() => { setActiveTab('github'); setErrorMsg(''); }}
             className={`btn btn-sm ${activeTab === 'github' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ display: 'none' }}
-          >
-            <Github size={14} /> GitHub
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveTab('demo'); setErrorMsg(''); }}
-            className={`btn btn-sm ${activeTab === 'demo' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ flex: 1, fontSize: '0.78rem' }}
           >
-            <UserCheck size={14} /> Demo
+            <Github size={14} /> GitHub
           </button>
         </div>
 
@@ -299,82 +216,6 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
           </div>
         )}
 
-        {/* TAB 0: Gmail SSO Auth */}
-        {activeTab === 'gmail' && (
-          <div>
-            {/* Nút Đăng Nhập Google OAuth Thật via Supabase */}
-            <button
-              type="button"
-              onClick={handleRealGoogleOAuthRedirect}
-              disabled={loading}
-              className="btn btn-primary"
-              style={{
-                width: '100%',
-                padding: '14px',
-                fontSize: '0.95rem',
-                fontWeight: '700',
-                background: 'linear-gradient(135deg, #ea4335 0%, #4285f4 100%)',
-                boxShadow: '0 4px 20px rgba(234, 67, 53, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '10px',
-                marginBottom: '20px'
-              }}
-            >
-              {loading ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Chrome size={20} />}
-              Đăng Nhập Google OAuth (Thật 100%)
-            </button>
-
-            <div style={{ textTransform: 'uppercase', fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '16px', letterSpacing: '0.05em' }}>
-              — Hoặc Nhập Nhanh Gmail Để Đăng Nhập —
-            </div>
-
-            <form onSubmit={handleGmailAuth}>
-              <div className="input-group">
-                <label className="input-label">Tên của bạn</label>
-                <input
-                  type="text"
-                  placeholder="Nguyen Van A"
-                  className="input-control"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                />
-              </div>
-
-              <div className="input-group">
-                <label className="input-label">Địa chỉ Gmail của bạn</label>
-                <div style={{ position: 'relative' }}>
-                  <Mail size={16} color="#ea4335" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                  <input
-                    type="email"
-                    placeholder="developer@gmail.com"
-                    className="input-control"
-                    style={{ paddingLeft: '38px' }}
-                    value={gmailInput}
-                    onChange={(e) => setGmailInput(e.target.value)}
-                    disabled={loading}
-                    required
-                  />
-                </div>
-                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Lunar.dev sẽ gửi thư chào mừng & báo cáo an ninh định kỳ tới hộp thư Gmail này.
-                </span>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn btn-secondary"
-                style={{ width: '100%', padding: '11px', gap: '8px', marginTop: '8px' }}
-              >
-                {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Mail size={16} />}
-                Đăng Nhập Nhanh Bằng Gmail
-              </button>
-            </form>
-          </div>
-        )}
-
         {/* TAB 1: Direct GitHub Sync */}
         {activeTab === 'github' && (
           <form onSubmit={handleConnectGitHub}>
@@ -387,8 +228,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
                   placeholder="GitHub sẽ xác minh tài khoản của bạn"
                   className="input-control"
                   style={{ paddingLeft: '38px' }}
-                  value={githubInput}
-                  onChange={(e) => setGithubInput(e.target.value)}
+                  value="GitHub OAuth"
                   disabled={loading}
                   readOnly
                 />
@@ -469,57 +309,6 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
               )}
             </div>
           </form>
-        )}
-
-        {/* TAB 3: Fast 1-Click Demo Profiles */}
-        {activeTab === 'demo' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-              Chọn 1 hồ sơ thử nghiệm nhanh để trải nghiệm đầy đủ tính năng Pro:
-            </div>
-
-            <button
-              onClick={() => handleSelectDemoProfile({
-                id: 'usr-demo-sarah',
-                nickname: '@sarah_stripe',
-                name: 'Sarah Chen (Senior Eng @ Stripe)',
-                email: 'sarah.chen@stripe.com',
-                tier: 'PRO',
-                karma_points: 2400,
-                avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-                daily_scans_used: 0
-              })}
-              className="btn btn-secondary"
-              style={{ justifyContent: 'flex-start', padding: '10px 14px', gap: '12px' }}
-            >
-              <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80" style={{ width: '28px', height: '28px', borderRadius: '50%' }} alt="Sarah" />
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: '0.86rem', fontWeight: '600', color: '#fff' }}>Sarah Chen (Stripe Eng)</div>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>@sarah_stripe • Pro Tier</div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => handleSelectDemoProfile({
-                id: 'usr-demo-alex',
-                nickname: '@alex_whitehat',
-                name: 'Alex Whitehat (Security Auditor)',
-                email: 'alex@lunar.dev',
-                tier: 'PRO',
-                karma_points: 3420,
-                avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-                daily_scans_used: 0
-              })}
-              className="btn btn-secondary"
-              style={{ justifyContent: 'flex-start', padding: '10px 14px', gap: '12px' }}
-            >
-              <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80" style={{ width: '28px', height: '28px', borderRadius: '50%' }} alt="Alex" />
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: '0.86rem', fontWeight: '600', color: '#fff' }}>Alex Whitehat (Auditor)</div>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>@alex_whitehat • Pro Tier</div>
-              </div>
-            </button>
-          </div>
         )}
 
       </div>

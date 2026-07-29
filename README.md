@@ -207,14 +207,56 @@ npm run preview
 ## 🐳 Chạy bằng Docker
 
 ```bash
-# Build và chạy toàn bộ hệ thống
-docker-compose up --build
+# Build và chạy toàn bộ hệ thống trên macOS
+docker compose up -d --build
 
-# Chạy ở chế độ nền
-docker-compose up -d --build
+# Xem trạng thái và log
+docker compose ps
+docker compose logs -f app
+
+# Dừng hệ thống (dữ liệu PostgreSQL vẫn được giữ trong volume)
+docker compose down
 ```
 
-Truy cập tại: **`http://localhost:5000`**
+Truy cập tại: **`http://localhost:5050`**
+
+Compose dùng cổng `5050` vì macOS Control Center/AirPlay thường chiếm cổng
+`5000`. PostgreSQL được mở ở `localhost:5433` và ứng dụng trong container kết
+nối trực tiếp tới service `db:5432`.
+
+Các giá trị local mặc định đủ để chạy thử. Trước khi triển khai production, hãy
+đổi toàn bộ secret `LUNAR_*`, đặt `LUNAR_COOKIE_SECURE=true`, cập nhật
+`LUNAR_CORS_ORIGINS`, và dùng callback GitHub HTTPS thực tế.
+
+### Kết nối GitHub OAuth trên Mac
+
+Tạo GitHub OAuth App với:
+
+- Homepage URL: `http://localhost:5050`
+- Authorization callback URL:
+  `http://localhost:5050/api/v1/auth/github/callback`
+
+Sau đó điền vào `.env`:
+
+```dotenv
+LUNAR_GITHUB_CLIENT_ID=...
+LUNAR_GITHUB_CLIENT_SECRET=...
+LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY=chuỗi-ngẫu-nhiên-tối-thiểu-32-ký-tự
+LUNAR_GITHUB_OAUTH_CALLBACK_URL=http://localhost:5050/api/v1/auth/github/callback
+```
+
+Tạo encryption key bằng `openssl rand -hex 32`, rồi chạy lại
+`docker compose up -d --build`.
+
+### Kiểm thử stack Docker
+
+```bash
+# API, PostgreSQL, auth, RBAC, scan, dashboard, payment
+npm run qa:docker
+
+# Giao diện thật bằng Chrome headless trên macOS
+npm run qa:ui:mac
+```
 
 ---
 

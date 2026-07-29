@@ -10,13 +10,8 @@ import RepoTreeView from './RepoTreeView';
 import FolderDropZone from './FolderDropZone';
 
 export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOpenAuth }) {
-  // Dynamic Username: Uses logged in user's handle if available, or user input
-  const [inputUsername, setInputUsername] = useState(
-    currentUser?.nickname?.replace('@', '') || ''
-  );
-  const [activeUsername, setActiveUsername] = useState(
-    currentUser?.nickname?.replace('@', '') || ''
-  );
+  const [inputUsername, setInputUsername] = useState('');
+  const [activeUsername, setActiveUsername] = useState('');
   const [userRepos, setUserRepos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [scanningRepoId, setScanningRepoId] = useState(null);
@@ -28,13 +23,25 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
   const [scanFiles, setScanFiles] = useState([]);
 
   useEffect(() => {
-    if (currentUser?.nickname) {
-      const cleanName = currentUser.nickname.replace('@', '');
-      setInputUsername(cleanName);
-      setActiveUsername(cleanName);
-      handleSyncRepos(cleanName);
-    }
-  }, [currentUser]);
+    let cancelled = false;
+    if (!currentUser) return () => { cancelled = true; };
+
+    lunarApi.getGitHubStatus()
+      .then((status) => {
+        const login = status.connected ? status.connection?.login : '';
+        if (cancelled || !login) return;
+        setInputUsername(login);
+        setActiveUsername(login);
+        handleSyncRepos(login);
+      })
+      .catch((error) => {
+        if (!cancelled && error.status !== 401) {
+          console.warn('Unable to restore GitHub connection status:', error.message);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
 
   const handleSyncRepos = async (targetUser = null) => {
     const userToFetch = (targetUser || inputUsername || '').trim();
@@ -50,6 +57,19 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
       console.warn('Error fetching repos:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConnectGitHub = async () => {
+    setScanError('');
+    try {
+      const config = await lunarApi.getGitHubConfig();
+      if (!config.configured) {
+        throw new Error('GitHub OAuth chưa được cấu hình. Hãy thêm LUNAR_GITHUB_CLIENT_ID, LUNAR_GITHUB_CLIENT_SECRET và LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY.');
+      }
+      window.location.assign('/api/v1/auth/github/start');
+    } catch (error) {
+      setScanError(error.message || 'Không thể khởi tạo kết nối GitHub.');
     }
   };
 
@@ -202,15 +222,13 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
             </button>
           </form>
 
-          {!currentUser && (
-            <button
-              onClick={onOpenAuth}
-              className="btn btn-emerald btn-sm"
-              style={{ gap: '6px' }}
-            >
-              <UserCheck size={14} /> Đăng Nhập GitHub
-            </button>
-          )}
+          <button
+            onClick={handleConnectGitHub}
+            className="btn btn-emerald btn-sm"
+            style={{ gap: '6px' }}
+          >
+            <UserCheck size={14} /> {currentUser ? 'Kết Nối GitHub' : 'Đăng Nhập GitHub'}
+          </button>
         </div>
       </div>
 

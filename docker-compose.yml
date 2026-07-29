@@ -1,22 +1,29 @@
+# Local-first Docker Compose configuration.
+# Override every LUNAR_* development default before using this file in production.
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
     ports:
-      - "5000:5000"
+      # macOS Control Center/AirPlay commonly owns port 5000.
+      - "${LUNAR_APP_PORT:-5050}:5000"
     environment:
       PORT: 5000
       NODE_ENV: production
-      JWT_SECRET: ${LUNAR_JWT_SECRET:?Set LUNAR_JWT_SECRET before deployment}
-      DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD before deployment}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
-      CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5000}
-      PAYMENT_WEBHOOK_SECRET: ${LUNAR_PAYMENT_WEBHOOK_SECRET:?Set LUNAR_PAYMENT_WEBHOOK_SECRET before deployment}
+      JWT_SECRET: ${LUNAR_JWT_SECRET:-local-dev-jwt-secret-change-before-production-2026}
+      DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:-lunar_local_password}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
+      CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5050}
+      PAYMENT_WEBHOOK_SECRET: ${LUNAR_PAYMENT_WEBHOOK_SECRET:-local-dev-payment-webhook-secret}
       ADMIN_BOOTSTRAP_TOKEN: ${LUNAR_ADMIN_BOOTSTRAP_TOKEN:-}
-      COOKIE_SECURE: ${LUNAR_COOKIE_SECURE:-true}
+      # localhost uses HTTP; set true behind HTTPS in production.
+      COOKIE_SECURE: ${LUNAR_COOKIE_SECURE:-false}
       GITHUB_CLIENT_ID: ${LUNAR_GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${LUNAR_GITHUB_CLIENT_SECRET:-}
-      GITHUB_OAUTH_CALLBACK_URL: ${LUNAR_GITHUB_OAUTH_CALLBACK_URL:-http://localhost:5000/api/v1/auth/github/callback}
+      GITHUB_OAUTH_CALLBACK_URL: ${LUNAR_GITHUB_OAUTH_CALLBACK_URL:-http://localhost:5050/api/v1/auth/github/callback}
       GITHUB_TOKEN_ENCRYPTION_KEY: ${LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY:-}
       GITHUB_OAUTH_SCOPES: ${LUNAR_GITHUB_OAUTH_SCOPES:-read:user user:email}
       GEMINI_API_KEY: ${LUNAR_GEMINI_API_KEY:-}
@@ -32,16 +39,23 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:5000/api/v1/ready >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
   db:
     image: postgres:16-alpine
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${LUNAR_POSTGRES_USER:-lunar_admin}
-      POSTGRES_PASSWORD: ${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD before deployment}
+      POSTGRES_PASSWORD: ${LUNAR_POSTGRES_PASSWORD:-lunar_local_password}
       POSTGRES_DB: ${LUNAR_POSTGRES_DB:-lunar_db}
     ports:
-      - "5433:5432"
+      - "${LUNAR_POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./server/schema.sql:/docker-entrypoint-initdb.d/schema.sql

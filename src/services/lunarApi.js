@@ -31,6 +31,7 @@ export const lunarApi = {
     body: JSON.stringify({ name, nickname, email, password })
   }),
   logout: () => request('/auth/logout', { method: 'POST' }),
+  getGitHubConfig: () => request('/auth/github/config'),
   getGitHubStatus: () => request('/auth/github/status'),
   syncGitHubRepositories: () => request('/auth/github/sync', { method: 'POST' }),
   getDashboardAccess: () => request('/dashboard/access'),
