@@ -51,6 +51,10 @@ export const lunarApi = {
     method: 'POST',
     body: JSON.stringify(payload)
   }),
+  simulateProjectHackerAttack: (payload) => request('/ai/project-attack-simulation', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
   deepScanRepository: (payload) => request('/deep-scans/repository', {
     method: 'POST',
     body: JSON.stringify(payload)

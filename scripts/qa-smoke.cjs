@@ -121,14 +121,54 @@ async function run() {
     const aiProviders = await request('/api/v1/ai/providers', {
       headers: { cookie: regular.cookie }
     });
-    if (aiProviders.body.providers.some((provider) => provider.configured)) {
+    const externalAiProviders = aiProviders.body.providers.filter((provider) => provider.id !== 'lunar-sast-native');
+    if (externalAiProviders.some((provider) => provider.configured)) {
       throw new Error('QA expected external AI providers to be disabled.');
+    }
+    if (!aiProviders.body.providers.some((provider) => provider.id === 'lunar-sast-native' && provider.configured)) {
+      throw new Error('Native project simulation provider is unavailable.');
     }
     await request('/api/v1/ai/review', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: regular.cookie },
       body: JSON.stringify({ code: 'const value = input;', filename: 'fixture.js', provider: 'gemini' })
     }, 503);
+
+    const projectSimulation = await request('/api/v1/ai/project-attack-simulation', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: regular.cookie },
+      body: JSON.stringify({
+        provider: 'lunar-sast-native',
+        repositoryName: 'qa-cross-file-project',
+        projectFiles: [
+          {
+            path: 'server/routes/adminRoutes.js',
+            language: 'javascript',
+            content: "router.get('/admin/users', adminController.listUsers);"
+          },
+          {
+            path: 'server/controllers/adminController.js',
+            language: 'javascript',
+            content: "const sql = 'SELECT * FROM users WHERE id = ' + req.query.id;\nreturn db.query(sql);"
+          },
+          {
+            path: 'server/db/connection.js',
+            language: 'javascript',
+            content: 'module.exports = { query: (sql) => pool.query(sql) };'
+          }
+        ]
+      })
+    });
+    const simulatedFinding = projectSimulation.body.simulation?.findings?.[0];
+    if (
+      projectSimulation.body.provider !== 'lunar-sast-native'
+      || !simulatedFinding?.hackerAttackVector?.exploitPayload
+      || !Array.isArray(simulatedFinding?.hackerAttackVector?.attackChain)
+      || !simulatedFinding?.remediation?.patchCode
+      || !Array.isArray(simulatedFinding?.remediation?.stepByStepGuide)
+    ) {
+      throw new Error('Project attack simulation did not satisfy the multi-file response contract.');
+    }
 
     const deepCapabilities = await request('/api/v1/deep-scans/capabilities', {
       headers: { cookie: regular.cookie }

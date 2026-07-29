@@ -262,6 +262,45 @@ try {
   );
   results.workspaceGitHubWarning = true;
 
+  await clickButton('Quét Code');
+  await waitFor(
+    `document.body.innerText.includes('Upload Repo & Chấm Điểm AI')`,
+    'project submission modal'
+  );
+  await clickButton('Paste Snippet');
+  await fill('textarea[placeholder*="Dán mã nguồn"]', [
+    'const password = "hardcoded-browser-secret";',
+    "const sql = 'SELECT * FROM users WHERE id = ' + req.query.id;",
+    'db.query(sql);'
+  ].join('\n'));
+  await clickButton('Bắt Đầu Phân Tích & Chấm Điểm AI');
+  await waitFor(
+    `Boolean(document.querySelector('[data-testid="code-repair-workbench"]'))
+      && Boolean(document.querySelector('[data-testid="payload-sandbox"]'))
+      && document.body.innerText.includes('Defense Guide')`,
+    'AI project attack simulation workbench',
+    20000
+  );
+  results.projectSimulation = await evaluate(`(() => ({
+    workbenchRendered: Boolean(document.querySelector('[data-testid="code-repair-workbench"]')),
+    payloadSandboxRendered: Boolean(document.querySelector('[data-testid="payload-sandbox"]')?.innerText.trim()),
+    threatBadgeRendered: document.body.innerText.includes('THREAT CRITICAL'),
+    defenseGuideRendered: document.body.innerText.includes('Defense Guide'),
+    applyPatchEnabled: !document.querySelector('[data-testid="apply-project-patch"]')?.disabled
+  }))()`);
+  const patchClicked = await evaluate(`(() => {
+    const button = document.querySelector('[data-testid="apply-project-patch"]');
+    if (!button || button.disabled) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!patchClicked) throw new Error('The project patch button was not actionable.');
+  await waitFor(
+    `document.body.innerText.includes('Không phát hiện lỗ hổng có bằng chứng')`,
+    'patched project rescan'
+  );
+  results.projectSimulation.patchAppliedAndRescanned = true;
+
   const expectedGuestAuthProbe = (item) => item.status === 401 && item.url.endsWith('/api/v1/auth/me');
   results.diagnostics = {
     consoleErrors,
@@ -275,6 +314,16 @@ try {
   }
   if (results.cookieSession?.status !== 200 || !results.cookieSession?.body?.user?.email) {
     throw new Error('Browser registration did not establish a working cookie session.');
+  }
+  if (
+    !results.projectSimulation?.workbenchRendered
+    || !results.projectSimulation?.payloadSandboxRendered
+    || !results.projectSimulation?.threatBadgeRendered
+    || !results.projectSimulation?.defenseGuideRendered
+    || !results.projectSimulation?.applyPatchEnabled
+    || !results.projectSimulation?.patchAppliedAndRescanned
+  ) {
+    throw new Error(`Project simulation UI contract failed: ${JSON.stringify(results.projectSimulation)}`);
   }
   if (runtimeErrors.length || consoleErrors.length || results.diagnostics.unexpectedHttpErrors.length) {
     throw new Error(`Browser diagnostics contain unexpected errors: ${JSON.stringify(results.diagnostics)}`);

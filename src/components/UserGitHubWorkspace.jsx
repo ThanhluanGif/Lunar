@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Github, RefreshCw, FolderGit2, ArrowRight, ShieldCheck, Loader2, Search, UserCheck, KeyRound } from 'lucide-react';
-import { fetchUserGitHubRepos, fetchGitHubRepoDetails } from '../services/githubService';
-import { analyzeProjectWithAI } from '../services/aiReviewEngine';
-import { supabaseDb } from '../services/supabaseClient';
+import { fetchUserGitHubRepos } from '../services/githubService';
 import { lunarApi } from '../services/lunarApi';
 import { scanLocalFiles } from '../services/repoScanner';
 import DeepScanProgress from './DeepScanProgress';
@@ -100,10 +98,12 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
         overallScore: result.score,
         cvssScore: result.severity?.critical ? 9.1 : result.severity?.high ? 7.5 : 0,
         deepScan: result,
+        projectAttackSimulation: result.projectAttackSimulation || null,
         files: (result.files || []).map((file) => ({
           path: file.path,
           language: file.language || 'plaintext',
           content: '// Source analyzed securely on the Lunar backend.',
+          securityFindings: file.findings || [],
           annotations: (file.findings || []).map((finding) => ({
             line: finding.line,
             type: finding.severity,
@@ -118,26 +118,6 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
     } finally {
       setScanningRepoId(null);
     }
-    return;
-
-    try {
-      const rawData = await fetchGitHubRepoDetails(repo.htmlUrl);
-      const analyzed = analyzeProjectWithAI(rawData);
-      analyzed.id = 'synced-' + repo.name + '-' + Date.now();
-      
-      // Save audit to Supabase / LocalStorage
-      await supabaseDb.saveCodeAudit({
-        title: analyzed.title,
-        cvss: analyzed.cvssScore || 7.5,
-        scanned_at: new Date().toISOString()
-      });
-
-      onSelectProject(analyzed);
-    } catch (err) {
-      alert(`Không thể tải Repo "${repo.name}": ${err.message}`);
-    } finally {
-      setScanningRepoId(null);
-    }
   };
 
   const handleLocalFolder = async (files) => {
@@ -147,13 +127,26 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
     setScanStage('Scanning local folder in your browser…');
     try {
       const result = await scanLocalFiles(files, {
+        repositoryName: files[0]?.webkitRelativePath?.split('/')[0] || 'local-project',
         onProgress: ({ percent, completed, total }) => {
           setScanProgress(percent);
           setScanStage(`Scanned ${completed}/${total} local files…`);
         }
       });
       setScanFiles(result.files);
-      setScanStage(`Local scan complete: ${result.findings.length} findings.`);
+      setScanStage(result.projectAttackSimulation
+        ? `Local scan complete: ${result.findings.length} SAST findings, ${result.projectAttackSimulation.findings.length} attack chains.`
+        : `Local scan complete: ${result.findings.length} findings.`);
+      onSelectProject?.({
+        id: `local-${Date.now()}`,
+        title: files[0]?.webkitRelativePath?.split('/')[0] || 'Local Project',
+        description: `Local deep scan of ${result.filesScanned} files. Source code stayed in this browser except the bounded security context sent to Lunar.`,
+        githubUrl: '',
+        language: result.files[0]?.language || 'plaintext',
+        projectAttackSimulation: result.projectAttackSimulation,
+        projectAttackSimulationError: result.projectAttackSimulationError,
+        files: result.files
+      });
     } catch (error) {
       setScanError(error.message);
     }

@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { X, Github, Sparkles, Loader2, Code, ShieldCheck, AlertCircle } from 'lucide-react';
 import { fetchGitHubRepoDetails } from '../services/githubService';
-import { analyzeProjectWithAI } from '../services/aiReviewEngine';
-import { supabaseDb } from '../services/supabaseClient';
+import { scanRepository } from '../services/repoScanner';
 
 export default function SubmitModal({ isOpen, onClose, onAddProject }) {
   const [githubUrl, setGithubUrl] = useState('');
@@ -107,17 +106,20 @@ export default function SubmitModal({ isOpen, onClose, onAddProject }) {
       setStepText('Đang chạy AI Engine: Phân tích SAST (OWASP, CVSS v3.1, Bug Check & Auto Fix)...');
       await new Promise(r => setTimeout(r, 1000));
 
-      const analyzedProject = analyzeProjectWithAI(rawProjectData);
-      analyzedProject.id = 'proj-' + Date.now();
-      analyzedProject.submittedAt = 'Vừa xong';
-      analyzedProject.communityReviews = [];
-
-      // Save record in Supabase / Local Storage
-      await supabaseDb.saveCodeAudit({
-        title: analyzedProject.title,
-        cvss: analyzedProject.cvssScore || 7.5,
-        scanned_at: new Date().toISOString()
+      const projectScan = await scanRepository(rawProjectData.files, {
+        repositoryName: rawProjectData.title
       });
+      const maxCvss = projectScan.findings.reduce((max, finding) => Math.max(max, Number(finding.cvss) || 0), 0);
+      const analyzedProject = {
+        ...rawProjectData,
+        id: `proj-${Date.now()}`,
+        submittedAt: 'Vừa xong',
+        communityReviews: [],
+        files: projectScan.files,
+        projectAttackSimulation: projectScan.projectAttackSimulation,
+        overallScore: Math.max(0, Math.round(100 - maxCvss * 10)),
+        cvssScore: maxCvss
+      };
 
       onAddProject(analyzedProject);
       setLoading(false);

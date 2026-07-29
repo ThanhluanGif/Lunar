@@ -23,26 +23,34 @@ export async function reviewCodeWithGemini({
   };
 }
 
-export async function simulateHackerAttackWithGemini({
-  code,
-  filename = 'project_context.ts',
-  language = 'typescript',
-  customPolicies = []
+export async function simulateProjectHackerAttack({
+  projectFiles,
+  repositoryName = 'local-project',
+  provider = 'auto'
 }) {
-  const response = await lunarApi.reviewCodeWithAi({
-    code,
-    filename,
-    language,
-    operation: 'hacker_attack_simulation',
-    customPolicies,
-    provider: 'gemini'
+  const response = await lunarApi.simulateProjectHackerAttack({
+    projectFiles,
+    repositoryName,
+    provider
   });
   return {
-    ...response.review,
+    ...response.simulation,
     provider: response.provider,
     model: response.model,
     latencyMs: response.latencyMs
   };
+}
+
+export async function simulateHackerAttackWithGemini({
+  code,
+  filename = 'project_context.ts',
+  language = 'typescript'
+}) {
+  return simulateProjectHackerAttack({
+    projectFiles: [{ path: filename, language, content: code }],
+    repositoryName: filename,
+    provider: 'gemini'
+  });
 }
 
 export async function getConfiguredAiProviders() {

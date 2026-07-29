@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Navbar from './components/Navbar';
 import FigmaLunarLanding from './components/FigmaLunarLanding';
 import SecurityDashboard from './components/SecurityDashboard';
@@ -132,18 +132,60 @@ export default function App() {
     return () => { mounted = false; };
   }, []);
 
-  // Active File & Scan Analysis
-  const activeFile = selectedProject?.files?.[0] || { content: '', path: 'app.ts' };
-  const scanResult = scanCodeForSecurityVulnerabilities(activeFile.content, activeFile.path);
+  // Scan every project file so cross-file and local-folder findings reach the repair UI.
+  const scanResult = useMemo(() => {
+    const fileScans = (selectedProject?.files || []).map((file) => {
+      const deterministic = scanCodeForSecurityVulnerabilities(file.content, file.path, file.language);
+      const backendFindings = (file.securityFindings || []).map((finding, index) => ({
+        id: finding.id || `${finding.ruleId || 'DEEP'}-${finding.line || index + 1}`,
+        ruleId: finding.ruleId,
+        line: finding.line || 0,
+        filePath: file.path,
+        language: file.language,
+        cwe: finding.cwe || 'CWE-UNKNOWN',
+        category: finding.cwe || 'Deep Scan',
+        title: finding.title,
+        severity: String(finding.severity || 'MEDIUM').toUpperCase(),
+        cvss: finding.severity === 'critical' ? 9.1 : finding.severity === 'high' ? 7.5 : 5.0,
+        aiVerdict: 'Requires review',
+        aiReason: finding.evidence || 'Backend SAST finding with direct repository evidence.',
+        description: finding.title,
+        impact: `Potential ${finding.cwe || 'security'} weakness.`,
+        originalCode: finding.codeSnippet || '',
+        patchedCode: '',
+        recommendation: finding.recommendation || ''
+      }));
+      return {
+        ...deterministic,
+        vulnerabilities: [...deterministic.vulnerabilities, ...backendFindings]
+      };
+    });
+    const vulnerabilities = fileScans.flatMap((scan) => scan.vulnerabilities);
+    return {
+      vulnerabilities,
+      stats: {
+        total: vulnerabilities.length,
+        maxCvss: vulnerabilities.reduce((max, finding) => Math.max(max, Number(finding.cvss) || 0), 0),
+        criticalCount: vulnerabilities.filter((finding) => finding.severity === 'CRITICAL').length,
+        highCount: vulnerabilities.filter((finding) => finding.severity === 'HIGH').length,
+        mediumCount: vulnerabilities.filter((finding) => finding.severity === 'MEDIUM').length,
+        lowCount: vulnerabilities.filter((finding) => finding.severity === 'LOW').length
+      }
+    };
+  }, [selectedProject]);
+  const activeVuln = scanResult.vulnerabilities[0] || null;
+  const activeFile = selectedProject?.files?.find((file) => file.path === activeVuln?.filePath)
+    || selectedProject?.files?.[0]
+    || { content: '', path: 'app.ts' };
 
   const handleAddProject = (newProj) => {
-    setProjects([newProj, ...projects]);
+    setProjects((current) => [newProj, ...current]);
     setSelectedProject(newProj);
     setActiveTab('detail');
   };
 
   const handleAddAudit = (newAudit) => {
-    setProjects(projects.map(p => {
+    setProjects((current) => current.map(p => {
       if (p.id === selectedProject?.id) {
         return {
           ...p,
@@ -158,6 +200,29 @@ export default function App() {
     setSelectedProject(proj);
     setActiveTab('detail');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleApplyPatch = ({ filePath, patchedCode }) => {
+    if (!filePath || !patchedCode) return;
+    const applyToProject = (project) => ({
+      ...project,
+      files: (project.files || []).map((file) => (
+        file.path === filePath ? { ...file, content: patchedCode, securityFindings: [] } : file
+      )),
+      projectAttackSimulation: project.projectAttackSimulation ? {
+        ...project.projectAttackSimulation,
+        findings: (project.projectAttackSimulation.findings || []).filter((finding) => (
+          !finding.affectedFiles?.includes(filePath)
+        ))
+      } : null
+    });
+    setSelectedProject((current) => {
+      if (!current) return current;
+      return applyToProject(current);
+    });
+    setProjects((current) => current.map((project) => (
+      project.id === selectedProject?.id ? applyToProject(project) : project
+    )));
   };
 
   const handleLoginSuccess = (user) => {
@@ -386,13 +451,16 @@ export default function App() {
             >
               <VulnerabilityPatcher
                 vulnerabilities={scanResult.vulnerabilities}
+                projectAttackSimulation={selectedProject.projectAttackSimulation}
+                onApplyPatch={handleApplyPatch}
               />
 
               <CodeRepairWorkbench
                 activeFile={activeFile}
-                activeVuln={scanResult.vulnerabilities[0]}
+                activeVuln={activeVuln}
+                projectAttackSimulation={selectedProject.projectAttackSimulation}
                 repoUrl={selectedProject.githubUrl}
-                onOpenPricing={() => setIsPricingOpen(true)}
+                onApplyPatch={handleApplyPatch}
               />
             </PaywallGate>
 

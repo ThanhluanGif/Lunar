@@ -1,61 +1,119 @@
-import React, { useState } from 'react';
-import { Wrench, Sparkles, Code, CheckCircle, Download, Copy, GitPullRequest, ArrowRight, ShieldCheck, Cpu, Eye, Loader2, ExternalLink, ShieldAlert, Terminal, Flame, AlertOctagon, Skull, Play } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  CheckCircle,
+  Copy,
+  Download,
+  ExternalLink,
+  GitPullRequest,
+  Loader2,
+  Play,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Terminal,
+  Wrench
+} from 'lucide-react';
 import { createGitHubSecurityPR } from '../services/githubBotService';
-import { simulateHackerAttackWithGemini } from '../services/geminiService';
+import { simulateProjectHackerAttack } from '../services/geminiService';
 
-export default function CodeRepairWorkbench({ activeFile, activeVuln, repoUrl, onOpenPricing }) {
-  const [repairStyle, setRepairStyle] = useState('security'); // 'security' | 'performance' | 'clean'
-  const [customPrompt, setCustomPrompt] = useState('');
-  const [viewMode, setViewMode] = useState('side-by-side'); // 'side-by-side' | 'unified'
+function matchesActiveFinding(finding, activeFile, activeVuln) {
+  const filePath = activeFile?.path || activeVuln?.filePath;
+  if (filePath && finding.affectedFiles?.some((path) => path === filePath || path.endsWith(filePath))) return true;
+  if (activeVuln?.cwe && finding.relatedCwes?.includes(activeVuln.cwe)) return true;
+  return false;
+}
+
+export default function CodeRepairWorkbench({
+  activeFile,
+  activeVuln,
+  projectAttackSimulation,
+  repoUrl,
+  onApplyPatch
+}) {
+  const simulationFinding = useMemo(() => (
+    projectAttackSimulation?.findings?.find((finding) => matchesActiveFinding(finding, activeFile, activeVuln))
+    || projectAttackSimulation?.findings?.[0]
+    || null
+  ), [activeFile, activeVuln, projectAttackSimulation]);
+  const [viewMode, setViewMode] = useState('side-by-side');
   const [copied, setCopied] = useState(false);
   const [isSimulatingAttack, setIsSimulatingAttack] = useState(false);
-  const [attackData, setAttackData] = useState(activeVuln?.hackerAttackVector || null);
+  const [simulationError, setSimulationError] = useState('');
+  const [liveFinding, setLiveFinding] = useState(simulationFinding);
+  const [appliedPatch, setAppliedPatch] = useState('');
+  const [isCreatingPR, setIsCreatingPR] = useState(false);
+  const [prResult, setPrResult] = useState(null);
+
+  useEffect(() => {
+    setLiveFinding(simulationFinding);
+    setAppliedPatch('');
+    setSimulationError('');
+    setPrResult(null);
+  }, [activeFile?.path, activeVuln?.id, simulationFinding]);
+
+  if (!activeVuln && !liveFinding) {
+    return (
+      <div className="glass-panel" style={{ padding: '30px', textAlign: 'center' }}>
+        <ShieldCheck size={42} color="#34d399" />
+        <p style={{ color: 'var(--text-secondary)', marginTop: '10px' }}>
+          Không có lỗ hổng có bằng chứng để mở Code Repair Workbench.
+        </p>
+      </div>
+    );
+  }
+
+  const attackVector = liveFinding?.hackerAttackVector || activeVuln?.hackerAttackVector;
+  const remediation = liveFinding?.remediation || activeVuln?.remediation;
+  const originalCode = activeVuln?.originalCode || activeFile?.content || '';
+  const generatedPatch = remediation?.patchCode || activeVuln?.patchedCode || '';
+  const patchedCode = appliedPatch || generatedPatch || originalCode;
+  const threatLevel = attackVector?.threatLevel || activeVuln?.severity || liveFinding?.severity || 'MEDIUM';
+  const canApplyPatch = Boolean(generatedPatch && generatedPatch !== originalCode);
 
   const handleSimulateAttack = async () => {
+    if (!activeFile?.content) return;
     setIsSimulatingAttack(true);
+    setSimulationError('');
     try {
-      const res = await simulateHackerAttackWithGemini({
-        code: originalCode,
-        filename: activeFile?.path || 'source.ts',
-        language: activeFile?.language || 'typescript'
+      const simulation = await simulateProjectHackerAttack({
+        repositoryName: repoUrl || activeFile.path || 'local-project',
+        projectFiles: [{
+          path: activeFile.path || 'source.ts',
+          language: activeFile.language || 'typescript',
+          content: activeFile.content
+        }]
       });
-      if (res?.findings?.[0]?.hackerAttackVector) {
-        setAttackData(res.findings[0].hackerAttackVector);
+      setLiveFinding(
+        simulation.findings?.find((finding) => matchesActiveFinding(finding, activeFile, activeVuln))
+        || simulation.findings?.[0]
+        || null
+      );
+      if (!simulation.findings?.length) {
+        setSimulationError('Không tìm thấy chuỗi tấn công có đủ bằng chứng trong file hiện tại.');
       }
-    } catch (err) {
-      console.error('Simulate attack error:', err);
+    } catch (error) {
+      setSimulationError(error.status === 401
+        ? 'Bạn cần đăng nhập để chạy AI Deep Project Scan.'
+        : error.message || 'Không thể chạy mô phỏng phòng thủ.');
     } finally {
       setIsSimulatingAttack(false);
     }
   };
 
-  if (!activeVuln) {
-    return (
-      <div className="glass-panel" style={{ padding: '30px', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-secondary)' }}>Vui lòng chọn một lỗ hổng bảo mật để bắt đầu sửa code bằng AI.</p>
-      </div>
-    );
-  }
-
-  const originalCode = activeVuln.originalCode || activeFile?.content || '';
-  const patchedCode = activeVuln.patchedCode || originalCode;
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(patchedCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleApplyPatch = () => {
+    if (!canApplyPatch) return;
+    setAppliedPatch(generatedPatch);
+    onApplyPatch?.({
+      filePath: activeFile?.path || activeVuln?.filePath,
+      vulnerabilityId: activeVuln?.id || liveFinding?.id,
+      patchedCode: generatedPatch
+    });
   };
 
-  const handleCreatePR = async () => {
-    setIsCreatingPR(true);
-    try {
-      const res = await createGitHubSecurityPR(repoUrl, originalCode, patchedCode, activeVuln);
-      setPrResult(res);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsCreatingPR(false);
-    }
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(patchedCode);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = () => {
@@ -65,307 +123,168 @@ export default function CodeRepairWorkbench({ activeFile, activeVuln, repoUrl, o
     link.href = url;
     link.download = `patched_${activeFile?.path?.split('/').pop() || 'code.ts'}`;
     link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCreatePR = async () => {
+    setIsCreatingPR(true);
+    try {
+      const result = await createGitHubSecurityPR(repoUrl, originalCode, patchedCode, activeVuln || liveFinding);
+      setPrResult(result);
+    } catch (error) {
+      setSimulationError(error.message || 'Không thể tạo Pull Request.');
+    } finally {
+      setIsCreatingPR(false);
+    }
   };
 
   return (
-    <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
-      
-      {/* Header */}
+    <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }} data-testid="code-repair-workbench">
       <div style={{
         display: 'flex',
-        alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '20px',
+        alignItems: 'center',
+        gap: '12px',
+        flexWrap: 'wrap',
         borderBottom: '1px solid var(--border-color)',
         paddingBottom: '14px',
-        flexWrap: 'wrap',
-        gap: '12px'
+        marginBottom: '20px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <Sparkles size={22} color="var(--accent-purple)" />
           <div>
-            <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.2rem', fontWeight: '800' }}>
-              Bộ Công Cụ Sửa Code Tự Động (AI Code Repair Workbench)
-            </h3>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              Đang vá lỗi: {activeVuln.title} (Line {activeVuln.line})
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>AI Code Repair Workbench</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+              {activeVuln?.title || liveFinding?.title} · {activeFile?.path || activeVuln?.filePath}
             </p>
           </div>
         </div>
-
-        {/* View Mode Toggle */}
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            onClick={() => setViewMode('side-by-side')}
-            className={`btn btn-sm ${viewMode === 'side-by-side' ? 'btn-primary' : 'btn-secondary'}`}
-          >
-            Side-by-Side View
+          <button className={`btn btn-sm ${viewMode === 'side-by-side' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setViewMode('side-by-side')}>
+            Side-by-Side
           </button>
-          <button
-            onClick={() => setViewMode('unified')}
-            className={`btn btn-sm ${viewMode === 'unified' ? 'btn-primary' : 'btn-secondary'}`}
-          >
+          <button className={`btn btn-sm ${viewMode === 'unified' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setViewMode('unified')}>
             Unified Diff
           </button>
         </div>
       </div>
 
-      {/* Style Selector & Custom Prompt Controls */}
-      <div className="glass-card" style={{ padding: '16px', marginBottom: '20px' }}>
-        <div style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
-          Chọn Phong Cách Sửa Code AI (AI Refactoring Preference):
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '14px' }}>
-          <button
-            onClick={() => setRepairStyle('security')}
-            className={`btn ${repairStyle === 'security' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-            style={{ justifyContent: 'flex-start' }}
-          >
-            <ShieldCheck size={16} />
-            🔒 Max Security (OWASP Standard)
-          </button>
-
-          <button
-            onClick={() => setRepairStyle('performance')}
-            className={`btn ${repairStyle === 'performance' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-            style={{ justifyContent: 'flex-start' }}
-          >
-            <Cpu size={16} />
-            ⚡ High Performance Async
-          </button>
-
-          <button
-            onClick={() => setRepairStyle('clean')}
-            className={`btn ${repairStyle === 'clean' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-            style={{ justifyContent: 'flex-start' }}
-          >
-            <Eye size={16} />
-            📖 Clean Code & Comments
-          </button>
-        </div>
-
-        {/* Optional Custom Instruction Prompt */}
-        <div className="input-group" style={{ marginBottom: 0 }}>
-          <input
-            type="text"
-            placeholder="Tùy chỉnh yêu cầu sửa code (VD: Sử dụng async/await thay cho Promise, dùng Parameterized Queries...)"
-            className="input-control"
-            value={customPrompt}
-            onChange={(e) => setCustomPrompt(e.target.value)}
-            style={{ fontSize: '0.84rem' }}
-          />
-        </div>
-      </div>
-
-      {/* Interactive Code Diff Viewer */}
-      {viewMode === 'side-by-side' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-          {/* Left: Original Vulnerable Code */}
-          <div style={{
-            background: '#1a0d10',
-            border: '1px solid rgba(244, 63, 94, 0.4)',
-            borderRadius: 'var(--radius-md)',
-            padding: '16px',
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.82rem'
-          }}>
-            <div style={{ color: '#fb7185', fontSize: '0.75rem', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase' }}>
-              🔴 ORIGINAL: Code Hiện Tại Có Lỗi
-            </div>
-            <pre style={{ margin: 0, color: '#fca5a5', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
-              {originalCode}
-            </pre>
-          </div>
-
-          {/* Right: AI Patched Code */}
-          <div style={{
-            background: '#0d1f18',
-            border: '1px solid rgba(16, 185, 129, 0.4)',
-            borderRadius: 'var(--radius-md)',
-            padding: '16px',
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.82rem'
-          }}>
-            <div style={{ color: '#34d399', fontSize: '0.75rem', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase' }}>
-              🟢 AI PATCHED: Code Đã Được Vá An Toàn
-            </div>
-            <pre style={{ margin: 0, color: '#6ee7b7', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
-              {patchedCode}
-            </pre>
-          </div>
-        </div>
-      ) : (
-        /* Unified View */
-        <div style={{
-          background: '#0d1117',
-          border: '1px solid var(--border-color)',
-          borderRadius: 'var(--radius-md)',
-          padding: '16px',
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.82rem',
-          marginBottom: '20px'
-        }}>
-          <div style={{ color: '#fb7185', background: 'rgba(244, 63, 94, 0.15)', padding: '4px 8px', marginBottom: '4px' }}>
-            - {originalCode}
-          </div>
-          <div style={{ color: '#34d399', background: 'rgba(16, 185, 129, 0.15)', padding: '4px 8px' }}>
-            + {patchedCode}
-          </div>
-        </div>
-      )}
-
-      {/* 🔴 Hacker Attack Scenario & Threat Payload Simulation Card */}
       <div className="glass-card" style={{
         padding: '20px',
         marginBottom: '20px',
-        background: 'linear-gradient(135deg, rgba(225, 29, 72, 0.08) 0%, rgba(159, 18, 57, 0.12) 100%)',
-        border: '1px solid rgba(244, 63, 94, 0.35)',
-        borderRadius: 'var(--radius-lg)'
+        border: '1px solid rgba(244, 63, 94, 0.38)',
+        background: 'linear-gradient(135deg, rgba(225,29,72,.08), rgba(159,18,57,.12))'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Skull size={20} color="#f43f5e" />
-            <h4 style={{ color: '#fb7185', fontSize: '0.96rem', fontWeight: '800', margin: 0 }}>
-              🔴 Mô Phỏng Cuộc Tấn Công Của Hacker (Hacker Attack Scenario & Vector)
-            </h4>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <ShieldAlert size={20} color="#fb7185" />
+            <h4 style={{ color: '#fb7185', margin: 0 }}>Threat Attack Scenario</h4>
           </div>
-          <button
-            onClick={handleSimulateAttack}
-            disabled={isSimulatingAttack}
-            className="btn btn-sm btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }}
-          >
-            {isSimulatingAttack ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={14} color="#f43f5e" />}
-            {isSimulatingAttack ? 'Đang Phân Tích Kịch Bản...' : '🧪 Mô Phỏng Kịch Bản Khai Thác AI'}
+          <button className="btn btn-sm btn-secondary" onClick={handleSimulateAttack} disabled={isSimulatingAttack}>
+            {isSimulatingAttack ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+            {isSimulatingAttack ? 'Đang phân tích…' : 'Chạy lại mô phỏng'}
           </button>
         </div>
 
-        {/* Threat Level & Impact */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '14px' }}>
-          <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid rgba(244, 63, 94, 0.2)' }}>
-            <div style={{ color: '#fda4af', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>
-              🚨 Mức Độ Cảnh Báo Nguy Hiểm:
-            </div>
-            <span style={{
-              display: 'inline-block',
-              padding: '2px 8px',
-              borderRadius: '4px',
-              fontSize: '0.75rem',
-              fontWeight: '800',
-              background: '#f43f5e',
-              color: '#ffffff'
-            }}>
-              {attackData?.threatLevel || activeVuln.severity?.toUpperCase() || 'CRITICAL THREAT'}
-            </span>
-          </div>
-
-          <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid rgba(244, 63, 94, 0.2)' }}>
-            <div style={{ color: '#fda4af', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>
-              💥 Hậu Quả Thiệt Hại (Breach Impact):
-            </div>
-            <div style={{ color: '#fecdd3', fontSize: '0.82rem', lineHeight: '1.4' }}>
-              {attackData?.breachImpact || activeVuln.aiReasoning || 'Chiếm quyền điều khiển dữ liệu, rò rỉ toàn bộ cơ sở dữ liệu hoặc thực thi mã từ xa (RCE).'}
-            </div>
-          </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+          <span className="badge badge-rose">THREAT {threatLevel}</span>
+          <span className="badge badge-purple">{liveFinding?.attackTechnique || activeVuln?.cwe || 'Security weakness'}</span>
+          {(liveFinding?.affectedFiles || [activeFile?.path]).filter(Boolean).map((filePath) => (
+            <span className="badge badge-cyan" key={filePath}>{filePath}</span>
+          ))}
         </div>
 
-        {/* Attack Chain */}
-        <div style={{ marginBottom: '14px' }}>
-          <div style={{ color: '#fb7185', fontSize: '0.82rem', fontWeight: '700', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Terminal size={14} />
-            <span>Các Bước Hacker Thực Hiện Tấn Công:</span>
+        <p style={{ color: '#fecdd3', lineHeight: 1.55, fontSize: '0.85rem' }}>
+          <strong>Breach impact:</strong> {attackVector?.breachImpact || activeVuln?.impact || 'Cần xác minh tác động trong môi trường kiểm thử cô lập.'}
+        </p>
+
+        <div style={{ marginTop: '14px' }}>
+          <div style={{ color: '#fb7185', fontWeight: 700, fontSize: '0.82rem', marginBottom: '6px' }}>
+            Chuỗi tấn công phòng thủ
           </div>
-          <ol style={{ margin: 0, paddingLeft: '20px', color: '#fecdd3', fontSize: '0.82rem', lineHeight: '1.6' }}>
-            {(attackData?.attackChain || [
-              `Hacker gửi request độc hại chứa chuỗi kiểm thử vào tham số truyền vào ứng dụng.`,
-              `Hệ thống không kiểm duyệt đầu vào (Unsanitized Input), khiến câu lệnh bị chèn lệnh bất hợp pháp.`,
-              `Hacker chiếm được quyền truy cập tài nguyên bảo mật và trích xuất thông tin nhạy cảm.`
-            ]).map((step, idx) => (
-              <li key={idx} style={{ marginBottom: '4px' }}>{step}</li>
-            ))}
+          <ol style={{ color: '#fecdd3', fontSize: '0.82rem', lineHeight: 1.65, paddingLeft: '20px' }}>
+            {(attackVector?.attackChain || ['Chưa có chuỗi tấn công được xác nhận.']).map((step) => <li key={step}>{step}</li>)}
           </ol>
         </div>
 
-        {/* Sample Exploit Payload Box */}
-        <div>
-          <div style={{ color: '#fb7185', fontSize: '0.82rem', fontWeight: '700', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Flame size={14} />
-            <span>Mẫu Exploit Payload Hacker Có Thể Sử Dụng:</span>
+        <div style={{ marginTop: '14px' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', color: '#fb7185', fontWeight: 700, fontSize: '0.82rem', marginBottom: '6px' }}>
+            <Terminal size={14} /> Payload Sandbox — chỉ hiển thị, không thực thi
           </div>
-          <div style={{
+          <pre data-testid="payload-sandbox" style={{
             background: '#090d16',
-            border: '1px solid rgba(244, 63, 94, 0.4)',
-            borderRadius: 'var(--radius-md)',
+            border: '1px solid rgba(244,63,94,.4)',
+            borderRadius: '8px',
             padding: '12px',
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.8rem',
-            color: '#f43f5e',
+            color: '#fda4af',
             whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all'
+            wordBreak: 'break-word',
+            fontSize: '0.8rem'
           }}>
-            {attackData?.exploitPayload || activeVuln.codeSnippet || "GET /api/v1/users?id=1'%20OR%20'1'='1'%20-- HTTP/1.1\nHost: target-app.com\nUser-Agent: HackerPayload/2.0"}
-          </div>
+            {attackVector?.exploitPayload || '<inert-test-payload-unavailable>'}
+          </pre>
         </div>
       </div>
 
-      {/* AI Architectural Remediation Explanation */}
-      <div className="glass-card" style={{ padding: '16px', marginBottom: '20px', background: 'rgba(168, 85, 247, 0.08)' }}>
-        <div style={{ fontWeight: '700', color: 'var(--accent-purple)', fontSize: '0.88rem', marginBottom: '6px' }}>
-          💡 Giải Thích Phương Án Vá Lỗi Chi Tiết Của AI:
+      <div className="glass-card" style={{ padding: '18px', marginBottom: '20px', border: '1px solid rgba(52,211,153,.3)' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', color: '#34d399', fontWeight: 800, marginBottom: '8px' }}>
+          <ShieldCheck size={18} /> Defense Guide
         </div>
-        <p style={{ fontSize: '0.84rem', color: 'var(--text-primary)', lineHeight: '1.5' }}>
-          {activeVuln.recommendation || 'Bản vá loại bỏ hoàn toàn các chuỗi cộng SQL trực tiếp, chuyển sang dùng Parameterized Query để ngăn chặn tấn công SQL Injection triệt để.'}
+        <p style={{ color: 'var(--text-primary)', fontSize: '0.84rem' }}>
+          {remediation?.defenseStrategy || activeVuln?.recommendation || 'Chưa có chiến lược vá tự động.'}
         </p>
+        <ol style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.65, paddingLeft: '20px' }}>
+          {(remediation?.stepByStepGuide || []).map((step) => <li key={step}>{step}</li>)}
+        </ol>
+        <button className="btn btn-emerald" onClick={handleApplyPatch} disabled={!canApplyPatch || Boolean(appliedPatch)} data-testid="apply-project-patch">
+          {appliedPatch ? <CheckCircle size={16} /> : <Wrench size={16} />}
+          {appliedPatch ? 'Đã áp dụng bản vá' : '1-Click Apply Patch'}
+        </button>
       </div>
 
-      {/* Export Action Buttons */}
+      {viewMode === 'side-by-side' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+          <CodePanel title="BEFORE · Code có lỗi" code={originalCode} color="#fca5a5" background="#1a0d10" />
+          <CodePanel title="AFTER · Bản vá đề xuất" code={patchedCode} color="#6ee7b7" background="#0d1f18" />
+        </div>
+      ) : (
+        <pre style={{ background: '#0d1117', padding: '16px', borderRadius: '8px', whiteSpace: 'pre-wrap', marginBottom: '20px' }}>
+          <span style={{ color: '#fca5a5' }}>- {originalCode}</span>{'\n'}
+          <span style={{ color: '#6ee7b7' }}>+ {patchedCode}</span>
+        </pre>
+      )}
+
+      {simulationError && (
+        <p role="alert" style={{ color: '#fda4af', fontSize: '0.82rem', marginBottom: '12px' }}>{simulationError}</p>
+      )}
+
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
         <button onClick={handleCopy} className="btn btn-secondary">
-          {copied ? <CheckCircle size={16} color="#34d399" /> : <Copy size={16} />}
-          {copied ? 'Đã Copy Code!' : 'Copy Code Đã Sửa'}
+          {copied ? <CheckCircle size={16} /> : <Copy size={16} />} {copied ? 'Đã copy' : 'Copy bản vá'}
         </button>
-
         <button onClick={handleDownload} className="btn btn-secondary">
-          <Download size={16} />
-          Tải File Code Đã Vá
+          <Download size={16} /> Tải file đã vá
         </button>
-
-        <button onClick={handleCreatePR} disabled={isCreatingPR} className="btn btn-emerald">
-          {isCreatingPR ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <GitPullRequest size={16} />}
-          {isCreatingPR ? 'Đang Tạo Pull Request...' : 'Tự Động Tạo GitHub Pull Request'}
+        <button onClick={handleCreatePR} disabled={isCreatingPR || !repoUrl} className="btn btn-emerald">
+          {isCreatingPR ? <Loader2 size={16} className="spin" /> : <GitPullRequest size={16} />}
+          {isCreatingPR ? 'Đang tạo PR…' : 'Tạo GitHub Pull Request'}
         </button>
       </div>
 
       {prResult && (
-        <div style={{
-          marginTop: '16px',
-          padding: '14px',
-          background: 'rgba(16, 185, 129, 0.15)',
-          border: '1px solid rgba(16, 185, 129, 0.4)',
-          borderRadius: 'var(--radius-md)',
-          color: '#34d399',
-          fontSize: '0.85rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', marginBottom: '4px' }}>
-            <CheckCircle size={16} />
-            <span>Tạo Pull Request #{prResult.prNumber} Thành Công Trên GitHub!</span>
-          </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-            Branch: <code style={{ color: 'var(--accent-cyan)' }}>{prResult.branchName}</code>
-          </div>
-          <a
-            href={prResult.prUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-emerald btn-sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            Xem PR Trên GitHub <ExternalLink size={14} />
-          </a>
-        </div>
+        <a href={prResult.prUrl} target="_blank" rel="noreferrer" className="btn btn-emerald btn-sm" style={{ marginTop: '14px' }}>
+          Xem PR #{prResult.prNumber} <ExternalLink size={14} />
+        </a>
       )}
+    </div>
+  );
+}
 
+function CodePanel({ title, code, color, background }) {
+  return (
+    <div style={{ background, border: `1px solid ${color}55`, borderRadius: '8px', padding: '16px' }}>
+      <div style={{ color, fontSize: '0.75rem', fontWeight: 800, marginBottom: '8px' }}>{title}</div>
+      <pre style={{ color, margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>{code || '// Không có code để hiển thị'}</pre>
     </div>
   );
 }
