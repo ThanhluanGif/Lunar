@@ -1,5 +1,5 @@
 import React from 'react';
-import { Moon, ShieldCheck, Github, Sparkles, LogOut, Terminal, Cpu, Plus, Layers, Mail, Zap } from 'lucide-react';
+import { Moon, ShieldCheck, Github, Sparkles, LogOut, Terminal, Cpu, Plus, Layers, Mail, Zap, Crown, User } from 'lucide-react';
 
 export default function Navbar({ 
   activeTab, 
@@ -13,9 +13,9 @@ export default function Navbar({
   onOpenGmailSettings 
 }) {
   const getTierBadge = () => {
-    if (currentTier === 'ENTERPRISE') return <span className="badge badge-cyan" style={{ fontSize: '0.65rem' }}>BOT ENTERPRISE</span>;
-    if (currentTier === 'PRO') return <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>PRO</span>;
-    return <span className="badge badge-yellow" style={{ fontSize: '0.65rem' }}>FREE</span>;
+    if (currentTier === 'ENTERPRISE') return <span style={{ fontSize: '0.68rem', fontWeight: '800', padding: '2px 8px', borderRadius: '999px', background: 'rgba(34, 211, 238, 0.15)', color: '#22d3ee', border: '1px solid rgba(34, 211, 238, 0.3)' }}>ENTERPRISE</span>;
+    if (currentTier === 'PRO') return <span style={{ fontSize: '0.68rem', fontWeight: '800', padding: '2px 8px', borderRadius: '999px', background: 'rgba(157, 110, 245, 0.15)', color: '#c084fc', border: '1px solid rgba(157, 110, 245, 0.3)' }}>PRO</span>;
+    return <span style={{ fontSize: '0.68rem', fontWeight: '800', padding: '2px 8px', borderRadius: '999px', background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)' }}>FREE</span>;
   };
 
   return (
@@ -23,8 +23,9 @@ export default function Navbar({
       position: 'sticky',
       top: 0,
       zIndex: 50,
-      background: '#0f172a',
-      borderBottom: '1px solid var(--border-color)',
+      background: 'rgba(7, 8, 15, 0.85)',
+      backdropFilter: 'blur(16px)',
+      borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
       padding: '12px 24px'
     }}>
       <div style={{
@@ -36,123 +37,246 @@ export default function Navbar({
         gap: '20px'
       }}>
         
-        {/* Left: Lunar Brand Logo */}
+        {/* Left: Crescent Moon Brand Logo matching Figma site */}
         <div 
           onClick={() => setActiveTab('explore')}
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
         >
           <div style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '8px',
-            background: 'linear-gradient(135deg, #2563eb 0%, #ea4335 100%)',
+            position: 'relative',
+            width: '32px',
+            height: '32px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 2px 12px rgba(234, 67, 53, 0.4)'
+            justifyContent: 'center'
           }}>
-            <Moon size={20} color="#ffffff" />
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)'
+            }} />
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: '50%',
+              transform: 'translateX(6px)',
+              background: '#07080f'
+            }} />
           </div>
 
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{
-                fontFamily: 'var(--font-heading)',
-                fontSize: '1.35rem',
-                fontWeight: '800',
-                color: '#ffffff',
-                letterSpacing: '-0.02em'
-              }}>
-                Lunar<span style={{ color: '#ea4335' }}>.dev</span>
-              </span>
-              <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>
-                GMAIL & PRO SUBSCRIPTION ACTIVE
-              </span>
-            </div>
-            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>
-              AI Code Review, SAST Security Audit & 1-Click Auto-Fix Workbench
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              fontFamily: 'var(--font-heading)',
+              fontSize: '1.25rem',
+              fontWeight: '800',
+              color: '#e2e5f0',
+              letterSpacing: '-0.02em'
+            }}>
+              lunar<span style={{ color: '#6c8eef' }}>.dev</span>
+            </span>
+            <span style={{
+              fontSize: '0.68rem',
+              fontWeight: '700',
+              padding: '2px 8px',
+              borderRadius: '999px',
+              background: 'rgba(34, 197, 94, 0.12)',
+              color: '#86efac',
+              border: '1px solid rgba(34, 197, 94, 0.25)'
+            }}>
+              PRO ACTIVE
+            </span>
           </div>
         </div>
 
-        {/* Center: Clean Navigation Tabs */}
-        <nav style={{ display: 'flex', gap: '8px', background: '#1e293b', padding: '4px', borderRadius: 'var(--radius-md)' }}>
+        {/* Center: Figma Style Navigation Links */}
+        <nav style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          padding: '4px',
+          borderRadius: '12px'
+        }}>
           <button
             onClick={() => setActiveTab('explore')}
-            className={`btn btn-sm ${activeTab === 'explore' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ fontSize: '0.8rem' }}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '8px',
+              fontSize: '0.82rem',
+              fontWeight: '600',
+              background: activeTab === 'explore' ? 'rgba(108, 142, 239, 0.2)' : 'transparent',
+              color: activeTab === 'explore' ? '#6c8eef' : '#7880a0',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
           >
-            <Layers size={14} /> Tổng Quan Dự Án
+            <Layers size={14} /> Landing
+          </button>
+
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '8px',
+              fontSize: '0.82rem',
+              fontWeight: '600',
+              background: activeTab === 'dashboard' ? 'rgba(124, 58, 237, 0.25)' : 'transparent',
+              color: activeTab === 'dashboard' ? '#c084fc' : '#7880a0',
+              border: activeTab === 'dashboard' ? '1px solid rgba(124, 58, 237, 0.4)' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <Sparkles size={14} color="#a78bfa" /> Figma Dashboard ✦
           </button>
 
           <button
             onClick={() => setActiveTab('community')}
-            className={`btn btn-sm ${activeTab === 'community' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ fontSize: '0.8rem' }}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '8px',
+              fontSize: '0.82rem',
+              fontWeight: '600',
+              background: activeTab === 'community' ? 'rgba(108, 142, 239, 0.2)' : 'transparent',
+              color: activeTab === 'community' ? '#6c8eef' : '#7880a0',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
           >
             <ShieldCheck size={14} /> Cộng Đồng Security
           </button>
 
           <button
             onClick={() => setActiveTab('admin')}
-            className={`btn btn-sm ${activeTab === 'admin' ? 'btn-purple' : 'btn-secondary'}`}
-            style={{ fontSize: '0.8rem', color: activeTab === 'admin' ? '#ffffff' : '#c084fc', border: '1px solid rgba(168, 85, 247, 0.4)' }}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '8px',
+              fontSize: '0.82rem',
+              fontWeight: '600',
+              background: activeTab === 'admin' ? 'rgba(157, 110, 245, 0.2)' : 'transparent',
+              color: activeTab === 'admin' ? '#c084fc' : '#7880a0',
+              border: activeTab === 'admin' ? '1px solid rgba(157, 110, 245, 0.3)' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
           >
-            <Zap size={14} color="#f59e0b" /> Dashboard Admin 👑
+            <Crown size={14} color="#f59e0b" /> Admin 👑
           </button>
         </nav>
 
-        {/* Right Actions */}
+        {/* Right Action Toolbar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          
+          {/* Button Quét Code */}
           <button
             onClick={onOpenSubmit}
-            className="btn btn-emerald btn-sm"
-            style={{ gap: '6px' }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '7px 14px',
+              borderRadius: '8px',
+              fontSize: '0.8rem',
+              fontWeight: '600',
+              background: 'rgba(34, 197, 94, 0.15)',
+              color: '#86efac',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              cursor: 'pointer'
+            }}
           >
-            <Plus size={14} /> Tải Repo / Quét Code Local
+            <Plus size={14} /> Quét Code
           </button>
 
-          {/* Button mở Cấu hình Thông báo Gmail */}
+          {/* Button Gmail Alert */}
           <button
             onClick={onOpenGmailSettings}
-            className="btn btn-secondary btn-sm"
-            title="Cấu hình thông báo & Báo cáo qua Gmail"
-            style={{ gap: '6px', border: '1px solid rgba(234, 67, 53, 0.4)', color: '#fca5a5' }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '7px 14px',
+              borderRadius: '8px',
+              fontSize: '0.8rem',
+              fontWeight: '600',
+              background: 'rgba(234, 67, 53, 0.15)',
+              color: '#fca5a5',
+              border: '1px solid rgba(234, 67, 53, 0.3)',
+              cursor: 'pointer'
+            }}
+            title="Cấu hình thông báo Gmail"
           >
             <Mail size={14} color="#ea4335" /> Gmail Alert
           </button>
 
-          {/* Button Up Pro nếu đang dùng gói Free */}
+          {/* Button Up Pro nếu đang ở gói FREE */}
           {currentTier === 'FREE' && (
             <button
               onClick={onOpenPricing}
-              className="btn btn-primary btn-sm"
               style={{
-                background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)',
-                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
                 gap: '6px',
-                fontWeight: '700'
+                padding: '7px 14px',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                background: 'linear-gradient(135deg, #6c8eef 0%, #9d6ef5 100%)',
+                color: '#ffffff',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 0 16px rgba(108, 142, 239, 0.35)'
               }}
             >
-              <Zap size={14} color="#fff" /> Up Pro ⚡
+              <Zap size={14} /> Up Pro ⚡
             </button>
           )}
 
+          {/* User Account Info Bar */}
           {currentUser ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1e293b', padding: '4px 10px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                padding: '4px 10px',
+                borderRadius: '8px'
+              }}>
                 <img
-                  src={currentUser.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
+                  src={currentUser.avatar_url || 'https://lh3.googleusercontent.com/a/default-user=s96-c'}
                   alt={currentUser.name}
-                  style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
+                  style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
                 />
-                <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#fff' }}>{currentUser.name}</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#e2e5f0' }}>{currentUser.name}</span>
                 {getTierBadge()}
               </div>
 
               <button
                 onClick={onLogout}
-                className="btn btn-secondary btn-sm"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  color: '#7880a0',
+                  padding: '6px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
                 title="Đăng xuất"
               >
                 <LogOut size={14} />
@@ -161,12 +285,24 @@ export default function Navbar({
           ) : (
             <button
               onClick={onOpenAuth}
-              className="btn btn-primary btn-sm"
-              style={{ gap: '6px', background: 'linear-gradient(135deg, #ea4335 0%, #2563eb 100%)' }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 16px',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                background: 'linear-gradient(135deg, #ea4335 0%, #4285f4 100%)',
+                color: '#ffffff',
+                border: 'none',
+                cursor: 'pointer'
+              }}
             >
-              <Mail size={14} /> Đăng Nhập Gmail / Google
+              <Mail size={14} /> Đăng Nhập Google
             </button>
           )}
+
         </div>
 
       </div>

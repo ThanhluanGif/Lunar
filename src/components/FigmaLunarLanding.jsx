@@ -1,94 +1,149 @@
 import React, { useState } from 'react';
-import { Github, Sparkles, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Bot, Code, Cpu, Eye, Activity, RefreshCw, Check, Moon } from 'lucide-react';
+import { Github, Sparkles, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Bot, Code, Cpu, Eye, Activity, RefreshCw, Check, Moon, Layers, Terminal, ChevronRight, Play, Lock, UserCheck, HelpCircle } from 'lucide-react';
 
-export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitBot, onSelectDemoProject }) {
+export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitBot, onSelectDemoProject, onOpenPricing }) {
   // State for Interactive "Watch Lunar Work" Live Demo Editor
   const [demoState, setDemoState] = useState('before'); // 'before' | 'after'
   const [isAutoFixing, setIsAutoFixing] = useState(false);
+  const [selectedIssueIdx, setSelectedIssueIdx] = useState(0);
 
-  const beforeCode = `async function fetchUserData(userId) {
-  const res = await fetch('/api/users/' + userId)
-  const data = res.json()
-  
-  if (data.admin == true) {
-    executeAdminCommand(data.cmd)
-  }
-  
-  return data
-}`;
+  // Pricing State
+  const [billingCycle, setBillingCycle] = useState('monthly'); // 'monthly' | 'annual'
 
-  const afterCode = `async function fetchUserData(userId: string): Promise<UserData> {
-  const res = await fetch(\`/api/users/\${encodeURIComponent(userId)}\`)
-  if (!res.ok) throw new Error('Failed to fetch user')
-  
-  const data: UserData = await res.json()
-  
-  if (data.admin === true && isValidCmd(data.cmd)) {
-    await executeAdminCommandSanitized(data.cmd)
-  }
-  
-  return data
-}`;
+  // Dashboard Preview active repo state
+  const [activeRepoIdx, setActiveRepoIdx] = useState(0);
+
+  // Code Samples for Live Demo
+  const beforeCodeLines = [
+    { num: 1, text: 'async function fetchUserData(userId) {', type: 'neutral' },
+    { num: 2, text: '  const res = await fetch(\'/api/users/\' + userId)', type: 'remove' },
+    { num: 3, text: '  const data = res.json()', type: 'remove' },
+    { num: 4, text: '  ', type: 'neutral' },
+    { num: 5, text: '  if (data.admin == true) {', type: 'remove' },
+    { num: 6, text: '    executeAdminCommand(data.cmd)', type: 'remove' },
+    { num: 7, text: '  }', type: 'neutral' },
+    { num: 8, text: '  ', type: 'neutral' },
+    { num: 9, text: '  return data', type: 'neutral' },
+    { num: 10, text: '}', type: 'neutral' }
+  ];
+
+  const afterCodeLines = [
+    { num: 1, text: 'async function fetchUserData(userId: string): Promise<UserData> {', type: 'add' },
+    { num: 2, text: '  const res = await fetch(`/api/users/${encodeURIComponent(userId)}`)', type: 'add' },
+    { num: 3, text: '  if (!res.ok) throw new Error(\'Failed to fetch user\')', type: 'add' },
+    { num: 4, text: '  ', type: 'neutral' },
+    { num: 5, text: '  const data: UserData = await res.json()', type: 'add' },
+    { num: 6, text: '  ', type: 'neutral' },
+    { num: 7, text: '  if (data.admin === true && isValidCmd(data.cmd)) {', type: 'add' },
+    { num: 8, text: '    await executeAdminCommandSanitized(data.cmd)', type: 'add' },
+    { num: 9, text: '  }', type: 'neutral' },
+    { num: 10, text: '  return data', type: 'neutral' },
+    { num: 11, text: '}', type: 'neutral' }
+  ];
 
   const handleRunAutoFix = () => {
     setIsAutoFixing(true);
     setTimeout(() => {
       setDemoState('after');
       setIsAutoFixing(false);
-    }, 800);
+    }, 1200);
   };
 
   const aiIssues = [
-    { type: 'critical', title: 'Command Injection', line: 6, desc: 'Unsanitized cmd passed to executeAdminCommand', color: '#f87171' },
-    { type: 'critical', title: 'Missing await', line: 3, desc: 'res.json() returns a Promise — missing await', color: '#f87171' },
-    { type: 'warning', title: 'Express Csurf Middleware Usage', line: 8, desc: 'CWE-352: Thiếu middleware chống CSRF csurf', color: '#fbbf24' },
-    { type: 'warning', title: 'Node Postgres Sqli Triage', line: 38, desc: 'CWE-89: AI Verdict False Positive (10/10)', color: '#38bdf8' },
-    { type: 'info', title: 'Type Safety', line: 1, desc: 'Add TypeScript types for safety', color: '#34d399' }
-  ];
-
-  const connectedRepos = [
-    { name: 'frontend-app', lang: 'TypeScript', issues: '3 issues', score: 94, status: 'passing', color: '#34d399' },
-    { name: 'api-server-express', lang: 'Go / Node', issues: '7 issues', score: 81, status: 'reviewing', color: '#38bdf8' },
-    { name: 'auth-service', lang: 'Swift / TS', issues: '1 issues', score: 97, status: 'passing', color: '#34d399' },
-    { name: 'data-pipeline', lang: 'Python', issues: '12 issues', score: 68, status: 'failed', color: '#f87171' }
+    { type: 'error', label: 'Command Injection', line: 6, desc: 'Unsanitized cmd passed to executeAdminCommand', color: '#ef4444' },
+    { type: 'error', label: 'Missing await', line: 3, desc: 'res.json() returns a Promise — missing await', color: '#ef4444' },
+    { type: 'warning', label: 'Loose Equality', line: 5, desc: 'Use === instead of ==', color: '#f97316' },
+    { type: 'warning', label: 'No Error Handling', line: 2, desc: 'HTTP errors not checked before parsing', color: '#f97316' },
+    { type: 'info', label: 'Type Safety', line: 1, desc: 'Add TypeScript types for safety', color: '#6c8eef' }
   ];
 
   const capabilities = [
     {
-      icon: Sparkles,
-      color: '#c084fc',
-      title: 'AI Code Review & 5-Metric Score',
-      desc: 'Phân tích sâu ngữ nghĩa mã nguồn qua 5 khía cạnh độc lập: Naming, Architecture, Performance, Security & Readability.'
+      icon: '◎',
+      title: 'AI Code Review',
+      desc: 'Deep semantic analysis powered by LLMs. Lunar reads context across your entire codebase, not just the diff.',
+      color: '#6c8eef'
     },
     {
-      icon: RefreshCw,
-      color: '#38bdf8',
-      title: 'Auto-Fix Engine & PR Bot',
-      desc: 'Một chạm tự động tạo mã sửa lỗi safe code và tạo Pull Request chứa bản vá 1-Click trên GitHub.'
+      icon: '⟳',
+      title: 'Auto-Fix Engine',
+      desc: 'One-click fixes for detected issues. Lunar generates corrected code with explanations and opens a PR automatically.',
+      color: '#9d6ef5'
     },
     {
-      icon: Github,
-      color: '#6366f1',
-      title: 'GitHub CI/CD Integration',
-      desc: 'Tự động chạy quy trình kiểm tra bảo mật SAST mỗi khi có Push / Pull Request mới.'
+      icon: '◈',
+      title: 'GitHub Integration',
+      desc: 'Connects to any repo in seconds. Reviews run on every push, PR, and merge request — no config required.',
+      color: '#4fc3f7'
     },
     {
-      icon: ShieldCheck,
-      color: '#f87171',
-      title: 'OWASP Top 10 Security Scanning',
-      desc: 'Quét toàn bộ lỗ hổng SQLi, XSS, CSRF, Hardcoded Secrets, JWT Signature Failure & RCE.'
+      icon: '◇',
+      title: 'Security Scanning',
+      desc: 'OWASP Top 10, dependency vulnerabilities, secret leaks, and injection vectors detected before merge.',
+      color: '#f97316'
     },
     {
-      icon: Code,
-      color: '#34d399',
-      title: 'Code Patch Diff View',
-      desc: 'Giao diện xem đối sánh mã nguồn gốc RED BEFORE vs mã đã vá GREEN AFTER trực quan.'
+      icon: '▦',
+      title: 'Style Enforcement',
+      desc: "Learns your team's conventions from existing code. No .eslintrc required — Lunar adapts to you.",
+      color: '#22d3ee'
     },
     {
-      icon: Activity,
-      color: '#fbbf24',
-      title: 'White-Hat Cyber Community',
-      desc: 'Cộng đồng các chuyên gia an toàn thông tin thảo luận Zero-day, Pentest và chia sẻ kinh nghiệm phòng thủ.'
+      icon: '◉',
+      title: 'Team Analytics',
+      desc: 'Track code quality over time. See which authors, files, and issue types need the most attention.',
+      color: '#a3e635'
+    }
+  ];
+
+  const pricingPlans = [
+    {
+      id: 'FREE',
+      name: 'Gói Miễn Phí (Free)',
+      displayPrice: '0đ',
+      period: 'mãi mãi',
+      desc: 'Cơ Bản · Dành cho lập trình viên cá nhân',
+      features: [
+        '3 Lượt Quét Mã Nguồn / Ngày',
+        'Xem Điểm CVSS v3.1 Tổng Quan',
+        'Xem Đếm Số Lượng Lỗi (Critical/High)',
+        'Tham Gia Thảo Luận Cộng Đồng Cyber'
+      ],
+      cta: 'Đang Sử Dụng Gói Này',
+      highlight: false
+    },
+    {
+      id: 'PRO',
+      name: 'Gói Chuyên Nghiệp (Pro)',
+      displayPrice: '290.000đ',
+      period: '/ tháng',
+      desc: 'Khuyên Dùng · Mở khóa trọn bộ AI Fix Workbench',
+      features: [
+        'Không Giới Hạn Lượt Quét Mã Nguồn',
+        'Mở Khóa Chi Tiết Dòng Code & Line AI Warning',
+        'Bộ Công Cụ Vá Code Tự Động (AI Code Repair Workbench)',
+        'Side-by-Side Diff & Tinh Chỉnh Prompt AI Fix',
+        'Xuất Báo Cáo Audit PDF & Nhận Hóa Đơn Qua Gmail'
+      ],
+      cta: 'Nâng Cấp Gói Pro ⚡',
+      highlight: true,
+      popularLabel: '🔥 Phổ Biến Nhất'
+    },
+    {
+      id: 'ENTERPRISE',
+      name: 'Gói Enterprise Git Bot',
+      displayPrice: '690.000đ',
+      period: '/ tháng',
+      desc: 'Doanh Nghiệp / Bot · Tự động vá code trên GitHub',
+      features: [
+        'Tất cả tính năng của gói Pro',
+        'GitHub Security Bot Tự Động Tạo Pull Request',
+        'Tích Hợp Webhook & CI/CD Action Workflow',
+        'Tự Động Vá Lỗi Mã Nguồn Mỗi Khi Push Code',
+        'Hỗ Trợ Ưu Tiên 24/7 Qua Gmail Channel'
+      ],
+      cta: 'Mua Gói Enterprise Bot 🤖',
+      highlight: false
     }
   ];
 
@@ -97,407 +152,1072 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
       quote: 'Lunar caught a critical injection vulnerability in our payment service that had been sitting undetected for 8 months. The auto-fix PR was merged within 10 minutes.',
       name: 'Sarah Chen',
       role: 'Senior Engineer @ Stripe',
-      initials: 'SC'
+      avatar: 'SC',
+      color: '#6c8eef'
     },
     {
-      quote: 'We went from 6-hour manual reviews to 12-minute automated ones. Our team\'s velocity doubled in the first sprint alone.',
+      quote: "We went from 6-hour manual reviews to 12-minute automated ones. Our team's velocity doubled in the first sprint alone.",
       name: 'Marcus Reid',
       role: 'CTO @ Vercel',
-      initials: 'MR'
+      avatar: 'MR',
+      color: '#9d6ef5'
     },
     {
       quote: 'The GitHub integration is seamless. Every PR gets a thorough review before any human even looks at it. Our codebase quality score went from 61 to 94 in 3 months.',
       name: 'Priya Nair',
       role: 'Lead Developer @ Linear',
-      initials: 'PN'
+      avatar: 'PN',
+      color: '#4fc3f7'
     }
   ];
 
+  const connectedRepos = [
+    { name: 'acme-corp/frontend', lang: 'TypeScript', issues: 3, score: 94, status: 'passing' },
+    { name: 'acme-corp/api-server', lang: 'Go', issues: 7, score: 81, status: 'reviewing' },
+    { name: 'acme-corp/mobile-app', lang: 'Swift', issues: 1, score: 97, status: 'passing' },
+    { name: 'acme-corp/data-pipeline', lang: 'Python', issues: 12, score: 68, status: 'failed' }
+  ];
+
+  const selectedRepo = connectedRepos[activeRepoIdx];
+
   return (
-    <div style={{ maxWidth: '1240px', margin: '0 auto', paddingTop: '40px' }}>
+    <div style={{ background: '#07080f', color: '#e2e5f0', minHeight: '100vh', overflowX: 'hidden', position: 'relative' }}>
       
-      {/* SECTION 1: HERO */}
-      <div style={{ textAlign: 'center', marginBottom: '80px', position: 'relative' }}>
-        
-        {/* Hero Announcement Pill */}
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
-          <div className="badge badge-purple" style={{ padding: '6px 16px', fontSize: '0.82rem', borderRadius: '999px' }}>
-            <Sparkles size={14} color="#c084fc" />
-            <span>✦ Lunar.dev AI Engine v2.0 • Code review that fixes itself</span>
-          </div>
-        </div>
+      {/* Ambient Glowing Background Orbs */}
+      <div style={{ position: 'absolute', top: '10%', left: '20%', width: '600px', height: '600px', borderRadius: '50%', background: '#6c8eef', filter: 'blur(160px)', opacity: 0.12, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: '40%', right: '10%', width: '500px', height: '500px', borderRadius: '50%', background: '#9d6ef5', filter: 'blur(150px)', opacity: 0.12, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: '70%', left: '40%', width: '450px', height: '450px', borderRadius: '50%', background: '#4fc3f7', filter: 'blur(140px)', opacity: 0.1, pointerEvents: 'none' }} />
 
-        {/* Hero Main Headline */}
-        <h1 style={{
-          fontFamily: 'var(--font-heading)',
-          fontSize: '4.2rem',
-          fontWeight: '800',
-          letterSpacing: '-0.035em',
-          lineHeight: '1.1',
-          marginBottom: '20px',
-          color: '#ffffff'
-        }}>
-          Code review that <span className="gradient-text">fixes itself</span>
-        </h1>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 24px' }}>
 
-        {/* Hero Subtitle */}
-        <p style={{
-          fontSize: '1.15rem',
-          color: 'var(--text-secondary)',
-          maxWidth: '720px',
-          margin: '0 auto 36px auto',
-          lineHeight: '1.65'
-        }}>
-          Lunar connects to your GitHub repos, reviews every PR with AI, and opens auto-fix pull requests — so your team ships faster with fewer bugs.
-        </p>
-
-        {/* Hero CTA Buttons */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '56px' }}>
-          <button
-            onClick={onOpenAuth}
-            className="btn btn-primary"
-            style={{ padding: '14px 28px', fontSize: '1rem', borderRadius: '999px' }}
-          >
-            <Github size={18} />
-            Connect GitHub — it's free
-          </button>
-
-          <button
-            onClick={onOpenSubmit}
-            className="btn btn-secondary"
-            style={{ padding: '14px 28px', fontSize: '1rem', borderRadius: '999px' }}
-          >
-            View live demo →
-          </button>
-        </div>
-
-        {/* Hero 3 Stat Cards */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '20px',
-          maxWidth: '800px',
-          margin: '0 auto'
-        }}>
-          <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: '#ffffff', lineHeight: 1.1 }}>
-              14.2M
-            </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Lines reviewed
-            </div>
-          </div>
-
-          <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: 'var(--accent-purple)', lineHeight: 1.1 }}>
-              98,000+
-            </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Bugs fixed
-            </div>
-          </div>
-
-          <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '2.4rem', fontWeight: '800', color: 'var(--accent-cyan)', lineHeight: 1.1 }}>
-              4.3 min
-            </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Avg review time
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* SECTION 2: LIVE DEMO "Watch Lunar work" */}
-      <div style={{ marginBottom: '100px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div className="badge badge-purple" style={{ marginBottom: '12px' }}>
-            Live Demo
-          </div>
-
-          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.6rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em', marginBottom: '10px' }}>
-            Watch Lunar work
-          </h2>
-
-          <p style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>
-            Real issues found in a real function. Click "Auto-fix" to see Lunar repair it.
-          </p>
-        </div>
-
-        {/* Interactive Editor + AI Analysis Container */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-          gap: '24px',
-          alignItems: 'start'
-        }}>
+        {/* ---------------------------------------------------- */}
+        {/* SECTION 1: HERO */}
+        {/* ---------------------------------------------------- */}
+        <section style={{ minHeight: '85vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', paddingTop: '100px', paddingBottom: '80px', position: 'relative' }}>
           
-          {/* Left Window: Code Editor */}
-          <div className="glass-panel" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+          {/* Announcement Pill */}
+          <div style={{ marginBottom: '24px' }}>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 16px',
+              borderRadius: '9999px',
+              fontSize: '0.78rem',
+              fontWeight: '600',
+              letterSpacing: '0.03em',
+              background: 'rgba(157, 110, 245, 0.12)',
+              color: '#c084fc',
+              border: '1px solid rgba(157, 110, 245, 0.3)'
+            }}>
+              <span>✦</span> Now with GPT-4o · Auto-fix v3.0
+            </span>
+          </div>
+
+          {/* Main Hero Headline */}
+          <h1 style={{
+            fontFamily: 'var(--font-heading)',
+            fontSize: 'calc(2.6rem + 2.5vw)',
+            fontWeight: '900',
+            lineHeight: '1.08',
+            letterSpacing: '-0.035em',
+            maxWidth: '920px',
+            marginBottom: '24px',
+            color: '#e2e5f0'
+          }}>
+            Code review that{' '}
+            <span style={{
+              background: 'linear-gradient(135deg, #6c8eef 0%, #9d6ef5 50%, #4fc3f7 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}>
+              fixes itself
+            </span>
+          </h1>
+
+          {/* Hero Subtitle */}
+          <p style={{
+            fontSize: '1.15rem',
+            lineHeight: '1.65',
+            color: '#7880a0',
+            maxWidth: '680px',
+            marginBottom: '40px'
+          }}>
+            Lunar connects to your GitHub repos, reviews every PR with AI, and opens auto-fix pull requests — so your team ships faster with fewer bugs.
+          </p>
+
+          {/* Hero CTAs */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'center', alignItems: 'center', marginBottom: '64px' }}>
+            <button
+              onClick={onOpenAuth}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '14px 28px',
+                borderRadius: '12px',
+                fontSize: '0.92rem',
+                fontWeight: '700',
+                background: 'linear-gradient(135deg, #6c8eef 0%, #9d6ef5 100%)',
+                color: '#ffffff',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 0 32px rgba(108, 142, 239, 0.4)',
+                transition: 'transform 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.04)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1.0)'}
+            >
+              <Github size={18} />
+              Connect GitHub — it's free
+            </button>
+
+            <button
+              onClick={onOpenSubmit}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '14px 28px',
+                borderRadius: '12px',
+                fontSize: '0.92rem',
+                fontWeight: '600',
+                background: 'rgba(255, 255, 255, 0.04)',
+                color: '#a0a8c0',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                cursor: 'pointer',
+                transition: 'background 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'}
+            >
+              View live demo →
+            </button>
+          </div>
+
+          {/* 3 Metric Stat Cards */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '16px',
+            maxWidth: '560px',
+            width: '100%'
+          }}>
+            {[
+              { val: '14.2M', label: 'Lines reviewed' },
+              { val: '98,000+', label: 'Bugs fixed' },
+              { val: '4.3 min', label: 'Avg review time' }
+            ].map((stat, idx) => (
+              <div key={idx} style={{
+                background: 'rgba(255, 255, 255, 0.025)',
+                border: '1px solid rgba(255, 255, 255, 0.07)',
+                borderRadius: '12px',
+                padding: '16px',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#e2e5f0', marginBottom: '4px' }}>
+                  {stat.val}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#4a5070' }}>
+                  {stat.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+
+        {/* ---------------------------------------------------- */}
+        {/* SECTION 2: CAPABILITIES GRID */}
+        {/* ---------------------------------------------------- */}
+        <section style={{ padding: '100px 0' }}>
+          <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+            <span style={{
+              display: 'inline-block',
+              padding: '4px 14px',
+              borderRadius: '9999px',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              background: 'rgba(108, 142, 239, 0.12)',
+              color: '#6c8eef',
+              border: '1px solid rgba(108, 142, 239, 0.25)',
+              marginBottom: '16px'
+            }}>
+              Capabilities
+            </span>
+
+            <h2 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#e2e5f0', letterSpacing: '-0.02em', marginBottom: '12px' }}>
+              Everything your code needs
+            </h2>
             
-            {/* Editor Header Bar */}
+            <p style={{ fontSize: '1rem', color: '#7880a0', maxWidth: '520px', margin: '0 auto' }}>
+              Built for teams that ship fast and can't afford to compromise on quality.
+            </p>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gap: '20px'
+          }}>
+            {capabilities.map((cap, idx) => (
+              <div key={idx} style={{
+                background: 'rgba(255, 255, 255, 0.02)',
+                border: '1px solid rgba(255, 255, 255, 0.07)',
+                borderRadius: '16px',
+                padding: '28px',
+                transition: 'all 0.3s ease',
+                cursor: 'default'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.07)';
+              }}
+              >
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: `${cap.color}18`,
+                  border: `1px solid ${cap.color}35`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.25rem',
+                  color: cap.color,
+                  marginBottom: '20px'
+                }}>
+                  {cap.icon}
+                </div>
+
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#e2e5f0', marginBottom: '8px' }}>
+                  {cap.title}
+                </h3>
+
+                <p style={{ fontSize: '0.88rem', color: '#6a7090', lineHeight: '1.6' }}>
+                  {cap.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+
+        {/* ---------------------------------------------------- */}
+        {/* SECTION 3: LIVE INTERACTIVE DEMO "Watch Lunar work" */}
+        {/* ---------------------------------------------------- */}
+        <section style={{ padding: '100px 0' }}>
+          <div style={{ textAlign: 'center', marginBottom: '50px' }}>
+            <span style={{
+              display: 'inline-block',
+              padding: '4px 14px',
+              borderRadius: '9999px',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              background: 'rgba(157, 110, 245, 0.12)',
+              color: '#9d6ef5',
+              border: '1px solid rgba(157, 110, 245, 0.25)',
+              marginBottom: '16px'
+            }}>
+              Live Demo
+            </span>
+
+            <h2 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#e2e5f0', letterSpacing: '-0.02em', marginBottom: '12px' }}>
+              Watch Lunar work
+            </h2>
+
+            <p style={{ fontSize: '1rem', color: '#7880a0' }}>
+              Real issues found in a real function. Click "Auto-fix" to see Lunar repair it.
+            </p>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) 340px',
+            gap: '20px',
+            alignItems: 'start'
+          }}>
+            
+            {/* Left Box: Code Window */}
             <div style={{
-              background: '#0d111a',
-              padding: '12px 18px',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+              background: '#090b18',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '16px',
+              overflow: 'hidden'
+            }}>
+              {/* Window Bar */}
+              <div style={{
+                background: '#0d0f1e',
+                padding: '12px 18px',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }} />
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f97316' }} />
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e' }} />
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#3a3f60', marginLeft: '8px' }}>
+                    userService.ts
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    onClick={() => setDemoState('before')}
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: '600',
+                      background: demoState === 'before' ? 'rgba(108, 142, 239, 0.18)' : 'transparent',
+                      color: demoState === 'before' ? '#6c8eef' : '#3a3f60',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Before
+                  </button>
+
+                  <button
+                    onClick={() => setDemoState('after')}
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: '600',
+                      background: demoState === 'after' ? 'rgba(34, 197, 94, 0.18)' : 'transparent',
+                      color: demoState === 'after' ? '#86efac' : '#3a3f60',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    After fix
+                  </button>
+                </div>
+              </div>
+
+              {/* Code Diff Display */}
+              <div style={{ padding: '16px 0', fontFamily: 'var(--font-mono)', fontSize: '0.84rem', lineHeight: '1.65' }}>
+                {(demoState === 'before' ? beforeCodeLines : afterCodeLines).map((line, i) => {
+                  const bg = line.type === 'add' ? 'rgba(34, 197, 94, 0.08)' : line.type === 'remove' ? 'rgba(239, 68, 68, 0.08)' : 'transparent';
+                  const symbol = line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' ';
+                  const textColor = line.type === 'add' ? '#86efac' : line.type === 'remove' ? '#fca5a5' : '#a0a8c0';
+                  
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: '16px', padding: '2px 20px', background: bg }}>
+                      <span style={{ width: '24px', textAlign: 'right', color: '#3a3f60', userSelect: 'none', shrink: 0 }}>
+                        {line.num}
+                      </span>
+                      <span style={{ width: '12px', color: textColor, userSelect: 'none', shrink: 0 }}>
+                        {symbol}
+                      </span>
+                      <span style={{ color: textColor, whiteSpace: 'pre' }}>
+                        {line.text}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Action Bar */}
+              <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', background: '#070812' }}>
+                <button
+                  onClick={handleRunAutoFix}
+                  disabled={isAutoFixing || demoState === 'after'}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)',
+                    color: '#ffffff',
+                    border: 'none',
+                    cursor: demoState === 'after' ? 'default' : 'pointer',
+                    opacity: demoState === 'after' ? 0.6 : 1
+                  }}
+                >
+                  {isAutoFixing ? 'Applying fix…' : demoState === 'after' ? '✓ Fix applied' : '⚡ Auto-fix all issues'}
+                </button>
+              </div>
+            </div>
+
+            {/* Right Box: AI Analysis Issues Panel */}
+            <div style={{
+              background: '#090b18',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '16px',
+              padding: '20px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <span style={{ fontSize: '0.92rem', fontWeight: '700', color: '#e2e5f0' }}>
+                  AI Analysis
+                </span>
+                <span style={{ fontSize: '0.78rem', fontWeight: '700', fontFamily: 'var(--font-mono)', color: demoState === 'after' ? '#22c55e' : '#ef4444' }}>
+                  {demoState === 'after' ? '0 issues' : `${aiIssues.length} issues`}
+                </span>
+              </div>
+
+              {/* Issue list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                {aiIssues.map((issue, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => setSelectedIssueIdx(idx)}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${issue.color}25`,
+                      background: `${issue.color}08`,
+                      cursor: 'pointer',
+                      opacity: demoState === 'after' ? 0.35 : 1,
+                      textDecoration: demoState === 'after' ? 'line-through' : 'none'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: issue.color }} />
+                      <span style={{ fontSize: '0.82rem', fontWeight: '700', color: issue.color }}>
+                        {issue.label}
+                      </span>
+                      <span style={{ fontSize: '0.74rem', color: '#3a3f60', marginLeft: 'auto' }}>
+                        line {issue.line}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.78rem', color: '#7880a0', lineHeight: '1.4' }}>
+                      {issue.desc}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Lunar Recommendation Box */}
+              <div style={{
+                background: 'rgba(108, 142, 239, 0.06)',
+                border: '1px solid rgba(108, 142, 239, 0.18)',
+                borderRadius: '10px',
+                padding: '12px',
+                fontSize: '0.78rem',
+                lineHeight: '1.5'
+              }}>
+                <div style={{ fontWeight: '700', color: '#6c8eef', marginBottom: '2px' }}>
+                  Lunar suggests:
+                </div>
+                <div style={{ color: '#7880a0' }}>
+                  {aiIssues[selectedIssueIdx].type === 'error'
+                    ? 'This is a critical vulnerability. Lunar can generate a safe replacement with input sanitization and try-catch boundaries.'
+                    : 'A quick refactor following best practices. Lunar can apply this change across your entire codebase.'}
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+
+        {/* ---------------------------------------------------- */}
+        {/* SECTION 4: GITHUB INTEGRATION */}
+        {/* ---------------------------------------------------- */}
+        <section style={{ padding: '100px 0' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '60px',
+            alignItems: 'center'
+          }}>
+            <div>
+              <span style={{
+                display: 'inline-block',
+                padding: '4px 14px',
+                borderRadius: '9999px',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                background: 'rgba(79, 195, 247, 0.12)',
+                color: '#4fc3f7',
+                border: '1px solid rgba(79, 195, 247, 0.25)',
+                marginBottom: '16px'
+              }}>
+                GitHub Integration
+              </span>
+
+              <h2 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#e2e5f0', letterSpacing: '-0.02em', marginBottom: '16px' }}>
+                Connect in 30 seconds
+              </h2>
+
+              <p style={{ fontSize: '1rem', color: '#7880a0', lineHeight: '1.65', marginBottom: '32px' }}>
+                OAuth with GitHub. Select your repos. Lunar handles the rest — webhooks, CI checks, PR comments, and auto-fix branches are all configured automatically.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '36px' }}>
+                {[
+                  { icon: '◎', text: 'OAuth 2.0 — no passwords stored' },
+                  { icon: '◈', text: 'Fine-grained repo permissions' },
+                  { icon: '⟳', text: 'Automatic webhook setup' },
+                  { icon: '◇', text: 'Works with GitHub.com and Enterprise' }
+                ].map((item, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem', color: '#a0a8c0' }}>
+                    <span style={{ color: '#4fc3f7', fontWeight: 'bold' }}>{item.icon}</span>
+                    <span>{item.text}</span>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={onOpenAuth}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '14px 24px',
+                  borderRadius: '12px',
+                  fontSize: '0.9rem',
+                  fontWeight: '700',
+                  background: '#161b22',
+                  color: '#e2e5f0',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  cursor: 'pointer'
+                }}
+              >
+                <Github size={18} />
+                Connect with GitHub
+              </button>
+            </div>
+
+            {/* Repos status mock container */}
+            <div style={{
+              background: '#090b18',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '16px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                background: '#0d0f1e',
+                padding: '12px 18px',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Github size={16} color="#4a5070" />
+                  <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#e2e5f0' }}>acme-corp</span>
+                </div>
+                <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '9999px', background: 'rgba(34, 197, 94, 0.12)', color: '#86efac' }}>
+                  connected
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {connectedRepos.map((repo, idx) => (
+                  <div key={idx} style={{
+                    padding: '16px 20px',
+                    borderBottom: idx < connectedRepos.length - 1 ? '1px solid rgba(255, 255, 255, 0.04)' : 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', fontWeight: '700', color: '#e2e5f0', marginBottom: '2px' }}>
+                        {repo.name.split('/')[1]}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#3a3f60' }}>
+                        {repo.lang} · <span style={{ color: repo.issues > 5 ? '#f97316' : '#7880a0' }}>{repo.issues} issues</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '50px', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '999px', overflow: 'hidden' }}>
+                          <div style={{ width: `${repo.score}%`, height: '100%', background: repo.score >= 90 ? '#22d3ee' : repo.score >= 80 ? '#6c8eef' : '#ef4444' }} />
+                        </div>
+                        <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', fontWeight: '700', color: repo.score >= 90 ? '#22d3ee' : '#6c8eef' }}>
+                          {repo.score}
+                        </span>
+                      </div>
+
+                      <span style={{ fontSize: '0.72rem', color: repo.status === 'passing' ? '#22c55e' : repo.status === 'reviewing' ? '#6c8eef' : '#ef4444' }}>
+                        ● {repo.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        {/* ---------------------------------------------------- */}
+        {/* SECTION 5: DASHBOARD COMMAND CENTER PREVIEW */}
+        {/* ---------------------------------------------------- */}
+        <section style={{ padding: '100px 0' }}>
+          <div style={{ textAlign: 'center', marginBottom: '50px' }}>
+            <span style={{
+              display: 'inline-block',
+              padding: '4px 14px',
+              borderRadius: '9999px',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              background: 'rgba(108, 142, 239, 0.12)',
+              color: '#6c8eef',
+              border: '1px solid rgba(108, 142, 239, 0.25)',
+              marginBottom: '16px'
+            }}>
+              Dashboard
+            </span>
+
+            <h2 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#e2e5f0', letterSpacing: '-0.02em' }}>
+              Your command center
+            </h2>
+          </div>
+
+          <div style={{
+            background: '#090b18',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '16px',
+            overflow: 'hidden'
+          }}>
+            {/* Top Bar */}
+            <div style={{
+              background: '#0d0f1e',
+              padding: '14px 20px',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f87171' }} />
-                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#fbbf24' }} />
-                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#34d399' }} />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--text-secondary)', marginLeft: '12px' }}>
-                  userService.ts
+                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }} />
+                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f97316' }} />
+                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e' }} />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#3a3f60', marginLeft: '8px' }}>
+                  lunar.app / dashboard
                 </span>
               </div>
 
-              {/* Before / After Fix Toggle Pills */}
-              <div style={{ background: 'rgba(255, 255, 255, 0.06)', padding: '3px', borderRadius: '6px', display: 'flex', gap: '4px' }}>
-                <button
-                  onClick={() => setDemoState('before')}
-                  style={{
-                    background: demoState === 'before' ? 'rgba(124, 58, 237, 0.4)' : 'transparent',
-                    border: 'none',
-                    color: demoState === 'before' ? '#ffffff' : 'var(--text-secondary)',
-                    fontSize: '0.78rem',
-                    fontWeight: '600',
-                    padding: '4px 10px',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Before
-                </button>
-                <button
-                  onClick={() => setDemoState('after')}
-                  style={{
-                    background: demoState === 'after' ? 'rgba(52, 211, 153, 0.3)' : 'transparent',
-                    border: 'none',
-                    color: demoState === 'after' ? '#ffffff' : 'var(--text-secondary)',
-                    fontSize: '0.78rem',
-                    fontWeight: '600',
-                    padding: '4px 10px',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  After fix
-                </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)' }} />
+                <span style={{ fontSize: '0.78rem', color: '#4a5070' }}>acme-corp</span>
               </div>
             </div>
 
-            {/* Code Editor Body */}
-            <div style={{
-              background: '#080b12',
-              padding: '20px',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.85rem',
-              lineHeight: '1.6',
-              color: demoState === 'before' ? '#e2e8f0' : '#6ee7b7',
-              minHeight: '260px',
-              overflowX: 'auto'
-            }}>
-              {(demoState === 'before' ? beforeCode : afterCode).split('\n').map((line, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: '16px' }}>
-                  <span style={{ color: 'var(--text-muted)', width: '24px', textAlign: 'right', userSelect: 'none' }}>
-                    {idx + 1}
-                  </span>
-                  <span style={{ whiteSpace: 'pre' }}>{line}</span>
+            {/* Dashboard Content Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', minHeight: '320px' }}>
+              {/* Repos Sidebar */}
+              <div style={{ borderRight: '1px solid rgba(255, 255, 255, 0.05)', padding: '16px 12px' }}>
+                <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '12px', paddingLeft: '8px' }}>
+                  Repositories
                 </div>
-              ))}
-            </div>
 
-            {/* Bottom Auto-Fix Action Bar */}
-            <div style={{ padding: '16px', background: '#0a0d16', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
-              <button
-                onClick={handleRunAutoFix}
-                className="btn btn-primary"
-                disabled={isAutoFixing}
-                style={{ width: '100%', padding: '12px' }}
-              >
-                <Zap size={16} />
-                {isAutoFixing ? 'Fixing with Lunar AI...' : '⚡ Auto-fix all issues'}
-              </button>
-            </div>
+                {connectedRepos.map((r, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveRepoIdx(i)}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      textAlign: 'left',
+                      background: activeRepoIdx === i ? 'rgba(108, 142, 239, 0.12)' : 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      marginBottom: '4px'
+                    }}
+                  >
+                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: r.status === 'passing' ? '#22c55e' : r.status === 'reviewing' ? '#6c8eef' : '#ef4444' }} />
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: activeRepoIdx === i ? '#a0b8ef' : '#4a5070', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                      {r.name.split('/')[1]}
+                    </span>
+                  </button>
+                ))}
+              </div>
 
+              {/* Main Panel */}
+              <div style={{ padding: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#e2e5f0' }}>{selectedRepo.name}</h3>
+                    <p style={{ fontSize: '0.78rem', color: '#3a3f60' }}>{selectedRepo.lang}</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#3a3f60' }}>Score</span>
+                    <span style={{ fontSize: '1.2rem', fontFamily: 'var(--font-mono)', fontWeight: '800', color: '#22d3ee' }}>{selectedRepo.score}</span>
+                  </div>
+                </div>
+
+                {/* 3 Metric cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '24px' }}>
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '1.3rem', fontWeight: '800', color: selectedRepo.issues > 5 ? '#f97316' : '#6c8eef' }}>{selectedRepo.issues}</div>
+                    <div style={{ fontSize: '0.72rem', color: '#3a3f60' }}>Issues detected</div>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#6c8eef' }}>24</div>
+                    <div style={{ fontSize: '0.72rem', color: '#3a3f60' }}>PRs reviewed</div>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#22d3ee' }}>18</div>
+                    <div style={{ fontSize: '0.72rem', color: '#3a3f60' }}>Auto-fixes merged</div>
+                  </div>
+                </div>
+
+                {/* Recent Reviews Feed */}
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#2a3050', marginBottom: '12px' }}>
+                    Recent Reviews
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {[
+                      { pr: '#142', title: 'feat: add user authentication', time: '2 min ago', status: 'failed', color: '#ef4444' },
+                      { pr: '#141', title: 'fix: resolve memory leak in cache', time: '18 min ago', status: 'passing', color: '#22c55e' },
+                      { pr: '#140', title: 'refactor: modularize API layer', time: '1 hr ago', status: 'reviewing', color: '#6c8eef' }
+                    ].map((item, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#3a3f60' }}>{item.pr}</span>
+                        <span style={{ fontSize: '0.8rem', color: '#8890b0', flex: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{item.title}</span>
+                        <span style={{ fontSize: '0.74rem', color: '#3a3f60' }}>{item.time}</span>
+                        <span style={{ fontSize: '0.74rem', color: item.color }}>● {item.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        {/* ---------------------------------------------------- */}
+        {/* SECTION 6: PRICING (TIẾNG VIỆT CHUẨN) */}
+        {/* ---------------------------------------------------- */}
+        <section style={{ padding: '100px 0' }}>
+          <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+            <span style={{
+              display: 'inline-block',
+              padding: '4px 14px',
+              borderRadius: '9999px',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              background: 'rgba(157, 110, 245, 0.12)',
+              color: '#9d6ef5',
+              border: '1px solid rgba(157, 110, 245, 0.25)',
+              marginBottom: '16px'
+            }}>
+              Bảng Giá Lunar.dev
+            </span>
+
+            <h2 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#e2e5f0', letterSpacing: '-0.02em', marginBottom: '12px' }}>
+              Nâng Cấp Quyền Hạn Lunar AI
+            </h2>
+
+            <p style={{ fontSize: '1.05rem', fontWeight: '600', color: '#6c8eef', marginBottom: '6px' }}>
+              Chọn Gói Cước Phù Hợp Với Bạn
+            </p>
+            <p style={{ fontSize: '0.92rem', color: '#7880a0', marginBottom: '24px' }}>
+              Mở khóa tính năng Tự Động Vá Lỗi Mã Nguồn & GitHub Security Bot
+            </p>
           </div>
 
-          {/* Right Column: AI Analysis Issues Panel */}
-          <div className="glass-panel" style={{ padding: '20px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: '#ffffff' }}>
-                Lunar AI Analysis
-              </h3>
-              <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#f87171', fontFamily: 'var(--font-mono)' }}>
-                {demoState === 'before' ? '5 issues' : '0 issues (Verified)'}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
-              {aiIssues.map((issue, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    border: `1px solid ${issue.color}44`,
-                    borderRadius: 'var(--radius-sm)',
-                    padding: '12px',
-                    opacity: demoState === 'after' ? 0.4 : 1,
-                    textDecoration: demoState === 'after' ? 'line-through' : 'none'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: issue.color }} />
-                      <span style={{ fontWeight: '700', fontSize: '0.88rem', color: '#ffffff' }}>
-                        {issue.title}
-                      </span>
-                    </div>
-                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                      line {issue.line}
+          {/* Pricing Cards Grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: '20px',
+            alignItems: 'stretch'
+          }}>
+            {pricingPlans.map((plan, idx) => (
+              <div
+                key={idx}
+                style={{
+                  position: 'relative',
+                  background: plan.highlight ? 'linear-gradient(145deg, rgba(108, 142, 239, 0.12), rgba(157, 110, 245, 0.08))' : 'rgba(255, 255, 255, 0.025)',
+                  border: plan.highlight ? '1px solid rgba(108, 142, 239, 0.35)' : '1px solid rgba(255, 255, 255, 0.07)',
+                  boxShadow: plan.highlight ? '0 0 60px rgba(108, 142, 239, 0.1)' : 'none',
+                  borderRadius: '20px',
+                  padding: '32px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between'
+                }}
+              >
+                {plan.highlight && (
+                  <div style={{ position: 'absolute', top: '-14px', left: '50%', transform: 'translateX(-50%)' }}>
+                    <span style={{
+                      padding: '4px 16px',
+                      borderRadius: '9999px',
+                      fontSize: '0.75rem',
+                      fontWeight: '700',
+                      background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)',
+                      color: '#ffffff',
+                      boxShadow: '0 4px 12px rgba(108,142,239,0.3)'
+                    }}>
+                      {plan.popularLabel || '🔥 Phổ Biến Nhất'}
                     </span>
                   </div>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', paddingLeft: '16px' }}>
-                    {issue.desc}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* AI Suggestion Banner */}
-            <div style={{
-              background: 'rgba(124, 58, 237, 0.1)',
-              border: '1px solid rgba(124, 58, 237, 0.3)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '12px 14px',
-              fontSize: '0.82rem',
-              color: '#c084fc',
-              lineHeight: '1.5'
-            }}>
-              <strong>Lunar suggests:</strong> This is a critical issue. Lunar can generate a secure replacement with proper sanitization and error boundaries.
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      {/* SECTION 3: CAPABILITIES */}
-      <div style={{ marginBottom: '100px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <div className="badge badge-purple" style={{ marginBottom: '14px' }}>
-            Lunar Capabilities
-          </div>
-
-          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.8rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em', marginBottom: '12px' }}>
-            Everything your code needs
-          </h2>
-
-          <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)' }}>
-            Built for teams that ship fast and can't afford to compromise on quality.
-          </p>
-        </div>
-
-        {/* 6 Capabilities Cards Grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '24px'
-        }}>
-          {capabilities.map((item, idx) => {
-            const IconComponent = item.icon;
-            return (
-              <div key={idx} className="glass-card" style={{ padding: '28px' }}>
-                <div style={{
-                  width: '42px',
-                  height: '42px',
-                  borderRadius: '10px',
-                  background: `${item.color}22`,
-                  border: `1px solid ${item.color}44`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: '20px'
-                }}>
-                  <IconComponent size={20} color={item.color} />
-                </div>
-
-                <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: '#ffffff', marginBottom: '10px' }}>
-                  {item.title}
-                </h3>
-
-                <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-                  {item.desc}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* SECTION 4: TESTIMONIALS */}
-      <div style={{ marginBottom: '80px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <div className="badge badge-purple" style={{ marginBottom: '14px' }}>
-            Testimonials
-          </div>
-
-          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.8rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>
-            Trusted by engineering teams
-          </h2>
-        </div>
-
-        {/* 3 Testimonials Cards Grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '24px'
-        }}>
-          {testimonials.map((test, idx) => (
-            <div key={idx} className="glass-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <span style={{ fontSize: '1.8rem', color: 'var(--accent-purple)', lineHeight: 1, display: 'block', marginBottom: '16px' }}>
-                  “
-                </span>
-
-                <p style={{ fontSize: '0.92rem', color: 'var(--text-primary)', lineHeight: '1.65', marginBottom: '24px' }}>
-                  {test.quote}
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  background: 'rgba(124, 58, 237, 0.2)',
-                  border: '1px solid rgba(167, 139, 250, 0.4)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '0.8rem',
-                  fontWeight: '700',
-                  color: '#c084fc'
-                }}>
-                  {test.initials}
-                </div>
+                )}
 
                 <div>
-                  <div style={{ fontWeight: '700', fontSize: '0.92rem', color: '#ffffff' }}>
-                    {test.name}
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#e2e5f0', marginBottom: '6px' }}>
+                    {plan.name}
+                  </h3>
+                  <p style={{ fontSize: '0.82rem', color: '#7880a0', marginBottom: '20px' }}>
+                    {plan.desc}
+                  </p>
+
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '24px' }}>
+                    <span style={{ fontSize: '2.4rem', fontWeight: '900', color: '#e2e5f0', letterSpacing: '-0.03em' }}>
+                      {plan.displayPrice}
+                    </span>
+                    <span style={{ fontSize: '0.88rem', color: '#4a5070' }}>{plan.period}</span>
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                    {test.role}
+
+                  <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '32px' }}>
+                    {plan.features.map((feat, i) => (
+                      <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.88rem', color: '#a0a8c0' }}>
+                        <span style={{ color: '#6c8eef', fontWeight: 'bold' }}>✓</span>
+                        <span>{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <button
+                  onClick={() => onOpenPricing && onOpenPricing(plan.id)}
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    borderRadius: '12px',
+                    fontSize: '0.88rem',
+                    fontWeight: '700',
+                    background: plan.highlight ? 'linear-gradient(135deg, #6c8eef, #9d6ef5)' : 'rgba(255, 255, 255, 0.05)',
+                    color: plan.highlight ? '#ffffff' : '#a0a8c0',
+                    border: plan.highlight ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
+                    cursor: 'pointer',
+                    boxShadow: plan.highlight ? '0 0 24px rgba(108, 142, 239, 0.3)' : 'none'
+                  }}
+                >
+                  {plan.cta}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
+            <span style={{ fontSize: '0.78rem', color: '#3a3f60' }}>Secured by</span>
+            {['Stripe', 'Visa', 'Mastercard', 'PayPal'].map((brand, idx) => (
+              <span key={idx} style={{ fontSize: '0.78rem', fontWeight: '700', color: '#3a3f60' }}>
+                {brand}
+              </span>
+            ))}
+          </div>
+        </section>
+
+
+        {/* ---------------------------------------------------- */}
+        {/* SECTION 7: TESTIMONIALS */}
+        {/* ---------------------------------------------------- */}
+        <section style={{ padding: '100px 0' }}>
+          <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+            <span style={{
+              display: 'inline-block',
+              padding: '4px 14px',
+              borderRadius: '9999px',
+              fontSize: '0.75rem',
+              fontWeight: '700',
+              background: 'rgba(108, 142, 239, 0.12)',
+              color: '#6c8eef',
+              border: '1px solid rgba(108, 142, 239, 0.25)',
+              marginBottom: '16px'
+            }}>
+              Testimonials
+            </span>
+
+            <h2 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#e2e5f0', letterSpacing: '-0.02em' }}>
+              Trusted by engineering teams
+            </h2>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gap: '20px'
+          }}>
+            {testimonials.map((test, idx) => (
+              <div key={idx} style={{
+                background: 'rgba(255, 255, 255, 0.02)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '16px',
+                padding: '28px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between'
+              }}>
+                <div>
+                  <div style={{ fontSize: '2rem', color: test.color, marginBottom: '16px', lineHeight: 1 }}>
+                    ❝
+                  </div>
+                  <p style={{ fontSize: '0.9rem', color: '#8890b0', lineHeight: '1.65', marginBottom: '24px' }}>
+                    {test.quote}
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    background: `${test.color}20`,
+                    color: test.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.8rem',
+                    fontWeight: '800'
+                  }}>
+                    {test.avatar}
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#e2e5f0' }}>{test.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#3a3f60' }}>{test.role}</div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
+            ))}
+          </div>
+        </section>
 
+
+        {/* ---------------------------------------------------- */}
+        {/* SECTION 8: BOTTOM CTA BANNER & FOOTER */}
+        {/* ---------------------------------------------------- */}
+        <section style={{ padding: '100px 0 60px 0', textAlign: 'center', position: 'relative' }}>
+          <div style={{
+            background: 'linear-gradient(145deg, rgba(108, 142, 239, 0.1), rgba(157, 110, 245, 0.05))',
+            border: '1px solid rgba(108, 142, 239, 0.25)',
+            borderRadius: '24px',
+            padding: '64px 32px',
+            maxWidth: '800px',
+            margin: '0 auto 100px auto'
+          }}>
+            <h2 style={{ fontSize: '2.6rem', fontWeight: '900', color: '#e2e5f0', letterSpacing: '-0.03em', marginBottom: '16px' }}>
+              Ship better code,{' '}
+              <span style={{
+                background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent'
+              }}>
+                automatically
+              </span>
+            </h2>
+
+            <p style={{ fontSize: '1.05rem', color: '#7880a0', marginBottom: '32px' }}>
+              Join 12,000+ developers who trust Lunar to catch bugs before production.
+            </p>
+
+            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={onOpenAuth}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '14px 28px',
+                  borderRadius: '12px',
+                  fontSize: '0.92rem',
+                  fontWeight: '700',
+                  background: 'linear-gradient(135deg, #6c8eef 0%, #9d6ef5 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 40px rgba(108, 142, 239, 0.4)'
+                }}
+              >
+                <Github size={18} />
+                Start free with GitHub
+              </button>
+
+              <button
+                onClick={onOpenPricing}
+                style={{
+                  padding: '14px 28px',
+                  borderRadius: '12px',
+                  fontSize: '0.92rem',
+                  fontWeight: '600',
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  color: '#a0a8c0',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  cursor: 'pointer'
+                }}
+              >
+                View pricing
+              </button>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <footer style={{ borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '60px', textAlign: 'left' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '40px', marginBottom: '60px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)' }} />
+                  <span style={{ fontSize: '1.1rem', fontWeight: '800', color: '#e2e5f0' }}>lunar</span>
+                </div>
+                <p style={{ fontSize: '0.84rem', color: '#3a3f60', maxWidth: '280px', lineHeight: '1.6' }}>
+                  AI-powered code review and auto-fix platform. Ship faster, break less.
+                </p>
+              </div>
+
+              <div>
+                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '16px' }}>Product</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#3a3f60' }}>
+                  <span>Features</span>
+                  <span>Pricing</span>
+                  <span>Changelog</span>
+                  <span>Roadmap</span>
+                </div>
+              </div>
+
+              <div>
+                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '16px' }}>Docs</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#3a3f60' }}>
+                  <span>Getting started</span>
+                  <span>API reference</span>
+                  <span>GitHub App</span>
+                  <span>CLI</span>
+                </div>
+              </div>
+
+              <div>
+                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '16px' }}>Company</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#3a3f60' }}>
+                  <span>About</span>
+                  <span>Blog</span>
+                  <span>Careers</span>
+                  <span>Privacy</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.04)', paddingTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#2a3050' }}>
+              <div>© 2025 Lunar Technologies, Inc. All rights reserved.</div>
+              <div>Built for developers who care about quality.</div>
+            </div>
+          </footer>
+        </section>
+
+      </div>
     </div>
   );
 }
