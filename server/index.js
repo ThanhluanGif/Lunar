@@ -7,6 +7,8 @@ const githubRoutes = require('./routes/githubRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const communityRoutes = require('./routes/communityRoutes');
 const policyRoutes = require('./routes/policyRoutes');
+const aiRoutes = require('./routes/aiRoutes');
+const deepScanRoutes = require('./routes/deepScanRoutes');
 const { initPgDatabase } = require('./db/connection');
 
 const app = express();
@@ -27,6 +29,8 @@ app.use('/api/v1/github', githubRoutes);
 app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/community', communityRoutes);
 app.use('/api/v1/policies', policyRoutes);
+app.use('/api/v1/ai', aiRoutes);
+app.use('/api/v1/deep-scan', deepScanRoutes);
 
 // Health check endpoint
 app.get('/api/v1/health', (req, res) => {

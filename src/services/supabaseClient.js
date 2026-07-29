@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase Environment Credentials (Supports both Vite and Next.js env formats)
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || 'https://eciqooohljlubsrwjpeb.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjaXFvb29obGpsdWJzcndqcGViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyMzU2MTQsImV4cCI6MjEwMDgxMTYxNH0.CzJF7-qTJ7y2SAHEtZriGqbjmyEswOdwXEgPA2u5v8g';
+// IMPORTANT: Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
 
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
