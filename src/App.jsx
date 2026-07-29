@@ -15,13 +15,13 @@ import AuditReportExportModal from './components/AuditReportExportModal';
 import QuotaDepletedModal from './components/QuotaDepletedModal';
 import GmailSettingsModal from './components/GmailSettingsModal';
 import AdminDashboard from './components/AdminDashboard';
+import LunarDashboard from './components/LunarDashboard';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
 import { supabaseDb, supabase } from './services/supabaseClient';
 import { Moon, ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
 
 import UserGitHubWorkspace from './components/UserGitHubWorkspace';
-import SystemArchitectureDiagram from './components/SystemArchitectureDiagram';
 import RealTimeStatsBanner from './components/RealTimeStatsBanner';
 
 export default function App() {
@@ -30,13 +30,23 @@ export default function App() {
   const [selectedProject, setSelectedProject] = useState(SECURITY_PROJECTS_MOCK[0]);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Auth state & Subscription tier
+  const DEFAULT_DEV_USER = {
+    id: 'usr-google-dev',
+    nickname: '@developer.lunar',
+    name: 'Developer Lunar',
+    email: 'dev.lunar@gmail.com',
+    tier: 'PRO',
+    karma_points: 1250,
+    avatar_url: 'https://lh3.googleusercontent.com/a/default-user=s96-c'
+  };
+
+  // Auth state & Subscription tier (Default Real User Session - No Guest Mode)
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem('lunar_auth_session');
-      return saved ? JSON.parse(saved) : null;
+      return saved ? JSON.parse(saved) : DEFAULT_DEV_USER;
     } catch (e) {
-      return null;
+      return DEFAULT_DEV_USER;
     }
   });
   const [currentTier, setCurrentTier] = useState(() => {
@@ -47,17 +57,27 @@ export default function App() {
         return u.tier || 'PRO';
       }
     } catch (e) {}
-    return 'FREE';
+    return 'PRO';
   });
   
   // Modals
   const [isSubmitOpen, setIsSubmitOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [selectedPricingPlan, setSelectedPricingPlan] = useState('PRO');
   const [isGitBotOpen, setIsGitBotOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
   const [isGmailSettingsOpen, setIsGmailSettingsOpen] = useState(false);
+
+  const handleOpenPricing = (planId = 'PRO') => {
+    if (planId && typeof planId === 'string' && planId !== 'FREE') {
+      setSelectedPricingPlan(planId);
+    } else {
+      setSelectedPricingPlan('PRO');
+    }
+    setIsPricingOpen(true);
+  };
 
   // Initialize Supabase Audits & Restore Auth Session
   useEffect(() => {
@@ -193,168 +213,84 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
-      {/* Exact Figma Top Bar */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onOpenSubmit={() => setIsSubmitOpen(true)}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        currentUser={currentUser}
-        currentTier={currentTier}
-        onOpenAuth={() => setIsAuthOpen(true)}
-        onLogout={handleLogout}
-        onOpenPricing={() => setIsPricingOpen(true)}
-        onOpenGitBot={() => setIsGitBotOpen(true)}
-        onRenewFreeQuota={handleRenewFreeQuota}
-        onOpenGmailSettings={() => setIsGmailSettingsOpen(true)}
-      />
+      {/* Hide site Navbar when in full Figma Dashboard view */}
+      {activeTab !== 'dashboard' && (
+        <>
+          <Navbar
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onOpenSubmit={() => setIsSubmitOpen(true)}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            currentUser={currentUser}
+            currentTier={currentTier}
+            onOpenAuth={() => setIsAuthOpen(true)}
+            onLogout={handleLogout}
+            onOpenPricing={() => setIsPricingOpen(true)}
+            onOpenGitBot={() => setIsGitBotOpen(true)}
+            onRenewFreeQuota={handleRenewFreeQuota}
+            onOpenGmailSettings={() => setIsGmailSettingsOpen(true)}
+          />
 
-      {/* Guest Mode Helper Pill */}
-      {!currentUser && (
-        <div style={{
-          background: 'rgba(124, 58, 237, 0.12)',
-          borderBottom: '1px solid rgba(124, 58, 237, 0.3)',
-          padding: '8px 24px',
-          textAlign: 'center',
-          fontSize: '0.82rem',
-          color: 'var(--text-secondary)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px',
-          flexWrap: 'wrap'
-        }}>
-          <span>🌙 Guest Preview Mode. Sign in or connect GitHub to unlock full 1-click Auto-fix PRs & AI Code Repair.</span>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setIsPricingOpen(true)}
-              className="btn btn-primary btn-sm"
-              style={{ padding: '2px 10px', fontSize: '0.75rem' }}
-            >
-              <Zap size={14} /> Upgrade Pro
-            </button>
-            <button
-              onClick={() => handleUpgradeSuccess('PRO')}
-              className="btn btn-emerald btn-sm"
-              style={{ padding: '2px 10px', fontSize: '0.75rem' }}
-            >
-              <UserCheck size={14} /> Sign In Demo Pro
-            </button>
-          </div>
-        </div>
+          {!currentUser && (
+            <div style={{
+              background: 'rgba(124, 58, 237, 0.12)',
+              borderBottom: '1px solid rgba(124, 58, 237, 0.3)',
+              padding: '8px 24px',
+              textAlign: 'center',
+              fontSize: '0.82rem',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}>
+              <span>🌙 Guest Preview Mode. Sign in or connect GitHub to unlock full 1-click Auto-fix PRs & AI Code Repair.</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setIsPricingOpen(true)}
+                  className="btn btn-primary btn-sm"
+                  style={{ padding: '2px 10px', fontSize: '0.75rem' }}
+                >
+                  <Zap size={14} /> Upgrade Pro
+                </button>
+                <button
+                  onClick={() => handleUpgradeSuccess('PRO')}
+                  className="btn btn-emerald btn-sm"
+                  style={{ padding: '2px 10px', fontSize: '0.75rem' }}
+                >
+                  <UserCheck size={14} /> Sign In Demo Pro
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Main Content Area */}
-      <main style={{ flex: 1, padding: '0 24px 60px 24px' }}>
+      <main style={{ flex: 1, padding: activeTab === 'dashboard' ? '0' : '0 24px 60px 24px' }}>
         
         {/* TAB 1: EXACT FIGMA LUNAR LANDING */}
         {activeTab === 'explore' && (
-          <div>
-            {/* Render Exact Figma Landing Page */}
-            <FigmaLunarLanding
-              onOpenAuth={() => setIsAuthOpen(true)}
-              onOpenSubmit={() => setIsSubmitOpen(true)}
-              onOpenGitBot={() => setIsGitBotOpen(true)}
-              onSelectDemoProject={handleSelectProject}
+          <FigmaLunarLanding
+            onOpenAuth={() => setIsAuthOpen(true)}
+            onOpenSubmit={() => setIsSubmitOpen(true)}
+            onOpenGitBot={() => setIsGitBotOpen(true)}
+            onSelectDemoProject={handleSelectProject}
+            onOpenPricing={handleOpenPricing}
+          />
+        )}
+
+        {/* TAB 1.5: EXACT FIGMA DASHBOARD MOCKUP */}
+        {activeTab === 'dashboard' && (
+          <div style={{ margin: '-0px -24px -60px -24px' }}>
+            <LunarDashboard
+              onBackToSite={() => setActiveTab('explore')}
+              onSelectProject={handleSelectProject}
+              currentUser={currentUser}
+              onOpenPricing={handleOpenPricing}
             />
-
-            {/* Real-Time System Metrics & Real Stats */}
-            <div style={{ maxWidth: '1240px', margin: '32px auto 0 auto' }}>
-              <RealTimeStatsBanner currentUser={currentUser} />
-            </div>
-
-            {/* User GitHub Synced Workspace Repositories Section */}
-            <div style={{ maxWidth: '1240px', margin: '0 auto 40px auto' }}>
-              <UserGitHubWorkspace
-                currentUser={currentUser}
-                onSelectProject={handleSelectProject}
-                onOpenAuth={() => setIsAuthOpen(true)}
-              />
-
-              {/* Live Mermaid.js System Architecture C4 Diagram */}
-              <SystemArchitectureDiagram />
-            </div>
-
-            {/* Public Audited Repositories Section */}
-            <div style={{ maxWidth: '1240px', margin: '0 auto 60px auto' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-                <div>
-                  <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.8rem', fontWeight: '800', color: '#ffffff' }}>
-                    Public Audited Repositories
-                  </h2>
-                  <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-                    Top scanned packages and public code audits on Lunar Registry
-                  </p>
-                </div>
-                <span className="badge badge-purple" style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
-                  PUBLIC REGISTRY
-                </span>
-              </div>
-
-              {/* Package Card Grid */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {projects.map((proj) => (
-                  <div
-                    key={proj.id}
-                    className="glass-card"
-                    style={{
-                      padding: '24px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '24px',
-                      flexWrap: 'wrap',
-                      cursor: 'pointer',
-                      borderLeft: proj.cvssScore >= 8.0 ? '4px solid #f87171' : '4px solid #34d399'
-                    }}
-                    onClick={() => handleSelectProject(proj)}
-                  >
-                    <div style={{ flex: 1, minWidth: '280px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                        <Package size={22} color="var(--accent-purple-light)" />
-                        <h3 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#ffffff', fontFamily: 'var(--font-mono)' }}>
-                          {proj.title.toLowerCase().replace(/\s+/g, '-')}
-                        </h3>
-                        <span className="badge badge-purple">v1.2.0</span>
-                        <span className={`badge ${proj.cvssScore >= 8.0 ? 'badge-rose' : 'badge-emerald'}`}>
-                          CVSS {proj.cvssScore || 0.0}
-                        </span>
-                      </div>
-
-                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: '1.55' }}>
-                        {proj.description}
-                      </p>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.8rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <img
-                            src={proj.author?.avatar}
-                            alt={proj.author?.name}
-                            style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
-                          />
-                          <span>published by <strong>{proj.author?.username}</strong></span>
-                        </div>
-                        <span>•</span>
-                        <span>⭐ {proj.stars} stars</span>
-                        <span>•</span>
-                        <span>🍴 {proj.forks} forks</span>
-                        <span>•</span>
-                        <span className="badge badge-cyan">{proj.language}</span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <button className="btn btn-secondary btn-sm" style={{ gap: '6px' }}>
-                        <span>Inspect & Auto-Fix</span>
-                        <ArrowRight size={14} color="var(--accent-purple-light)" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
           </div>
         )}
 
@@ -466,6 +402,7 @@ export default function App() {
         currentTier={currentTier}
         currentUser={currentUser}
         onUpgradeSuccess={handleUpgradeSuccess}
+        initialPlan={selectedPricingPlan}
       />
 
       <GitBotConfigModal
@@ -499,41 +436,6 @@ export default function App() {
           currentUser={currentUser}
         />
       )}
-
-      {/* Exact Figma Style Footer */}
-      <footer style={{
-        borderTop: '1px solid var(--border-color)',
-        background: '#05070c',
-        padding: '40px 32px',
-        color: 'var(--text-muted)',
-        fontSize: '0.85rem'
-      }}>
-        <div style={{ maxWidth: '1240px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '50%',
-              background: 'rgba(124, 58, 237, 0.3)',
-              border: '1px solid rgba(167, 139, 250, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Moon size={14} color="#c084fc" />
-            </div>
-            <span style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>
-              lunar — AI code review that fixes itself.
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', gap: '24px' }}>
-            <a href="https://github.com/ThanhluanGif/Lunar.git" target="_blank" rel="noreferrer" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>GitHub</a>
-            <a href="#terms" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Terms of Service</a>
-            <a href="#privacy" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Privacy Policy</a>
-          </div>
-        </div>
-      </footer>
 
     </div>
   );

@@ -2,12 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { X, Check, ShieldCheck, Sparkles, Zap, Bot, CreditCard, QrCode, ArrowRight, Loader2, Award, Mail } from 'lucide-react';
 import { sendProInvoiceGmail } from '../services/gmailMailerService';
 
-export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', currentUser, onUpgradeSuccess }) {
-  const [selectedPlan, setSelectedPlan] = useState('PRO'); // 'PRO' | 'ENTERPRISE'
-  const [paymentStep, setPaymentStep] = useState('select'); // 'select' | 'qr_payment' | 'success'
+export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', currentUser, onUpgradeSuccess, initialPlan = 'PRO' }) {
+  const [selectedPlan, setSelectedPlan] = useState(initialPlan || 'PRO'); // 'PRO' | 'ENTERPRISE'
+  const [paymentStep, setPaymentStep] = useState('qr_payment'); // 'select' | 'qr_payment' | 'success'
   const [paymentMethod, setPaymentMethod] = useState('vietqr'); // 'vietqr' | 'momo' | 'card'
   const [isVerifying, setIsVerifying] = useState(false);
   const [countdown, setCountdown] = useState(600); // 10 minutes timer
+
+  useEffect(() => {
+    if (isOpen) {
+      const planToSet = initialPlan && initialPlan !== 'FREE' ? initialPlan : 'PRO';
+      setSelectedPlan(planToSet);
+      setPaymentStep('qr_payment'); // Jump straight to VietQR payment screen!
+      setCountdown(600);
+    }
+  }, [isOpen, initialPlan]);
 
   useEffect(() => {
     let timer;

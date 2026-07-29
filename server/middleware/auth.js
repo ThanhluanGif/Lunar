@@ -8,25 +8,43 @@ if (!JWT_SECRET) {
     console.error('💥 FATAL SECURITY ERROR: JWT_SECRET environment variable is not defined in Production!');
     process.exit(1);
   } else {
-    console.warn('⚠️  SECURITY NOTICE: Using default development JWT Secret Key. Set JWT_SECRET in .env for production.');
+    console.warn('⚠️ SECURITY NOTICE: Using default development JWT Secret Key. Set JWT_SECRET in .env for production.');
   }
 }
 
-const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'lunar-secret-key-production-change-me';
+const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'lunar-zero-trust-secret-key-2026-secure';
 
 /**
- * Middleware to verify JWT authentication token
+ * Helper to extract JWT token from Cookie or Bearer Header
+ */
+function extractToken(req) {
+  // 1. Check HttpOnly Cookie (Primary & Most Secure)
+  if (req.cookies && req.cookies.access_token) {
+    return req.cookies.access_token;
+  }
+
+  // 2. Check Authorization Header (Fallback for Mobile/Integrations)
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.split(' ')[1];
+  }
+
+  return null;
+}
+
+/**
+ * Middleware to verify JWT authentication token with Zero-Trust enforcement
  */
 function verifyToken(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const token = extractToken(req);
+
+  if (!token) {
     return res.status(401).json({ 
       success: false, 
-      error: 'UNAUTHORIZED: Header Authorization Bearer token required.' 
+      error: 'UNAUTHORIZED: Authentication token required via HttpOnly Cookie or Bearer Header.'
     });
   }
 
-  const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, EFFECTIVE_JWT_SECRET);
     req.user = decoded;
@@ -34,7 +52,7 @@ function verifyToken(req, res, next) {
   } catch (err) {
     return res.status(401).json({ 
       success: false, 
-      error: 'UNAUTHORIZED: Invalid or expired JWT authentication token.' 
+      error: 'UNAUTHORIZED: Invalid or expired authentication token.'
     });
   }
 }
