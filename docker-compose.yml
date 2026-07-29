@@ -10,11 +10,11 @@ services:
     environment:
       - PORT=5000
       - NODE_ENV=production
-      - JWT_SECRET=lunar_production_jwt_secret_key_2026_super_secure
+      - JWT_SECRET=${JWT_SECRET}
       - POSTGRES_HOST=db
-      - POSTGRES_USER=lunar_admin
-      - POSTGRES_PASSWORD=lunar_secure_pass
-      - POSTGRES_DB=lunar_db
+      - POSTGRES_USER=${POSTGRES_USER:-lunar_admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-lunar_db}
     depends_on:
       - db
 
@@ -22,9 +22,9 @@ services:
     image: postgres:16-alpine
     restart: always
     environment:
-      POSTGRES_USER: lunar_admin
-      POSTGRES_PASSWORD: lunar_secure_pass
-      POSTGRES_DB: lunar_db
+      POSTGRES_USER: ${POSTGRES_USER:-lunar_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-lunar_db}
     ports:
       - "5432:5432"
     volumes:
