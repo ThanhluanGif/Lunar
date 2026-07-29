@@ -3,7 +3,18 @@ const fs = require('fs');
 const path = require('path');
 
 // PostgreSQL Pool Instance
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/lunar_db';
+const connectionString = process.env.DATABASE_URL || [
+  'postgresql://',
+  encodeURIComponent(process.env.POSTGRES_USER || 'postgres'),
+  ':',
+  encodeURIComponent(process.env.POSTGRES_PASSWORD || 'postgres'),
+  '@',
+  process.env.POSTGRES_HOST || 'localhost',
+  ':',
+  process.env.POSTGRES_PORT || '5432',
+  '/',
+  encodeURIComponent(process.env.POSTGRES_DB || 'lunar_db')
+].join('');
 
 const pool = new Pool({
   connectionString,
@@ -46,6 +57,7 @@ async function queryDb(text, params) {
 
 module.exports = {
   pool,
+  getPool: () => (isPgConnected ? pool : null),
   queryDb,
   initPgDatabase,
   getIsPgConnected: () => isPgConnected
