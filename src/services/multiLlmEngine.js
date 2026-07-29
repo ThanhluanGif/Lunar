@@ -8,7 +8,8 @@
  */
 
 export const AI_PROVIDERS = [
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Google)', badge: 'Fast AST Scan', speed: '0.4s' },
+  { id: '9router-proxy', name: '9Router AI Proxy Server (9Router CLI)', badge: 'Multi-LLM Router', speed: '0.2s' },
+  { id: 'gemini-1.5-pro', name: 'Gemini 2.0 Flash (Google)', badge: 'Fast AST Scan', speed: '0.4s' },
   { id: 'gpt-4o-security', name: 'GPT-4o Security (OpenAI)', badge: 'Deep Logic Audit', speed: '0.8s' },
   { id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet (Anthropic)', badge: 'Max Code Repair', speed: '0.6s' },
   { id: 'lunar-sast-native', name: 'Lunar Native SAST Engine', badge: 'Offline Instant', speed: '0.1s' }
