@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { X, Github, Mail, Lock, User, ShieldCheck, Sparkles, AtSign, AlertCircle, Loader2, CheckCircle2, UserCheck, Chrome } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { sendWelcomeGmail } from '../services/gmailMailerService';
+import { lunarApi } from '../services/lunarApi';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
-  const [activeTab, setActiveTab] = useState('gmail'); // 'gmail' | 'github' | 'email' | 'demo'
+  const [activeTab, setActiveTab] = useState('email');
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
   
   // Form states
@@ -68,6 +69,11 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   // Option 1: Handle Direct GitHub Sync
   const handleConnectGitHub = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setErrorMsg('');
+    window.location.assign('/api/v1/auth/github/start');
+    return;
+
     if (!githubInput.trim()) {
       setErrorMsg('Vui lòng nhập GitHub Username của bạn.');
       return;
@@ -105,6 +111,19 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
     setLoading(true);
 
     try {
+      const response = authMode === 'register'
+        ? await lunarApi.register({
+            email,
+            password,
+            name: fullName,
+            nickname: email.split('@')[0]
+          })
+        : await lunarApi.login(email, password);
+      onLoginSuccess(response.user);
+      setLoading(false);
+      onClose();
+      return;
+
       if (authMode === 'register') {
         const { data, error } = await supabase.auth.signUp({
           email: email,
@@ -238,9 +257,9 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
         }}>
           <button
             type="button"
-            onClick={() => { setActiveTab('gmail'); setErrorMsg(''); }}
-            className={`btn btn-sm ${activeTab === 'gmail' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ flex: 1, fontSize: '0.78rem', background: activeTab === 'gmail' ? '#ea4335' : undefined }}
+            onClick={() => { setActiveTab('email'); setErrorMsg(''); }}
+            className={`btn btn-sm ${activeTab === 'email' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ flex: 1, fontSize: '0.78rem' }}
           >
             <Mail size={14} /> Gmail Single Sign-On
           </button>
@@ -248,7 +267,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
             type="button"
             onClick={() => { setActiveTab('github'); setErrorMsg(''); }}
             className={`btn btn-sm ${activeTab === 'github' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ flex: 1, fontSize: '0.78rem' }}
+            style={{ display: 'none' }}
           >
             <Github size={14} /> GitHub
           </button>
@@ -360,28 +379,28 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
         {activeTab === 'github' && (
           <form onSubmit={handleConnectGitHub}>
             <div className="input-group">
-              <label className="input-label">GitHub Username của bạn</label>
+              <label className="input-label">Đăng nhập GitHub an toàn</label>
               <div style={{ position: 'relative' }}>
                 <Github size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
                 <input
                   type="text"
-                  placeholder="Ví dụ: ThanhluanGif, octocat..."
+                  placeholder="GitHub sẽ xác minh tài khoản của bạn"
                   className="input-control"
                   style={{ paddingLeft: '38px' }}
                   value={githubInput}
                   onChange={(e) => setGithubInput(e.target.value)}
                   disabled={loading}
-                  required
+                  readOnly
                 />
               </div>
               <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Hệ thống sẽ nạp ảnh đại diện và danh sách Repositories thật của bạn từ GitHub API.
+                Lunar lấy email đã xác minh và tự đồng bộ repository mà bạn cấp quyền.
               </span>
             </div>
 
             <button
               type="submit"
-              disabled={loading || !githubInput.trim()}
+              disabled={loading}
               className="btn btn-primary"
               style={{ width: '100%', padding: '11px', gap: '8px', marginTop: '8px' }}
             >

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     build:
@@ -8,28 +6,51 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - PORT=5000
-      - NODE_ENV=production
-      - JWT_SECRET=${JWT_SECRET}
-      - POSTGRES_HOST=db
-      - POSTGRES_USER=${POSTGRES_USER:-lunar_admin}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB:-lunar_db}
+      PORT: 5000
+      NODE_ENV: production
+      JWT_SECRET: ${LUNAR_JWT_SECRET:?Set LUNAR_JWT_SECRET before deployment}
+      DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD before deployment}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
+      CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5000}
+      PAYMENT_WEBHOOK_SECRET: ${LUNAR_PAYMENT_WEBHOOK_SECRET:?Set LUNAR_PAYMENT_WEBHOOK_SECRET before deployment}
+      ADMIN_BOOTSTRAP_TOKEN: ${LUNAR_ADMIN_BOOTSTRAP_TOKEN:-}
+      COOKIE_SECURE: ${LUNAR_COOKIE_SECURE:-true}
+      GITHUB_CLIENT_ID: ${LUNAR_GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${LUNAR_GITHUB_CLIENT_SECRET:-}
+      GITHUB_OAUTH_CALLBACK_URL: ${LUNAR_GITHUB_OAUTH_CALLBACK_URL:-http://localhost:5000/api/v1/auth/github/callback}
+      GITHUB_TOKEN_ENCRYPTION_KEY: ${LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY:-}
+      GITHUB_OAUTH_SCOPES: ${LUNAR_GITHUB_OAUTH_SCOPES:-read:user user:email}
+      GEMINI_API_KEY: ${LUNAR_GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${LUNAR_GEMINI_MODEL:-gemini-2.5-flash}
+      OPENAI_API_KEY: ${LUNAR_OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${LUNAR_OPENAI_MODEL:-gpt-4o-mini}
+      ANTHROPIC_API_KEY: ${LUNAR_ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${LUNAR_ANTHROPIC_MODEL:-claude-sonnet-4-5}
+      DEEP_SCAN_MAX_FILES: ${LUNAR_DEEP_SCAN_MAX_FILES:-250}
+      DEEP_SCAN_MAX_FILE_BYTES: ${LUNAR_DEEP_SCAN_MAX_FILE_BYTES:-512000}
+      DEEP_SCAN_MAX_TOTAL_BYTES: ${LUNAR_DEEP_SCAN_MAX_TOTAL_BYTES:-5000000}
+      DEEP_SCAN_CONCURRENCY: ${LUNAR_DEEP_SCAN_CONCURRENCY:-5}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   db:
     image: postgres:16-alpine
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-lunar_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-lunar_db}
+      POSTGRES_USER: ${LUNAR_POSTGRES_USER:-lunar_admin}
+      POSTGRES_PASSWORD: ${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD before deployment}
+      POSTGRES_DB: ${LUNAR_POSTGRES_DB:-lunar_db}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./server/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
 volumes:
   postgres_data:

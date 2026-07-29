@@ -1,159 +1,159 @@
+import { analyzeJavaScriptAst } from './astParser.js';
+
 /**
- * Lunar Security Scanner & Auto-Patch Engine (SAST - Static Application Security Testing)
- * Evaluates code for OWASP Top 10, calculates CVSS v3.1 Risk Score, AI Triage Verdict, and generates automated fix patches.
+ * Deterministic multi-language SAST engine.
+ * Rules are intentionally conservative and every finding includes direct line evidence.
+ * AI triage is a separate server-side step and never changes deterministic evidence.
  */
 
-export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'server/index.js', language = 'javascript') {
-  const lines = (fileContent || '').split('\n');
+export const SUPPORTED_LANGUAGES = [
+  'javascript', 'typescript', 'python', 'java', 'go', 'php', 'ruby', 'csharp',
+  'rust', 'sql', 'dockerfile', 'yaml', 'json', 'xml', 'html', 'css', 'shell',
+  'kotlin', 'swift', 'dart', 'terraform', 'powershell'
+];
+
+const ALL = SUPPORTED_LANGUAGES;
+const JS = ['javascript', 'typescript'];
+const JVM = ['java', 'kotlin'];
+const WEB = ['javascript', 'typescript', 'html', 'php'];
+
+const RULES = [
+  rule('LUNAR-001', 'CWE-798', 'Hardcoded credential', 'CRITICAL', 9.1, ALL, /\b(password|passwd|secret|api[_-]?key|access[_-]?token|private[_-]?key)\b\s*[:=]\s*["'][^"']{8,}["']/i, 'Move secrets to a secret manager or environment variable.'),
+  rule('LUNAR-002', 'CWE-89', 'SQL injection through string construction', 'CRITICAL', 9.8, ALL, /\b(select|insert|update|delete)\b.+(\+|`\$\{|%s|format\()/i, 'Use a parameterized query and bind user values separately.'),
+  rule('LUNAR-003', 'CWE-79', 'Unsafe HTML injection', 'HIGH', 8.2, WEB, /(innerHTML\s*=|dangerouslySetInnerHTML|document\.write\s*\()/i, 'Render text safely or sanitize trusted HTML with an allowlist.'),
+  rule('LUNAR-004', 'CWE-95', 'Dynamic code execution', 'CRITICAL', 9.8, ['javascript', 'typescript', 'python', 'php', 'ruby'], /\b(eval|exec)\s*\(/i, 'Remove dynamic execution or use a strict parser/allowlist.'),
+  rule('LUNAR-005', 'CWE-78', 'OS command execution', 'CRITICAL', 9.8, ALL, /(child_process|execSync|Runtime\.getRuntime\(\)\.exec|os\.system|subprocess\.(run|Popen)|shell_exec|Process\.start)/i, 'Avoid shell execution; pass fixed arguments to a safe process API.'),
+  rule('LUNAR-006', 'CWE-22', 'Potential path traversal', 'HIGH', 7.5, ALL, /(\.\.[/\\]|path\.join\([^)]*(req\.|request\.|params|query)|sendFile\([^)]*(req\.|request\.))/i, 'Resolve against an allowlisted base directory and reject escapes.'),
+  rule('LUNAR-007', 'CWE-918', 'Server-side request forgery sink', 'HIGH', 8.2, ALL, /(fetch|axios\.(get|post)|requests\.(get|post)|http\.Get|HttpClient)\s*\([^)]*(req\.|request\.|params|query|input)/i, 'Allowlist destinations and block private/link-local address ranges.'),
+  rule('LUNAR-008', 'CWE-502', 'Unsafe deserialization', 'CRITICAL', 9.8, ALL, /(pickle\.loads|yaml\.load\(|ObjectInputStream|BinaryFormatter|Marshal\.load|unserialize\()/i, 'Use a safe data format and never deserialize untrusted objects.'),
+  rule('LUNAR-009', 'CWE-327', 'Weak cryptographic algorithm', 'MEDIUM', 5.9, ALL, /\b(md5|sha1|des|rc4)\b/i, 'Use SHA-256+ for integrity and an authenticated modern cipher for encryption.'),
+  rule('LUNAR-010', 'CWE-326', 'Weak RSA key size', 'HIGH', 7.4, ALL, /(rsa|generateKeyPair).{0,80}\b(512|768|1024)\b/i, 'Use RSA 2048 bits or stronger, or a modern elliptic curve.'),
+  rule('LUNAR-011', 'CWE-295', 'TLS certificate verification disabled', 'CRITICAL', 9.1, ALL, /(rejectUnauthorized\s*:\s*false|verify\s*=\s*False|InsecureSkipVerify\s*:\s*true|TrustAllCerts|CURLOPT_SSL_VERIFYPEER\s*,\s*false)/i, 'Keep certificate and hostname validation enabled.'),
+  rule('LUNAR-012', 'CWE-614', 'Cookie missing secure attributes', 'MEDIUM', 5.4, JS, /res\.cookie\s*\([^)]*\)(?![^;]*(httpOnly|secure|sameSite))/i, 'Set HttpOnly, Secure, and an appropriate SameSite policy.'),
+  rule('LUNAR-013', 'CWE-352', 'State-changing route without visible CSRF control', 'MEDIUM', 6.5, JS, /app\.(post|put|patch|delete)\s*\(/i, 'For cookie-authenticated routes, validate Origin/CSRF tokens.'),
+  rule('LUNAR-014', 'CWE-601', 'Unvalidated redirect', 'MEDIUM', 6.1, ALL, /(redirect|location\.href|Response\.Redirect)\s*\([^)]*(req\.|request\.|query|params|input)/i, 'Allowlist local redirect targets.'),
+  rule('LUNAR-015', 'CWE-200', 'Sensitive debug output', 'LOW', 3.7, ALL, /(console\.log|print|logger\.(debug|info)).*(password|secret|token|authorization)/i, 'Never log credentials, tokens, or authorization headers.'),
+  rule('LUNAR-016', 'CWE-117', 'Log injection risk', 'MEDIUM', 5.3, ALL, /(console\.log|logger\.(info|warn|error)|print)\s*\([^)]*(req\.|request\.|input|params)/i, 'Normalize CR/LF and use structured logging fields.'),
+  rule('LUNAR-017', 'CWE-20', 'Permissive CORS origin', 'HIGH', 7.5, WEB, /(Access-Control-Allow-Origin.{0,20}\*|cors\s*\(\s*\{\s*origin\s*:\s*['"]\*['"])/i, 'Allowlist trusted origins and do not combine wildcard origins with credentials.'),
+  rule('LUNAR-018', 'CWE-862', 'Route appears to lack authorization middleware', 'HIGH', 8.1, JS, /router\.(post|put|patch|delete)\s*\(\s*['"][^'"]+['"]\s*,\s*async/i, 'Enforce authentication and object-level authorization before the handler.'),
+  rule('LUNAR-019', 'CWE-639', 'Potential IDOR identifier use', 'HIGH', 8.1, ALL, /(findById|WHERE\s+id\s*=|\/users\/:id).*(params\.id|req\.params|request\.)/i, 'Scope object lookup to the authenticated owner or privileged role.'),
+  rule('LUNAR-020', 'CWE-400', 'Unbounded collection or payload processing', 'MEDIUM', 5.3, ALL, /(readFileSync|read_to_end|ReadAllBytes|request\.body|req\.body).*(map|forEach|for\s*\()/i, 'Set payload, file-size, item-count, concurrency, and timeout limits.'),
+  rule('LUNAR-021', 'CWE-770', 'Unbounded pagination', 'MEDIUM', 5.3, ALL, /(limit|per_page|pageSize)\s*[:=]\s*(req\.|request\.|query|params)/i, 'Clamp pagination to a server-defined maximum.'),
+  rule('LUNAR-022', 'CWE-1321', 'Prototype pollution sink', 'HIGH', 8.1, JS, /(Object\.assign|merge|defaultsDeep|set)\s*\([^)]*(req\.body|request\.body|input)/i, 'Reject prototype keys and merge only an explicit property allowlist.'),
+  rule('LUNAR-023', 'CWE-94', 'Template/code injection sink', 'CRITICAL', 9.8, ALL, /(new Function|compile\(|render_template_string|Template\().*(req\.|request\.|input|params)/i, 'Use static templates and pass untrusted values only as data.'),
+  rule('LUNAR-024', 'CWE-611', 'XML external entity risk', 'HIGH', 8.2, ['java', 'kotlin', 'csharp', 'python', 'php', 'ruby', 'xml'], /(DocumentBuilderFactory|SAXParserFactory|XMLInputFactory|lxml|simplexml_load_string)/i, 'Disable DTDs and external entity resolution in the parser.'),
+  rule('LUNAR-025', 'CWE-434', 'Unrestricted file upload', 'HIGH', 8.1, ALL, /(multer|move_uploaded_file|MultipartFile|IFormFile|save\().*(originalname|filename|upload)/i, 'Validate content, extension, size and store outside the web root.'),
+  rule('LUNAR-026', 'CWE-312', 'Sensitive data stored in browser storage', 'HIGH', 7.5, JS, /(localStorage|sessionStorage)\.setItem\s*\([^)]*(token|secret|password|auth)/i, 'Use a Secure HttpOnly cookie for session credentials.'),
+  rule('LUNAR-027', 'CWE-330', 'Security-sensitive weak randomness', 'HIGH', 7.5, ALL, /(Math\.random|random\.random|rand\(\)|java\.util\.Random).*(token|secret|password|nonce|session)/i, 'Use a cryptographically secure random generator.'),
+  rule('LUNAR-028', 'CWE-347', 'JWT decoded without signature verification', 'CRITICAL', 9.1, ALL, /(jwt\.decode|parseJwt|DecodeJwtToken)\s*\(/i, 'Verify signature, issuer, audience, expiry and algorithm.'),
+  rule('LUNAR-029', 'CWE-347', 'JWT algorithm confusion risk', 'HIGH', 8.1, ALL, /(algorithms?\s*:\s*\[[^\]]*(none|\*)|verify_signature\s*:\s*false)/i, 'Pin the expected asymmetric or symmetric algorithm.'),
+  rule('LUNAR-030', 'CWE-521', 'Weak password policy', 'MEDIUM', 5.3, ALL, /(password\.length|len\(password\)).{0,20}[<]=?\s*[1-7]\b/i, 'Require at least 8 characters and support breached-password checks.'),
+  rule('LUNAR-031', 'CWE-307', 'Authentication route without visible throttling', 'MEDIUM', 6.5, JS, /router\.post\s*\(\s*['"]\/(login|signin|register)['"]\s*,\s*async/i, 'Apply per-IP and per-account throttling.'),
+  rule('LUNAR-032', 'CWE-16', 'Container runs as root', 'MEDIUM', 6.3, ['dockerfile'], /^FROM\s+.+$(?![\s\S]*^USER\s+\w+)/im, 'Create and switch to a non-root runtime user.'),
+  rule('LUNAR-033', 'CWE-829', 'Unpinned container image', 'MEDIUM', 5.8, ['dockerfile', 'yaml'], /(FROM\s+\S+:latest|image:\s*\S+:latest)/i, 'Pin an immutable image digest or reviewed version.'),
+  rule('LUNAR-034', 'CWE-798', 'Secret-like value in deployment manifest', 'CRITICAL', 9.1, ['yaml', 'json', 'terraform'], /(password|secret|token|apiKey)\s*[:=]\s*["']?[A-Za-z0-9_\-\/+=]{12,}/i, 'Reference a secret manager, never commit the secret value.'),
+  rule('LUNAR-035', 'CWE-732', 'Overly permissive filesystem mode', 'HIGH', 7.5, ['shell', 'dockerfile', 'powershell'], /(chmod\s+777|chmod\s+-R\s+777|FullControl.*Everyone)/i, 'Grant the minimum required permissions.'),
+  rule('LUNAR-036', 'CWE-250', 'Privileged container configuration', 'CRITICAL', 9.1, ['yaml', 'dockerfile'], /(privileged:\s*true|--privileged|cap_add:\s*\n\s*-\s*ALL)/i, 'Remove privileged mode and grant only required capabilities.'),
+  rule('LUNAR-037', 'CWE-942', 'Public cloud resource policy', 'CRITICAL', 9.1, ['terraform', 'json', 'yaml'], /(0\.0\.0\.0\/0|Principal\s*[:=]\s*["']\*["']).*(22|3389|Action)/i, 'Restrict network and IAM principals to required identities.'),
+  rule('LUNAR-038', 'CWE-494', 'Remote script execution', 'CRITICAL', 9.1, ['shell', 'dockerfile', 'powershell'], /(curl|wget).{0,120}\|\s*(sh|bash|zsh|powershell)/i, 'Download, verify checksum/signature, then execute a pinned artifact.'),
+  rule('LUNAR-039', 'CWE-377', 'Insecure temporary file', 'MEDIUM', 5.5, ALL, /(\/tmp\/[A-Za-z0-9_.-]+|tempfile\s*=\s*["'])/i, 'Use a secure random temporary-file API with exclusive creation.'),
+  rule('LUNAR-040', 'CWE-1333', 'Potential regular expression denial of service', 'MEDIUM', 5.3, ALL, /(\([^)]*[+*][^)]*\))[+*]|\.\*\.\*/i, 'Use a linear-time expression and cap input length.')
+];
+
+// More than 100 language-rule signatures are active while keeping one canonical rule ID.
+export const SECURITY_RULE_SIGNATURE_COUNT = RULES.reduce((count, item) => count + item.languages.length, 0);
+
+function rule(id, cwe, title, severity, cvss, languages, pattern, recommendation) {
+  return { id, cwe, title, severity, cvss, languages, pattern, recommendation };
+}
+
+export function languageFromPath(filePath = '') {
+  const name = String(filePath).toLowerCase();
+  if (name.endsWith('dockerfile') || name.includes('/dockerfile')) return 'dockerfile';
+  const extension = name.split('.').pop();
+  return ({
+    js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+    ts: 'typescript', tsx: 'typescript', py: 'python', java: 'java', go: 'go',
+    php: 'php', rb: 'ruby', cs: 'csharp', rs: 'rust', sql: 'sql',
+    yml: 'yaml', yaml: 'yaml', json: 'json', xml: 'xml', html: 'html',
+    htm: 'html', css: 'css', sh: 'shell', bash: 'shell', kt: 'kotlin',
+    kts: 'kotlin', swift: 'swift', dart: 'dart', tf: 'terraform',
+    tfvars: 'terraform', ps1: 'powershell'
+  })[extension] || 'plaintext';
+}
+
+function safeLine(line) {
+  const value = String(line || '').trim();
+  return value.length > 240 ? `${value.slice(0, 240)}…` : value;
+}
+
+export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'server/index.js', language) {
+  const code = String(fileContent || '');
+  const detectedLanguage = language && language !== 'plaintext' ? language.toLowerCase() : languageFromPath(filePath);
+  const lines = code.split(/\r?\n/);
   const vulnerabilities = [];
 
-  const lowerContent = (fileContent || '').toLowerCase();
-
-  // Rule A: Express Check Csurf Middleware Usage (CWE-352: CSRF)
-  if (
-    (lowerContent.includes('express()') || lowerContent.includes('const app = express')) &&
-    !lowerContent.includes('csurf') && !lowerContent.includes('csrf')
-  ) {
-    vulnerabilities.push({
-      id: 'vuln-csrf-1',
-      line: 8,
-      cwe: 'CWE-352',
-      category: 'Cross-Site Request Forgery (OWASP A01:2021)',
-      title: 'Express Check Csurf Middleware Usage',
-      severity: 'HIGH',
-      cvss: 7.5,
-      aiVerdict: 'True Positive',
-      aiConfidence: '4/10',
-      aiReason: 'Ứng dụng Express này không sử dụng middleware CSRF như `csurf` hoặc `csrf`. Mặc dù có thể có các biện pháp bảo vệ CSRF khác không được hiển thị trong ngữ cảnh này, nhưng việc thiếu middleware CSRF chuyên dụng là một điểm yếu tiềm ẩn theo khuyến nghị của quy tắc. Do đó, đây là một dương tính thật vì không có bằng chứng về việc triển khai kiểm tra CSRF hoặc middleware bảo vệ.',
-      description: 'Khi không sử dụng middleware CSRF, ứng dụng có thể dễ bị tấn công Cross-Site Request Forgery (CSRF). Kẻ tấn công có thể lừa người dùng đang đăng nhập thực hiện các hành động không mong muốn trên ứng dụng.',
-      impact: 'Kẻ tấn công có thể lừa người dùng đang đăng nhập thực hiện các hành động không mong muốn trên ứng dụng, chẳng hạn như thay đổi mật khẩu, thực hiện giao dịch hoặc xóa dữ liệu, bằng cách gửi các yêu cầu độc hại từ một trang web khác.',
-      originalCode: `const express = require('express');\nconst cors = require('cors');\nconst authRoutes = require('./routes/authRoutes');\n\nconst app = express();\napp.use(cors({ origin: ['http://localhost:3000'], credentials: true }));\napp.use(express.json());`,
-      patchedCode: `const express = require('express');\nconst cors = require('cors');\nconst authRoutes = require('./routes/authRoutes');\n+const cookieParser = require('cookie-parser');\n+const csrf = require('csurf');\n\nconst app = express();\napp.use(express.json());\n+// CSRF protection\n+app.use(cookieParser());\n+app.use(csrf({ cookie: true }));`,
-      recommendation: 'Thêm cookie-parser và csurf middleware để bảo vệ các endpoints Express.'
+  for (const currentRule of RULES) {
+    if (!currentRule.languages.includes(detectedLanguage)) continue;
+    lines.forEach((lineText, index) => {
+      const trimmed = lineText.trim();
+      if (!trimmed || /^(\/\/|\/\*|\*|#\s)/.test(trimmed)) return;
+      const pattern = new RegExp(currentRule.pattern.source, currentRule.pattern.flags.replace('g', ''));
+      if (!pattern.test(lineText)) return;
+      vulnerabilities.push({
+        id: `${currentRule.id}-${index + 1}`,
+        ruleId: currentRule.id,
+        line: index + 1,
+        filePath,
+        language: detectedLanguage,
+        cwe: currentRule.cwe,
+        category: currentRule.cwe,
+        title: currentRule.title,
+        severity: currentRule.severity,
+        cvss: currentRule.cvss,
+        aiVerdict: 'Requires review',
+        aiConfidence: null,
+        aiReason: 'Deterministic pattern match with direct source evidence.',
+        description: currentRule.title,
+        impact: `Potential ${currentRule.cwe} weakness.`,
+        originalCode: safeLine(lineText),
+        patchedCode: '',
+        recommendation: currentRule.recommendation
+      });
     });
   }
 
-  // Rule B: Node Postgres Sqli Triage Check (CWE-89)
-  if (
-    lowerContent.includes('pool.connect()') || lowerContent.includes('pool.query(') || lowerContent.includes('client.query(')
-  ) {
-    const isParametrizedOrSchema = lowerContent.includes('schema.sql') || lowerContent.includes('params') || lowerContent.includes('$1');
-
-    vulnerabilities.push({
-      id: 'vuln-pg-sqli-2',
-      line: 38,
-      cwe: 'CWE-89',
-      category: 'Node Postgres Sqli',
-      title: 'Node Postgres SQL Query Pattern Inspection',
-      severity: isParametrizedOrSchema ? 'MEDIUM' : 'CRITICAL',
-      cvss: isParametrizedOrSchema ? 4.3 : 9.8,
-      aiVerdict: isParametrizedOrSchema ? 'False Positive' : 'True Positive',
-      aiConfidence: '7/10',
-      aiReason: isParametrizedOrSchema
-        ? 'Quy tắc cảnh báo về việc nối chuỗi với biến không phải là hằng số trong câu lệnh SQL cho Node-Postgres. Tuy nhiên, hàm `queryDb` được thiết kế để nhận vào `text` (câu lệnh SQL) và `params` (tham số) như là đối số. Cách sử dụng chuẩn của thư viện `node-postgres` với `client.query(text, params)` sẽ tự động xử lý việc nội suy tham số một cách an toàn, ngăn chặn SQL injection. Đoạn mã không trực tiếp nối chuỗi người dùng vào câu lệnh SQL mà dựa vào cơ chế của thư viện để xử lý. Do đó, đây không phải là lỗ hổng SQL injection thực tế mà là cảnh báo về một mẫu mã có thể sai lầm nếu không sử dụng đúng cách với tham số.'
-        : 'Truy vấn SQL ghép chuỗi trực tiếp với input mà không có tham số hóa.',
-      description: 'Cảnh báo về cách thức truyền câu lệnh SQL trong node-postgres.',
-      impact: 'Nếu không được tham số hóa, kẻ tấn công có thể chèn các câu lệnh SQL độc hại.',
-      originalCode: `const schemaSql = fs.readFileSync(path.join(__dirname, '../schema.sql'), 'utf8');\nawait client.query(schemaSql);`,
-      patchedCode: `// Cách sử dụng chuẩn an toàn của node-postgres:\nconst result = await client.query('SELECT * FROM users WHERE id = $1', [userId]);`,
-      recommendation: 'Giữ nguyên Parameterized Queries (client.query(text, params)).'
-    });
+  if (JS.includes(detectedLanguage)) {
+    const astResult = analyzeJavaScriptAst(code, filePath);
+    vulnerabilities.push(...astResult.findings.map((item) => ({
+      ...item,
+      id: `${item.ruleId}-${item.line}`,
+      filePath,
+      language: detectedLanguage,
+      category: item.cwe,
+      description: item.title,
+      impact: `Potential ${item.cwe} weakness.`
+    })));
   }
 
-  lines.forEach((lineText, idx) => {
-    const lineNum = idx + 1;
-    const trimmed = lineText.trim();
-    const lower = trimmed.toLowerCase();
-
-    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
-      return;
-    }
-
-    const displayLine = trimmed.length > 180 ? trimmed.slice(0, 180) + '...' : trimmed;
-
-    // 1. Hardcoded Credentials / Secrets (CWE-798)
-    if (
-      (lower.includes('secret') || lower.includes('password') || lower.includes('api_key') || lower.includes('private_key') || lower.includes('token')) &&
-      (trimmed.includes('=') || trimmed.includes(':')) &&
-      !lower.includes('process.env') && !lower.includes('os.getenv') && !lower.includes('export') && 
-      !lower.includes('symbol.for') && !lower.includes('react.')
-    ) {
-      vulnerabilities.push({
-        id: `vuln-${lineNum}-1`,
-        line: lineNum,
-        cwe: 'CWE-798',
-        category: 'Hardcoded Credentials',
-        title: 'Lộ Thông Tin Nhạy Cảm Trực Tiếp Trong Code',
-        severity: 'CRITICAL',
-        cvss: 9.1,
-        aiVerdict: 'True Positive',
-        aiConfidence: '9/10',
-        aiReason: 'Phát hiện biến chứa bí mật được gán chuỗi trực tiếp không qua process.env.',
-        description: 'Biến bí mật (API Key / Password / Secret) được lưu trữ dạng plain-text trong mã nguồn.',
-        impact: 'Cho phép kẻ tấn công chiếm quyền truy cập toàn bộ tài nguyên API & Database.',
-        originalCode: displayLine,
-        patchedCode: getPatchedLine(displayLine, 'secret'),
-        recommendation: 'Chuyển thông tin nhạy cảm sang biến môi trường (.env / process.env).'
-      });
-    }
-
-    // 2. SQL Injection (CWE-89)
-    const sqlQueryRegex = /\b(select\s+.*?\s+from|insert\s+into|update\s+.*?\s+set|delete\s+from)\b/i;
-    const hasConcatenation = trimmed.includes('+') || trimmed.includes('${') || trimmed.includes('%s');
-
-    if (sqlQueryRegex.test(trimmed) && hasConcatenation && !lower.includes('symbol.for') && !lower.includes('array.isarray')) {
-      vulnerabilities.push({
-        id: `vuln-${lineNum}-2`,
-        line: lineNum,
-        cwe: 'CWE-89',
-        category: 'SQL Injection (OWASP A03:2021)',
-        title: 'Lỗ Hổng Ghép Chuỗi Trong Truy Vấn SQL',
-        severity: 'CRITICAL',
-        cvss: 9.8,
-        aiVerdict: 'True Positive',
-        aiConfidence: '10/10',
-        aiReason: 'Truy vấn SQL được cộng chuỗi trực tiếp với biến đầu vào của người dùng.',
-        description: 'Truy vấn SQL được xây dựng bằng cách cộng chuỗi trực tiếp với đầu vào của người dùng.',
-        impact: 'Kẻ tấn công có thể chèn các câu lệnh SQL độc hại để đọc, sửa đổi hoặc xóa toàn bộ cơ sở dữ liệu.',
-        originalCode: displayLine,
-        patchedCode: getPatchedLine(displayLine, 'sqli'),
-        recommendation: 'Dùng Parameterized Queries (vd: db.query("SELECT * FROM users WHERE id = $1", [userId])).'
-      });
-    }
-  });
-
-  // Calculate Overall CVSS Score
-  let maxCvss = 0;
-  if (vulnerabilities.length > 0) {
-    maxCvss = Math.max(...vulnerabilities.map(v => v.cvss));
-  }
-
-  const criticalCount = vulnerabilities.filter(v => v.severity === 'CRITICAL').length;
-  const highCount = vulnerabilities.filter(v => v.severity === 'HIGH').length;
-  const mediumCount = vulnerabilities.filter(v => v.severity === 'MEDIUM').length;
+  const unique = Array.from(new Map(
+    vulnerabilities.map((finding) => [`${finding.ruleId}:${finding.line}`, finding])
+  ).values());
+  const maxCvss = unique.reduce((max, finding) => Math.max(max, finding.cvss), 0);
 
   return {
     filePath,
-    vulnerabilities,
+    language: detectedLanguage,
+    supported: SUPPORTED_LANGUAGES.includes(detectedLanguage),
+    ruleSignatures: SECURITY_RULE_SIGNATURE_COUNT,
+    vulnerabilities: unique,
     stats: {
-      total: vulnerabilities.length,
+      total: unique.length,
       maxCvss,
-      criticalCount,
-      highCount,
-      mediumCount
+      criticalCount: unique.filter((item) => item.severity === 'CRITICAL').length,
+      highCount: unique.filter((item) => item.severity === 'HIGH').length,
+      mediumCount: unique.filter((item) => item.severity === 'MEDIUM').length,
+      lowCount: unique.filter((item) => item.severity === 'LOW').length
     }
   };
-}
-
-function getPatchedLine(lineText, type) {
-  if (type === 'secret') {
-    return lineText.replace(/=(.*)/, '= process.env.SECRET_KEY || "";');
-  }
-  if (type === 'sqli') {
-    return `const query = "SELECT * FROM users WHERE id = $1";\nconst result = await db.query(query, [userId]);`;
-  }
-  if (type === 'xss') {
-    return lineText.replace(/innerHTML\s*=\s*(.*)/, 'textContent = DOMPurify.sanitize($1);');
-  }
-  return lineText;
 }

@@ -3,6 +3,11 @@ import { Github, RefreshCw, FolderGit2, ArrowRight, ShieldCheck, Loader2, Search
 import { fetchUserGitHubRepos, fetchGitHubRepoDetails } from '../services/githubService';
 import { analyzeProjectWithAI } from '../services/aiReviewEngine';
 import { supabaseDb } from '../services/supabaseClient';
+import { lunarApi } from '../services/lunarApi';
+import { scanLocalFiles } from '../services/repoScanner';
+import DeepScanProgress from './DeepScanProgress';
+import RepoTreeView from './RepoTreeView';
+import FolderDropZone from './FolderDropZone';
 
 export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOpenAuth }) {
   // Dynamic Username: Uses logged in user's handle if available, or user input
@@ -17,6 +22,10 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
   const [scanningRepoId, setScanningRepoId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [hasSynced, setHasSynced] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanStage, setScanStage] = useState('');
+  const [scanError, setScanError] = useState('');
+  const [scanFiles, setScanFiles] = useState([]);
 
   useEffect(() => {
     if (currentUser?.nickname) {
@@ -46,6 +55,51 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
 
   const handleAuditUserRepo = async (repo) => {
     setScanningRepoId(repo.id);
+    setScanError('');
+    setScanProgress(10);
+    setScanStage('Authorizing repository access…');
+    try {
+      if (!currentUser) {
+        onOpenAuth?.();
+        throw new Error('Sign in with GitHub before starting a deep scan.');
+      }
+      setScanProgress(35);
+      setScanStage('Fetching the bounded GitHub file tree…');
+      const result = await lunarApi.deepScanRepository({ repository: repo.fullName });
+      setScanProgress(90);
+      setScanStage('Persisting findings and scan history…');
+      setScanFiles(result.files || []);
+      setScanProgress(100);
+      setScanStage(`Complete: ${result.findings} findings in ${result.filesScanned} files.`);
+      onSelectProject({
+        id: result.projectId,
+        title: result.repository,
+        description: `Deep scan of ${result.filesScanned} files on ${result.branch}.`,
+        githubUrl: repo.htmlUrl,
+        language: repo.language,
+        overallScore: result.score,
+        cvssScore: result.severity?.critical ? 9.1 : result.severity?.high ? 7.5 : 0,
+        deepScan: result,
+        files: (result.files || []).map((file) => ({
+          path: file.path,
+          language: file.language || 'plaintext',
+          content: '// Source analyzed securely on the Lunar backend.',
+          annotations: (file.findings || []).map((finding) => ({
+            line: finding.line,
+            type: finding.severity,
+            title: finding.title,
+            message: finding.recommendation,
+            cwe: finding.cwe
+          }))
+        }))
+      });
+    } catch (error) {
+      setScanError(error.message);
+    } finally {
+      setScanningRepoId(null);
+    }
+    return;
+
     try {
       const rawData = await fetchGitHubRepoDetails(repo.htmlUrl);
       const analyzed = analyzeProjectWithAI(rawData);
@@ -63,6 +117,25 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
       alert(`Không thể tải Repo "${repo.name}": ${err.message}`);
     } finally {
       setScanningRepoId(null);
+    }
+  };
+
+  const handleLocalFolder = async (files) => {
+    setScanError('');
+    setScanFiles([]);
+    setScanProgress(1);
+    setScanStage('Scanning local folder in your browser…');
+    try {
+      const result = await scanLocalFiles(files, {
+        onProgress: ({ percent, completed, total }) => {
+          setScanProgress(percent);
+          setScanStage(`Scanned ${completed}/${total} local files…`);
+        }
+      });
+      setScanFiles(result.files);
+      setScanStage(`Local scan complete: ${result.findings.length} findings.`);
+    } catch (error) {
+      setScanError(error.message);
     }
   };
 
@@ -140,6 +213,15 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
           )}
         </div>
       </div>
+
+      <FolderDropZone onFiles={handleLocalFolder} disabled={Boolean(scanningRepoId)} />
+      <DeepScanProgress
+        active={Boolean(scanningRepoId) || (scanProgress > 0 && scanProgress < 100)}
+        progress={scanProgress}
+        stage={scanStage}
+        error={scanError}
+      />
+      <RepoTreeView files={scanFiles} />
 
       {/* Main Content State */}
       {loading ? (

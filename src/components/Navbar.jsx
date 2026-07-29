@@ -156,7 +156,7 @@ export default function Navbar({
             <ShieldCheck size={14} /> Cộng Đồng Security
           </button>
 
-          <button
+          {currentUser?.role === 'ADMIN' && <button
             onClick={() => setActiveTab('admin')}
             style={{
               padding: '6px 14px',
@@ -173,7 +173,7 @@ export default function Navbar({
             }}
           >
             <Crown size={14} color="#f59e0b" /> Admin 👑
-          </button>
+          </button>}
         </nav>
 
         {/* Right Action Toolbar */}
