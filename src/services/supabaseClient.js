@@ -14,7 +14,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-// Realtime Listener Helper
+// Realtime Listener Helper for Code Audits
 export function subscribeToRealtimeAudits(onAuditChange) {
   if (!isSupabaseConfigured) return null;
   try {
@@ -26,7 +26,41 @@ export function subscribeToRealtimeAudits(onAuditChange) {
       .subscribe();
     return channel;
   } catch (err) {
-    console.warn('Realtime subscription notice:', err);
+    console.warn('Realtime audits subscription notice:', err);
+    return null;
+  }
+}
+
+// Realtime Listener Helper for VietQR Transactions
+export function subscribeToRealtimeTransactions(onTxChange) {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const channel = supabase
+      .channel('realtime-transactions-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, (payload) => {
+        if (onTxChange) onTxChange(payload);
+      })
+      .subscribe();
+    return channel;
+  } catch (err) {
+    console.warn('Realtime tx subscription notice:', err);
+    return null;
+  }
+}
+
+// Realtime Listener Helper for Gmail Email Logs
+export function subscribeToRealtimeEmails(onEmailChange) {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const channel = supabase
+      .channel('realtime-emails-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'email_logs' }, (payload) => {
+        if (onEmailChange) onEmailChange(payload);
+      })
+      .subscribe();
+    return channel;
+  } catch (err) {
+    console.warn('Realtime emails subscription notice:', err);
     return null;
   }
 }
@@ -70,17 +104,97 @@ export const supabaseDb = {
       }
     }
 
-    // Local Fallback
     const existing = await this.getCodeAudits();
     const updated = [auditRecord, ...existing];
     localStorage.setItem('lunar_code_audits', JSON.stringify(updated));
     
-    // Dispatch custom event for real-time UI reaction locally
     window.dispatchEvent(new CustomEvent('lunar_audit_saved', { detail: auditRecord }));
     return auditRecord;
   },
 
-  // Fetch Community Fix Badges / Leaderboard
+  // Fetch Realtime Transactions
+  async getTransactions() {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && data) return data;
+      } catch (err) {
+        console.warn('Supabase transactions fetch error:', err);
+      }
+    }
+    const local = localStorage.getItem('lunar_transactions');
+    return local ? JSON.parse(local) : [];
+  },
+
+  // Save New VietQR Transaction
+  async saveTransaction(txData) {
+    const txRecord = {
+      id: txData.id || `INV-LUNAR-${Date.now().toString().slice(-6)}`,
+      created_at: new Date().toISOString(),
+      ...txData
+    };
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .insert([txRecord])
+          .select();
+        if (!error && data && data[0]) return data[0];
+      } catch (err) {
+        console.warn('Supabase transaction save error:', err);
+      }
+    }
+
+    const existing = await this.getTransactions();
+    const updated = [txRecord, ...existing];
+    localStorage.setItem('lunar_transactions', JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('lunar_tx_saved', { detail: txRecord }));
+    return txRecord;
+  },
+
+  // Fetch Realtime Gmail Logs
+  async getEmailLogs() {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('email_logs')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && data) return data;
+      } catch (err) {
+        console.warn('Supabase email logs fetch error:', err);
+      }
+    }
+    const local = localStorage.getItem('lunar_email_logs');
+    return local ? JSON.parse(local) : [];
+  },
+
+  // Save New Gmail Log Entry
+  async saveEmailLog(emailRecord) {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('email_logs')
+          .insert([emailRecord])
+          .select();
+        if (!error && data && data[0]) return data[0];
+      } catch (err) {
+        console.warn('Supabase email log save error:', err);
+      }
+    }
+
+    const existing = await this.getEmailLogs();
+    const updated = [emailRecord, ...existing];
+    localStorage.setItem('lunar_email_logs', JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('lunar_email_saved', { detail: emailRecord }));
+    return emailRecord;
+  },
+
+  // Fetch Community Leaderboard
   async getLeaderboard() {
     if (isSupabaseConfigured) {
       try {

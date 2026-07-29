@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, ShieldCheck, Sparkles, Zap, Bot, CreditCard, QrCode, ArrowRight, Loader2, Award } from 'lucide-react';
+import { X, Check, ShieldCheck, Sparkles, Zap, Bot, CreditCard, QrCode, ArrowRight, Loader2, Award, Mail } from 'lucide-react';
+import { sendProInvoiceGmail } from '../services/gmailMailerService';
 
-export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', onUpgradeSuccess }) {
+export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', currentUser, onUpgradeSuccess }) {
   const [selectedPlan, setSelectedPlan] = useState('PRO'); // 'PRO' | 'ENTERPRISE'
   const [paymentStep, setPaymentStep] = useState('select'); // 'select' | 'qr_payment' | 'success'
   const [paymentMethod, setPaymentMethod] = useState('vietqr'); // 'vietqr' | 'momo' | 'card'
@@ -47,7 +48,7 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', on
         'Mở Khóa Chi Tiết Dòng Code & Line AI Warning',
         'Bộ Công Cụ Vá Code Tự Động (AI Code Repair Workbench)',
         'Side-by-Side Diff & Tinh Chỉnh Prompt AI Fix',
-        'Xuất Báo Cáo Audit PDF & Badge README'
+        'Xuất Báo Cáo Audit PDF & Nhận Hóa Đơn Qua Gmail'
       ],
       cta: 'Nâng Cấp Gói Pro'
     },
@@ -63,7 +64,7 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', on
         'GitHub Security Bot Tự Động Tạo Pull Request',
         'Tích Hợp Webhook & CI/CD Action Workflow',
         'Tự Động Vá Lỗi Mã Nguồn Mỗi Khi Push Code',
-        'Hỗ Trợ Ưu Tiên 24/7 Qua Channel Riêng'
+        'Hỗ Trợ Ưu Tiên 24/7 Qua Gmail Channel'
       ],
       cta: 'Mua Gói Enterprise Bot'
     }
@@ -77,7 +78,15 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', on
 
   const handleConfirmPayment = () => {
     setIsVerifying(true);
-    setTimeout(() => {
+    const targetPlan = plans.find(p => p.id === selectedPlan) || plans[1];
+    const transactionId = `INV-LUNAR-${Date.now().toString().slice(-6)}`;
+    const userEmail = currentUser?.email || 'developer@gmail.com';
+    const userName = currentUser?.name || 'Developer';
+
+    setTimeout(async () => {
+      // Send Gmail Invoice Receipt
+      await sendProInvoiceGmail(userEmail, userName, targetPlan, transactionId);
+
       setIsVerifying(false);
       setPaymentStep('success');
       onUpgradeSuccess(selectedPlan);
@@ -335,9 +344,26 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', on
               Nâng Cấp Thành Công Gói {selectedPlan}!
             </h3>
 
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', maxWidth: '420px', margin: '0 auto 24px auto', lineHeight: '1.6' }}>
-              Tài khoản của bạn đã được chuyển sang hạng <strong>Lunar {selectedPlan}</strong>. Bạn có thể sử dụng trọn bộ tính năng AI Code Repair Workbench và GitHub Security Bot.
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', maxWidth: '420px', margin: '0 auto 16px auto', lineHeight: '1.6' }}>
+              Tài khoản của bạn đã được nâng cấp thành công lên hạng <strong>Lunar {selectedPlan}</strong>. Bạn đã mở khóa không giới hạn lượt quét và trọn bộ công cụ AI Code Repair Workbench.
             </p>
+
+            <div style={{
+              background: 'rgba(234, 67, 53, 0.12)',
+              border: '1px solid rgba(234, 67, 53, 0.3)',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '24px',
+              fontSize: '0.85rem',
+              color: '#fca5a5',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}>
+              <Mail size={16} color="#ea4335" />
+              <span>Hóa đơn giao dịch đã được tự động gửi tới Gmail: <strong>{currentUser?.email || 'developer@gmail.com'}</strong></span>
+            </div>
 
             <button onClick={onClose} className="btn btn-primary" style={{ padding: '12px 28px' }}>
               Bắt Đầu Sử Dụng Tính Năng Pro <ArrowRight size={16} />

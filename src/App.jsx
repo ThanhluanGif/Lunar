@@ -13,6 +13,8 @@ import PricingModal from './components/PricingModal';
 import GitBotConfigModal from './components/GitBotConfigModal';
 import AuditReportExportModal from './components/AuditReportExportModal';
 import QuotaDepletedModal from './components/QuotaDepletedModal';
+import GmailSettingsModal from './components/GmailSettingsModal';
+import AdminDashboard from './components/AdminDashboard';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
 import { supabaseDb, supabase } from './services/supabaseClient';
@@ -55,6 +57,7 @@ export default function App() {
   const [isGitBotOpen, setIsGitBotOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
+  const [isGmailSettingsOpen, setIsGmailSettingsOpen] = useState(false);
 
   // Initialize Supabase Audits & Restore Auth Session
   useEffect(() => {
@@ -72,14 +75,14 @@ export default function App() {
           const sbUser = {
             id: session.user.id,
             nickname: `@${userHandle}`,
-            name: session.user.user_metadata?.full_name || userHandle,
+            name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || userHandle,
             email: session.user.email,
-            tier: 'PRO',
+            tier: 'FREE',
             karma_points: 1000,
-            avatar_url: session.user.user_metadata?.avatar_url || `https://github.com/${userHandle}.png`
+            avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || `https://lh3.googleusercontent.com/a/default-user=s96-c`
           };
           setCurrentUser(sbUser);
-          setCurrentTier('PRO');
+          setCurrentTier(sbUser.tier || 'FREE');
           localStorage.setItem('lunar_auth_session', JSON.stringify(sbUser));
         }
       } catch (e) {
@@ -87,6 +90,30 @@ export default function App() {
       }
     }
     loadInitialData();
+
+    // Listen to Google OAuth redirect auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('⚡ [Supabase Auth] Auth state change event:', event);
+      if (session?.user) {
+        const userHandle = session.user.email?.split('@')[0] || 'developer';
+        const googleUser = {
+          id: session.user.id,
+          nickname: `@${userHandle}`,
+          name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || userHandle,
+          email: session.user.email,
+          tier: 'FREE',
+          karma_points: 1000,
+          avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || `https://lh3.googleusercontent.com/a/default-user=s96-c`
+        };
+        setCurrentUser(googleUser);
+        setCurrentTier('FREE');
+        localStorage.setItem('lunar_auth_session', JSON.stringify(googleUser));
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
   // Active File & Scan Analysis
@@ -180,6 +207,7 @@ export default function App() {
         onOpenPricing={() => setIsPricingOpen(true)}
         onOpenGitBot={() => setIsGitBotOpen(true)}
         onRenewFreeQuota={handleRenewFreeQuota}
+        onOpenGmailSettings={() => setIsGmailSettingsOpen(true)}
       />
 
       {/* Guest Mode Helper Pill */}
@@ -340,6 +368,14 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB 4: ADMIN MANAGEMENT DASHBOARD */}
+        {activeTab === 'admin' && (
+          <AdminDashboard
+            currentUser={currentUser}
+            onUpgradeUserTier={handleUpgradeSuccess}
+          />
+        )}
+
         {/* TAB 3: PROJECT DETAIL & REPAIR WORKBENCH */}
         {activeTab === 'detail' && selectedProject && (
           <div style={{ maxWidth: '1240px', margin: '0 auto', paddingTop: '28px' }}>
@@ -428,6 +464,7 @@ export default function App() {
         isOpen={isPricingOpen}
         onClose={() => setIsPricingOpen(false)}
         currentTier={currentTier}
+        currentUser={currentUser}
         onUpgradeSuccess={handleUpgradeSuccess}
       />
 
@@ -441,6 +478,15 @@ export default function App() {
         isOpen={isReportOpen}
         onClose={() => setIsReportOpen(false)}
         project={selectedProject}
+        scanResult={scanResult}
+        currentUser={currentUser}
+      />
+
+      <GmailSettingsModal
+        isOpen={isGmailSettingsOpen}
+        onClose={() => setIsGmailSettingsOpen(false)}
+        currentUser={currentUser}
+        activeProject={selectedProject}
         scanResult={scanResult}
       />
 

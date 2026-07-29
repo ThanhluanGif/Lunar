@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Copy, Check, Award, Download, FileText } from 'lucide-react';
+import { X, ShieldCheck, Copy, Check, Award, Download, FileText, Mail, Send } from 'lucide-react';
+import { sendSecurityAuditGmail } from '../services/gmailMailerService';
 
-export default function AuditReportExportModal({ isOpen, onClose, project, scanResult }) {
+export default function AuditReportExportModal({ isOpen, onClose, project, scanResult, currentUser }) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [sendingGmail, setSendingGmail] = useState(false);
+  const [gmailSentSuccess, setGmailSentSuccess] = useState(false);
 
   if (!isOpen || !project) return null;
 
@@ -18,6 +21,16 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
     navigator.clipboard.writeText(badgeMarkdown);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSendGmail = async () => {
+    setSendingGmail(true);
+    const targetEmail = currentUser?.email || 'developer@gmail.com';
+
+    await sendSecurityAuditGmail(targetEmail, project.title, scanResult);
+    setSendingGmail(false);
+    setGmailSentSuccess(true);
+    setTimeout(() => setGmailSentSuccess(false), 4000);
   };
 
   const handleDownloadPdf = async () => {
@@ -98,15 +111,15 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
             <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.25rem', fontWeight: '800' }}>
               Báo Cáo Kiểm Định An Ninh (Security Audit Report)
             </h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Chứng nhận tuân thủ an toàn mã nguồn cho dự án {project.title}
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+              Xuất chứng chỉ an ninh và gửi bản tổng hợp tới Gmail
             </p>
           </div>
         </div>
 
         {/* Live Badge Preview */}
         <div style={{
-          background: 'rgba(0, 0, 0, 0.4)',
+          background: 'rgba(15, 23, 42, 0.6)',
           padding: '20px',
           borderRadius: 'var(--radius-md)',
           textAlign: 'center',
@@ -141,10 +154,37 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
           </div>
         </div>
 
-        <button onClick={handleDownloadPdf} disabled={downloading} className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
-          <Download size={18} />
-          {downloading ? 'Đang Khởi Tạo Báo Cáo...' : 'Tải Báo Cáo Executive Security Audit (PDF)'}
-        </button>
+        {gmailSentSuccess && (
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid #10b981',
+            color: '#34d399',
+            padding: '10px',
+            borderRadius: '8px',
+            fontSize: '0.85rem',
+            marginBottom: '14px',
+            textAlign: 'center'
+          }}>
+            📧 Đã gửi thành công báo cáo Audit tới Gmail: <strong>{currentUser?.email || 'developer@gmail.com'}</strong>!
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button onClick={handleDownloadPdf} disabled={downloading} className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
+            <Download size={18} />
+            {downloading ? 'Đang Khởi Tạo Báo Cáo...' : 'Tải Báo Cáo Executive Security Audit (PDF)'}
+          </button>
+
+          <button
+            onClick={handleSendGmail}
+            disabled={sendingGmail}
+            className="btn btn-secondary"
+            style={{ width: '100%', padding: '11px', borderColor: '#ea4335', color: '#fca5a5', gap: '8px' }}
+          >
+            <Mail size={18} color="#ea4335" />
+            {sendingGmail ? 'Đang Gửi Về Gmail...' : 'Gửi Báo Cáo Audit Trực Tiếp Về Gmail'}
+          </button>
+        </div>
 
       </div>
     </div>
