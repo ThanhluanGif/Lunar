@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     build:
@@ -16,6 +14,11 @@ services:
       PAYMENT_WEBHOOK_SECRET: ${LUNAR_PAYMENT_WEBHOOK_SECRET:?Set LUNAR_PAYMENT_WEBHOOK_SECRET before deployment}
       ADMIN_BOOTSTRAP_TOKEN: ${LUNAR_ADMIN_BOOTSTRAP_TOKEN:-}
       COOKIE_SECURE: ${LUNAR_COOKIE_SECURE:-true}
+      GITHUB_CLIENT_ID: ${LUNAR_GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${LUNAR_GITHUB_CLIENT_SECRET:-}
+      GITHUB_OAUTH_CALLBACK_URL: ${LUNAR_GITHUB_OAUTH_CALLBACK_URL:-http://localhost:5000/api/v1/auth/github/callback}
+      GITHUB_TOKEN_ENCRYPTION_KEY: ${LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY:-}
+      GITHUB_OAUTH_SCOPES: ${LUNAR_GITHUB_OAUTH_SCOPES:-read:user user:email}
     depends_on:
       db:
         condition: service_healthy

@@ -54,7 +54,13 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS github_repo_id BIGINT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT FALSE;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS synced_at TIMESTAMP WITH TIME ZONE;
 CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_user_github_repo
+    ON projects(user_id, github_repo_id)
+    WHERE github_repo_id IS NOT NULL;
 
 -- 3. Scans Table
 CREATE TABLE IF NOT EXISTS scans (
@@ -175,4 +181,20 @@ CREATE TABLE IF NOT EXISTS admin_action_logs (
 
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_created_at ON admin_action_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_actor ON admin_action_logs(actor_user_id);
+
+-- 12. Encrypted GitHub OAuth connections
+CREATE TABLE IF NOT EXISTS github_connections (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    github_id BIGINT UNIQUE NOT NULL,
+    github_login VARCHAR(255) NOT NULL,
+    github_email VARCHAR(255) NOT NULL,
+    avatar_url TEXT,
+    access_token_encrypted TEXT NOT NULL,
+    scopes TEXT[] DEFAULT ARRAY[]::TEXT[],
+    last_synced_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_github_connections_login ON github_connections(github_login);
 

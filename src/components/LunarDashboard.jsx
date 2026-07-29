@@ -840,7 +840,7 @@ export default function LunarDashboard({
                       id: repo.id,
                       title: repo.name,
                       description: `${repo.lang} Repository with ${repo.prs} pull requests monitored by Lunar.`,
-                      githubUrl: `https://github.com/acme-corp/${repo.name}`,
+                      githubUrl: repo.repoUrl || `https://github.com/${repo.name}`,
                       files: [{ path: 'src/main.ts', content: `// Repository: ${repo.name}\nfunction handleProcess() {\n  console.log("Audit complete");\n}` }]
                     })}
                     style={{

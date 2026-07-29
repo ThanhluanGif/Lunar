@@ -11,6 +11,7 @@ const { publicApiRateLimiter, paymentRateLimiter } = require('./middleware/rateL
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
+const githubAuthRoutes = require('./routes/githubAuthRoutes');
 const scanRoutes = require('./routes/scanRoutes');
 const githubRoutes = require('./routes/githubRoutes');
 const reportRoutes = require('./routes/reportRoutes');
@@ -58,6 +59,7 @@ app.use('/api/v1/public', publicApiRateLimiter);
 
 // 6. Registered Business Routes
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/auth/github', githubAuthRoutes);
 app.use('/api/v1/scans', scanRoutes);
 app.use('/api/v1/github', githubRoutes);
 app.use('/api/v1/reports', reportRoutes);

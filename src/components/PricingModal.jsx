@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, ShieldCheck, Sparkles, Zap, Bot, CreditCard, QrCode, ArrowRight, Loader2, Award, Mail } from 'lucide-react';
 import { sendProInvoiceGmail } from '../services/gmailMailerService';
+import { lunarApi } from '../services/lunarApi';
 
 export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', currentUser, onUpgradeSuccess, initialPlan = 'PRO' }) {
   const [selectedPlan, setSelectedPlan] = useState(initialPlan || 'PRO'); // 'PRO' | 'ENTERPRISE'
@@ -8,6 +9,8 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
   const [paymentMethod, setPaymentMethod] = useState('vietqr'); // 'vietqr' | 'momo' | 'card'
   const [isVerifying, setIsVerifying] = useState(false);
   const [countdown, setCountdown] = useState(600); // 10 minutes timer
+  const [paymentOrder, setPaymentOrder] = useState(null);
+  const [paymentError, setPaymentError] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -15,8 +18,17 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
       setSelectedPlan(planToSet);
       setPaymentStep('qr_payment'); // Jump straight to VietQR payment screen!
       setCountdown(600);
+      setPaymentError('');
+      setPaymentOrder(null);
+      if (currentUser) {
+        lunarApi.createPaymentOrder(planToSet, 'VIETQR')
+          .then(({ order }) => setPaymentOrder(order))
+          .catch((error) => setPaymentError(error.message));
+      } else {
+        setPaymentError('Sign in before creating a payment order.');
+      }
     }
-  }, [isOpen, initialPlan]);
+  }, [isOpen, initialPlan, currentUser]);
 
   useEffect(() => {
     let timer;
@@ -85,8 +97,29 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
     setPaymentStep('qr_payment');
   };
 
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = async () => {
+    if (!paymentOrder?.orderCode) {
+      setPaymentError('No verified payment order is available.');
+      return;
+    }
     setIsVerifying(true);
+    setPaymentError('');
+    try {
+      const status = await lunarApi.getPaymentStatus(paymentOrder.orderCode);
+      if (status.status !== 'SUCCESS') {
+        setPaymentError('Payment is still waiting for backend/webhook confirmation.');
+        return;
+      }
+      const subscription = await lunarApi.getSubscription();
+      setPaymentStep('success');
+      onUpgradeSuccess(subscription.tier);
+    } catch (error) {
+      setPaymentError(error.message);
+    } finally {
+      setIsVerifying(false);
+    }
+    return;
+
     const targetPlan = plans.find(p => p.id === selectedPlan) || plans[1];
     const transactionId = `INV-LUNAR-${Date.now().toString().slice(-6)}`;
     const userEmail = currentUser?.email || 'developer@gmail.com';
@@ -290,24 +323,30 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
                 boxShadow: '0 0 25px rgba(255, 255, 255, 0.15)'
               }}>
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=LUNAR_${selectedPlan}_PAYMENT_290000`}
+                  src={paymentOrder?.qrUrl || 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=LUNAR_PAYMENT_PENDING'}
                   alt="Payment QR Code"
                   style={{ width: '170px', height: '170px', display: 'block' }}
                 />
               </div>
 
               <div style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--accent-cyan)', marginBottom: '4px' }}>
-                Số tiền thanh toán: {selectedPlan === 'PRO' ? '290.000 VNĐ' : '690.000 VNĐ'}
+                Số tiền thanh toán: {new Intl.NumberFormat('vi-VN').format(paymentOrder?.amount || 0)} VNĐ
               </div>
 
               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                Nội dung chuyển khoản: <strong style={{ color: '#fbbf24' }}>LUNAR {selectedPlan} USER_DEV</strong>
+                Nội dung chuyển khoản: <strong style={{ color: '#fbbf24' }}>{paymentOrder?.transferContent || 'Đang tạo đơn...'}</strong>
               </div>
 
               <div style={{ fontSize: '0.78rem', color: '#fb7185', fontWeight: '600' }}>
                 ⏱️ Mã QR có hiệu lực trong: {formatTime(countdown)}
               </div>
             </div>
+
+            {paymentError && (
+              <div style={{ marginBottom: '14px', padding: '10px 12px', borderRadius: '8px', color: '#fca5a5', background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.3)' }}>
+                {paymentError}
+              </div>
+            )}
 
             {/* Verification Actions */}
             {isVerifying ? (

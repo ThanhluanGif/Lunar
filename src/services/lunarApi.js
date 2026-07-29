@@ -31,12 +31,20 @@ export const lunarApi = {
     body: JSON.stringify({ name, nickname, email, password })
   }),
   logout: () => request('/auth/logout', { method: 'POST' }),
+  getGitHubStatus: () => request('/auth/github/status'),
+  syncGitHubRepositories: () => request('/auth/github/sync', { method: 'POST' }),
   getDashboardAccess: () => request('/dashboard/access'),
   getDashboardOverview: (days = 28) => request(`/dashboard/overview?days=${days}`),
   getAdminOverview: () => request('/admin/overview'),
   getAdminUsers: () => request('/admin/users?limit=100'),
   getAdminPayments: () => request('/admin/payments?limit=100'),
   getAdminAuditLog: () => request('/admin/audit-log?limit=100'),
+  createPaymentOrder: (tier, paymentMethod = 'VIETQR') => request('/payment/create-order', {
+    method: 'POST',
+    body: JSON.stringify({ tier, paymentMethod })
+  }),
+  getPaymentStatus: (orderCode) => request(`/payment/status/${encodeURIComponent(orderCode)}`),
+  getSubscription: () => request('/payment/subscription'),
   updateAdminUser: (userId, changes, reason) => request(`/admin/users/${userId}`, {
     method: 'PATCH',
     body: JSON.stringify({ ...changes, reason })
