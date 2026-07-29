@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     build:
@@ -8,28 +6,34 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - PORT=5000
-      - NODE_ENV=production
-      - JWT_SECRET=lunar_production_jwt_secret_key_2026_super_secure
-      - POSTGRES_HOST=db
-      - POSTGRES_USER=lunar_admin
-      - POSTGRES_PASSWORD=lunar_secure_pass
-      - POSTGRES_DB=lunar_db
+      PORT: 5000
+      NODE_ENV: production
+      JWT_SECRET: ${LUNAR_JWT_SECRET:?Set LUNAR_JWT_SECRET before deployment}
+      DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD before deployment}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
+      CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5000}
+      PAYMENT_WEBHOOK_SECRET: ${LUNAR_PAYMENT_WEBHOOK_SECRET:?Set LUNAR_PAYMENT_WEBHOOK_SECRET before deployment}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   db:
     image: postgres:16-alpine
     restart: always
     environment:
-      POSTGRES_USER: lunar_admin
-      POSTGRES_PASSWORD: lunar_secure_pass
-      POSTGRES_DB: lunar_db
+      POSTGRES_USER: ${LUNAR_POSTGRES_USER:-lunar_admin}
+      POSTGRES_PASSWORD: ${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD before deployment}
+      POSTGRES_DB: ${LUNAR_POSTGRES_DB:-lunar_db}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./server/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
 volumes:
   postgres_data:
