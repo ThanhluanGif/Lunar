@@ -1,14 +1,33 @@
 import React, { useState } from 'react';
-import { Wrench, Sparkles, Code, CheckCircle, Download, Copy, GitPullRequest, ArrowRight, ShieldCheck, Cpu, Eye, Loader2, ExternalLink } from 'lucide-react';
+import { Wrench, Sparkles, Code, CheckCircle, Download, Copy, GitPullRequest, ArrowRight, ShieldCheck, Cpu, Eye, Loader2, ExternalLink, ShieldAlert, Terminal, Flame, AlertOctagon, Skull, Play } from 'lucide-react';
 import { createGitHubSecurityPR } from '../services/githubBotService';
+import { simulateHackerAttackWithGemini } from '../services/geminiService';
 
 export default function CodeRepairWorkbench({ activeFile, activeVuln, repoUrl, onOpenPricing }) {
   const [repairStyle, setRepairStyle] = useState('security'); // 'security' | 'performance' | 'clean'
   const [customPrompt, setCustomPrompt] = useState('');
   const [viewMode, setViewMode] = useState('side-by-side'); // 'side-by-side' | 'unified'
   const [copied, setCopied] = useState(false);
-  const [isCreatingPR, setIsCreatingPR] = useState(false);
-  const [prResult, setPrResult] = useState(null);
+  const [isSimulatingAttack, setIsSimulatingAttack] = useState(false);
+  const [attackData, setAttackData] = useState(activeVuln?.hackerAttackVector || null);
+
+  const handleSimulateAttack = async () => {
+    setIsSimulatingAttack(true);
+    try {
+      const res = await simulateHackerAttackWithGemini({
+        code: originalCode,
+        filename: activeFile?.path || 'source.ts',
+        language: activeFile?.language || 'typescript'
+      });
+      if (res?.findings?.[0]?.hackerAttackVector) {
+        setAttackData(res.findings[0].hackerAttackVector);
+      }
+    } catch (err) {
+      console.error('Simulate attack error:', err);
+    } finally {
+      setIsSimulatingAttack(false);
+    }
+  };
 
   if (!activeVuln) {
     return (
@@ -195,6 +214,100 @@ export default function CodeRepairWorkbench({ activeFile, activeVuln, repoUrl, o
           </div>
         </div>
       )}
+
+      {/* 🔴 Hacker Attack Scenario & Threat Payload Simulation Card */}
+      <div className="glass-card" style={{
+        padding: '20px',
+        marginBottom: '20px',
+        background: 'linear-gradient(135deg, rgba(225, 29, 72, 0.08) 0%, rgba(159, 18, 57, 0.12) 100%)',
+        border: '1px solid rgba(244, 63, 94, 0.35)',
+        borderRadius: 'var(--radius-lg)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Skull size={20} color="#f43f5e" />
+            <h4 style={{ color: '#fb7185', fontSize: '0.96rem', fontWeight: '800', margin: 0 }}>
+              🔴 Mô Phỏng Cuộc Tấn Công Của Hacker (Hacker Attack Scenario & Vector)
+            </h4>
+          </div>
+          <button
+            onClick={handleSimulateAttack}
+            disabled={isSimulatingAttack}
+            className="btn btn-sm btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }}
+          >
+            {isSimulatingAttack ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={14} color="#f43f5e" />}
+            {isSimulatingAttack ? 'Đang Phân Tích Kịch Bản...' : '🧪 Mô Phỏng Kịch Bản Khai Thác AI'}
+          </button>
+        </div>
+
+        {/* Threat Level & Impact */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '14px' }}>
+          <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid rgba(244, 63, 94, 0.2)' }}>
+            <div style={{ color: '#fda4af', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>
+              🚨 Mức Độ Cảnh Báo Nguy Hiểm:
+            </div>
+            <span style={{
+              display: 'inline-block',
+              padding: '2px 8px',
+              borderRadius: '4px',
+              fontSize: '0.75rem',
+              fontWeight: '800',
+              background: '#f43f5e',
+              color: '#ffffff'
+            }}>
+              {attackData?.threatLevel || activeVuln.severity?.toUpperCase() || 'CRITICAL THREAT'}
+            </span>
+          </div>
+
+          <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid rgba(244, 63, 94, 0.2)' }}>
+            <div style={{ color: '#fda4af', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>
+              💥 Hậu Quả Thiệt Hại (Breach Impact):
+            </div>
+            <div style={{ color: '#fecdd3', fontSize: '0.82rem', lineHeight: '1.4' }}>
+              {attackData?.breachImpact || activeVuln.aiReasoning || 'Chiếm quyền điều khiển dữ liệu, rò rỉ toàn bộ cơ sở dữ liệu hoặc thực thi mã từ xa (RCE).'}
+            </div>
+          </div>
+        </div>
+
+        {/* Attack Chain */}
+        <div style={{ marginBottom: '14px' }}>
+          <div style={{ color: '#fb7185', fontSize: '0.82rem', fontWeight: '700', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Terminal size={14} />
+            <span>Các Bước Hacker Thực Hiện Tấn Công:</span>
+          </div>
+          <ol style={{ margin: 0, paddingLeft: '20px', color: '#fecdd3', fontSize: '0.82rem', lineHeight: '1.6' }}>
+            {(attackData?.attackChain || [
+              `Hacker gửi request độc hại chứa chuỗi kiểm thử vào tham số truyền vào ứng dụng.`,
+              `Hệ thống không kiểm duyệt đầu vào (Unsanitized Input), khiến câu lệnh bị chèn lệnh bất hợp pháp.`,
+              `Hacker chiếm được quyền truy cập tài nguyên bảo mật và trích xuất thông tin nhạy cảm.`
+            ]).map((step, idx) => (
+              <li key={idx} style={{ marginBottom: '4px' }}>{step}</li>
+            ))}
+          </ol>
+        </div>
+
+        {/* Sample Exploit Payload Box */}
+        <div>
+          <div style={{ color: '#fb7185', fontSize: '0.82rem', fontWeight: '700', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Flame size={14} />
+            <span>Mẫu Exploit Payload Hacker Có Thể Sử Dụng:</span>
+          </div>
+          <div style={{
+            background: '#090d16',
+            border: '1px solid rgba(244, 63, 94, 0.4)',
+            borderRadius: 'var(--radius-md)',
+            padding: '12px',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.8rem',
+            color: '#f43f5e',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all'
+          }}>
+            {attackData?.exploitPayload || activeVuln.codeSnippet || "GET /api/v1/users?id=1'%20OR%20'1'='1'%20-- HTTP/1.1\nHost: target-app.com\nUser-Agent: HackerPayload/2.0"}
+          </div>
+        </div>
+      </div>
 
       {/* AI Architectural Remediation Explanation */}
       <div className="glass-card" style={{ padding: '16px', marginBottom: '20px', background: 'rgba(168, 85, 247, 0.08)' }}>
