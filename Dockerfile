@@ -16,10 +16,10 @@ ENV NODE_ENV=production
 ENV PORT=5000
 
 COPY package*.json ./
-COPY server ./server
 
 RUN npm ci --omit=dev
 
+COPY server ./server
 COPY --from=frontend-builder /app/dist ./dist
 
 EXPOSE 5000

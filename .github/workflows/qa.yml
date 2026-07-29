@@ -15,6 +15,20 @@ jobs:
   integration-qa:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lunar_admin
+          POSTGRES_PASSWORD: qa_postgres_password
+          POSTGRES_DB: lunar_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lunar_admin -d lunar_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Check out repository
@@ -34,6 +48,9 @@ jobs:
 
       - name: Verify Mac UI and Acer backend integration
         run: npm run qa
+        env:
+          DATABASE_URL: postgresql://lunar_admin:qa_postgres_password@localhost:5432/lunar_db
+          ADMIN_BOOTSTRAP_TOKEN: qa-one-time-admin-bootstrap-token
 
       - name: Validate production container
         run: docker build -t lunar:qa .

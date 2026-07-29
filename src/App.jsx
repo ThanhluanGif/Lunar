@@ -19,6 +19,7 @@ import LunarDashboard from './components/LunarDashboard';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
 import { supabaseDb, supabase } from './services/supabaseClient';
+import { lunarApi } from './services/lunarApi';
 import { Moon, ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
 
 import UserGitHubWorkspace from './components/UserGitHubWorkspace';
@@ -30,35 +31,8 @@ export default function App() {
   const [selectedProject, setSelectedProject] = useState(SECURITY_PROJECTS_MOCK[0]);
   const [searchQuery, setSearchQuery] = useState('');
   
-  const DEFAULT_DEV_USER = {
-    id: 'usr-google-dev',
-    nickname: '@developer.lunar',
-    name: 'Developer Lunar',
-    email: 'dev.lunar@gmail.com',
-    tier: 'PRO',
-    karma_points: 1250,
-    avatar_url: 'https://lh3.googleusercontent.com/a/default-user=s96-c'
-  };
-
-  // Auth state & Subscription tier (Default Real User Session - No Guest Mode)
-  const [currentUser, setCurrentUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('lunar_auth_session');
-      return saved ? JSON.parse(saved) : DEFAULT_DEV_USER;
-    } catch (e) {
-      return DEFAULT_DEV_USER;
-    }
-  });
-  const [currentTier, setCurrentTier] = useState(() => {
-    try {
-      const saved = localStorage.getItem('lunar_auth_session');
-      if (saved) {
-        const u = JSON.parse(saved);
-        return u.tier || 'PRO';
-      }
-    } catch (e) {}
-    return 'PRO';
-  });
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentTier, setCurrentTier] = useState('FREE');
   
   // Modals
   const [isSubmitOpen, setIsSubmitOpen] = useState(false);
@@ -81,6 +55,9 @@ export default function App() {
 
   // Initialize Supabase Audits & Restore Auth Session
   useEffect(() => {
+    // Legacy Supabase identity is intentionally disabled; Lunar API roles are authoritative.
+    return undefined;
+
     async function loadInitialData() {
       try {
         const audits = await supabaseDb.getCodeAudits();
@@ -136,6 +113,25 @@ export default function App() {
     };
   }, []);
 
+  // The Lunar backend is authoritative for identity, tier and role.
+  useEffect(() => {
+    let mounted = true;
+    lunarApi.getMe()
+      .then(({ user }) => {
+        if (!mounted) return;
+        setCurrentUser(user);
+        setCurrentTier(user.tier || 'FREE');
+        localStorage.setItem('lunar_auth_session', JSON.stringify(user));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setCurrentUser(null);
+        setCurrentTier('FREE');
+        localStorage.removeItem('lunar_auth_session');
+      });
+    return () => { mounted = false; };
+  }, []);
+
   // Active File & Scan Analysis
   const activeFile = selectedProject?.files?.[0] || { content: '', path: 'app.ts' };
   const scanResult = scanCodeForSecurityVulnerabilities(activeFile.content, activeFile.path);
@@ -166,17 +162,23 @@ export default function App() {
 
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);
-    setCurrentTier(user.tier || 'PRO');
+    setCurrentTier(user.tier || 'FREE');
     localStorage.setItem('lunar_auth_session', JSON.stringify(user));
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await lunarApi.logout();
+    } catch (error) {
+      console.warn('Logout request failed:', error);
+    }
     setCurrentUser(null);
     setCurrentTier('FREE');
     localStorage.removeItem('lunar_auth_session');
     try {
       supabase.auth.signOut();
     } catch (e) {}
+    if (activeTab === 'admin') setActiveTab('explore');
   };
 
   const handleUpgradeSuccess = (newTier) => {
@@ -256,11 +258,11 @@ export default function App() {
                   <Zap size={14} /> Upgrade Pro
                 </button>
                 <button
-                  onClick={() => handleUpgradeSuccess('PRO')}
+                  onClick={() => setIsAuthOpen(true)}
                   className="btn btn-emerald btn-sm"
                   style={{ padding: '2px 10px', fontSize: '0.75rem' }}
                 >
-                  <UserCheck size={14} /> Sign In Demo Pro
+                  <UserCheck size={14} /> Sign In
                 </button>
               </div>
             </div>
@@ -305,11 +307,18 @@ export default function App() {
         )}
 
         {/* TAB 4: ADMIN MANAGEMENT DASHBOARD */}
-        {activeTab === 'admin' && (
+        {activeTab === 'admin' && currentUser?.role === 'ADMIN' && (
           <AdminDashboard
             currentUser={currentUser}
             onUpgradeUserTier={handleUpgradeSuccess}
           />
+        )}
+        {activeTab === 'admin' && currentUser?.role !== 'ADMIN' && (
+          <div className="glass-panel" style={{ maxWidth: '680px', margin: '48px auto', padding: '32px', textAlign: 'center' }}>
+            <Lock size={36} color="#f87171" />
+            <h2 style={{ marginTop: '14px' }}>Admin access required</h2>
+            <p style={{ color: 'var(--text-secondary)' }}>Backend chỉ cung cấp dữ liệu quản trị khi tài khoản có vai trò ADMIN.</p>
+          </div>
         )}
 
         {/* TAB 3: PROJECT DETAIL & REPAIR WORKBENCH */}

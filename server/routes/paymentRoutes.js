@@ -107,10 +107,16 @@ router.get('/status/:orderCode', verifyToken, async (req, res) => {
     const pool = getPool();
     if (pool) {
       try {
-        const dbRes = await pool.query(`SELECT * FROM payments WHERE order_code = $1`, [orderCode]);
+        const dbRes = await pool.query(
+          `SELECT * FROM payments
+           WHERE order_code = $1
+             AND ($2 = 'ADMIN' OR user_id = $3)`,
+          [orderCode, req.user.role, req.user.id]
+        );
         if (dbRes.rows.length > 0) {
           const row = dbRes.rows[0];
           order = {
+            userId: row.user_id,
             orderCode: row.order_code,
             amount: row.amount,
             tierTarget: row.tier_target,
@@ -122,6 +128,10 @@ router.get('/status/:orderCode', verifyToken, async (req, res) => {
       } catch (dbErr) {
         console.warn('⚠️ Postgres select payment fallback to memory:', dbErr.message);
       }
+    }
+
+    if (order && req.user.role !== 'ADMIN' && String(order.userId) !== String(req.user.id)) {
+      order = null;
     }
 
     if (!order) {

@@ -1,11 +1,37 @@
 const express = require('express');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, verifyToken } = require('../middleware/auth');
 const { authRateLimiter } = require('../middleware/rateLimiter');
-const { queryDb, getIsPgConnected } = require('../db/connection');
+const { queryDb, getIsPgConnected, getPool } = require('../db/connection');
 
 const router = express.Router();
+
+function tokenPayload(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    nickname: user.nickname,
+    tier: user.tier,
+    role: user.role || 'USER',
+    status: user.status || 'ACTIVE'
+  };
+}
+
+function serializeUser(user) {
+  return {
+    id: user.id,
+    nickname: user.nickname,
+    name: user.name,
+    email: user.email,
+    tier: user.tier,
+    role: user.role || 'USER',
+    status: user.status || 'ACTIVE',
+    karmaPoints: user.karma_points ?? user.karmaPoints ?? 0,
+    dailyScansUsed: user.daily_scans_used ?? user.dailyScansUsed ?? 0
+  };
+}
 
 // Fallback In-Memory DB Store
 const usersDb = [
@@ -16,6 +42,8 @@ const usersDb = [
     email: 'sarah.chen@stripe.com',
     passwordHash: '$2a$12$e8wV5Cj8D7F.X0N5k1J5uOaX4H.1N7.1uO2.1uO2.1uO2.1uO2',
     tier: 'PRO',
+    role: 'USER',
+    status: 'ACTIVE',
     karmaPoints: 2400
   }
 ];
@@ -23,7 +51,9 @@ const usersDb = [
 // Cookie security configuration (HttpOnly, Secure, SameSite=Strict)
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: process.env.COOKIE_SECURE !== undefined
+    ? process.env.COOKIE_SECURE === 'true'
+    : process.env.NODE_ENV === 'production',
   sameSite: 'strict',
   maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
 };
@@ -34,7 +64,7 @@ const COOKIE_OPTIONS = {
  */
 router.post('/register', authRateLimiter, async (req, res) => {
   try {
-    const { name, nickname, email, password, tier = 'FREE' } = req.body;
+    const { name, nickname, email, password } = req.body;
 
     if (!email || !password || !nickname) {
       return res.status(400).json({ success: false, error: 'Email, nickname và mật khẩu là bắt buộc.' });
@@ -58,13 +88,15 @@ router.post('/register', authRateLimiter, async (req, res) => {
       const passwordHash = await bcrypt.hash(password, salt);
 
       const result = await queryDb(
-        'INSERT INTO users (nickname, name, email, password_hash, tier) VALUES ($1, $2, $3, $4, $5) RETURNING id, nickname, name, email, tier, karma_points',
-        [cleanNickname, name || cleanNickname.replace('@', ''), cleanEmail, passwordHash, tier]
+        `INSERT INTO users (nickname, name, email, password_hash, tier, role)
+         VALUES ($1, $2, $3, $4, 'FREE', $5)
+         RETURNING id, nickname, name, email, tier, role, status, karma_points, daily_scans_used`,
+        [cleanNickname, name || cleanNickname.replace('@', ''), cleanEmail, passwordHash, 'USER']
       );
 
       const newUser = result.rows[0];
       const token = jwt.sign(
-        { id: newUser.id, email: newUser.email, nickname: newUser.nickname, tier: newUser.tier },
+        tokenPayload(newUser),
         JWT_SECRET,
         { expiresIn: '7d' }
       );
@@ -76,14 +108,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
         success: true,
         message: 'Đăng ký tài khoản thành công.',
         token,
-        user: {
-          id: newUser.id,
-          nickname: newUser.nickname,
-          name: newUser.name,
-          email: newUser.email,
-          tier: newUser.tier,
-          karmaPoints: newUser.karma_points
-        }
+        user: serializeUser(newUser)
       });
     }
 
@@ -101,7 +126,9 @@ router.post('/register', authRateLimiter, async (req, res) => {
       name: name || cleanNickname.replace('@', ''),
       email: cleanEmail,
       passwordHash,
-      tier,
+      tier: 'FREE',
+      role: 'USER',
+      status: 'ACTIVE',
       karmaPoints: 100,
       dailyScansUsed: 0,
       createdAt: new Date().toISOString()
@@ -110,7 +137,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
     usersDb.push(newUser);
 
     const token = jwt.sign(
-      { id: newUser.id, email: newUser.email, nickname: newUser.nickname, tier: newUser.tier },
+      tokenPayload(newUser),
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -121,14 +148,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
       success: true,
       message: 'Đăng ký tài khoản thành công.',
       token,
-      user: {
-        id: newUser.id,
-        nickname: newUser.nickname,
-        name: newUser.name,
-        email: newUser.email,
-        tier: newUser.tier,
-        karmaPoints: newUser.karmaPoints
-      }
+      user: serializeUser(newUser)
     });
   } catch (err) {
     console.error('Error during registration:', err);
@@ -153,10 +173,14 @@ router.post('/login', authRateLimiter, async (req, res) => {
       const result = await queryDb('SELECT * FROM users WHERE email = $1', [cleanEmail]);
       if (result && result.rows.length > 0) {
         const dbUser = result.rows[0];
+        if (dbUser.status === 'SUSPENDED') {
+          return res.status(403).json({ success: false, error: 'Tài khoản đã bị tạm khóa.' });
+        }
         const isMatch = await bcrypt.compare(password, dbUser.password_hash);
-        if (isMatch || password === 'demo123') {
+        if (isMatch) {
+          await queryDb('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [dbUser.id]);
           const token = jwt.sign(
-            { id: dbUser.id, email: dbUser.email, nickname: dbUser.nickname, tier: dbUser.tier },
+            tokenPayload(dbUser),
             JWT_SECRET,
             { expiresIn: '7d' }
           );
@@ -167,14 +191,7 @@ router.post('/login', authRateLimiter, async (req, res) => {
             success: true,
             message: 'Đăng nhập thành công.',
             token,
-            user: {
-              id: dbUser.id,
-              nickname: dbUser.nickname,
-              name: dbUser.name,
-              email: dbUser.email,
-              tier: dbUser.tier,
-              karmaPoints: dbUser.karma_points
-            }
+            user: serializeUser(dbUser)
           });
         }
       }
@@ -187,12 +204,12 @@ router.post('/login', authRateLimiter, async (req, res) => {
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
-    if (!isMatch && password !== 'demo123') {
+    if (!isMatch) {
       return res.status(401).json({ success: false, error: 'Email hoặc mật khẩu không chính xác.' });
     }
 
     const token = jwt.sign(
-      { id: user.id, email: user.email, nickname: user.nickname, tier: user.tier },
+      tokenPayload(user),
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -203,14 +220,7 @@ router.post('/login', authRateLimiter, async (req, res) => {
       success: true,
       message: 'Đăng nhập thành công.',
       token,
-      user: {
-        id: user.id,
-        nickname: user.nickname,
-        name: user.name,
-        email: user.email,
-        tier: user.tier,
-        karmaPoints: user.karmaPoints
-      }
+      user: serializeUser(user)
     });
   } catch (err) {
     console.error('Error during login:', err);
@@ -228,24 +238,97 @@ router.post('/logout', (req, res) => {
 });
 
 /**
+ * POST /api/v1/auth/bootstrap-admin
+ * One-time first-admin bootstrap. Disable the token after provisioning.
+ */
+router.post('/bootstrap-admin', verifyToken, async (req, res) => {
+  const expectedToken = process.env.ADMIN_BOOTSTRAP_TOKEN;
+  const suppliedToken = req.get('x-admin-bootstrap-token') || '';
+  if (!expectedToken) {
+    return res.status(404).json({ success: false, error: 'Admin bootstrap is disabled.' });
+  }
+
+  const expectedBuffer = Buffer.from(expectedToken);
+  const suppliedBuffer = Buffer.from(suppliedToken);
+  if (
+    expectedBuffer.length !== suppliedBuffer.length
+    || !crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)
+  ) {
+    return res.status(403).json({ success: false, error: 'Invalid admin bootstrap token.' });
+  }
+
+  const pool = getPool();
+  if (!pool) {
+    return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('lunar-first-admin-bootstrap'))`);
+    const adminCount = await client.query(`SELECT COUNT(*)::int AS count FROM users WHERE role = 'ADMIN'`);
+    if (adminCount.rows[0].count > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ success: false, error: 'An administrator already exists.' });
+    }
+
+    const updated = await client.query(
+      `UPDATE users
+       SET role = 'ADMIN', updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING id, nickname, name, email, tier, role, status, karma_points, daily_scans_used`,
+      [req.user.id]
+    );
+    const adminUser = updated.rows[0];
+    await client.query(
+      `INSERT INTO admin_action_logs (
+         actor_user_id, target_user_id, action_type, target_type, target_id,
+         reason, before_state, after_state, ip_address, user_agent
+       ) VALUES ($1::uuid, $1::uuid, 'ADMIN_BOOTSTRAPPED', 'USER', $1::text, $2, $3, $4, $5, $6)`,
+      [
+        req.user.id,
+        'Initial administrator provisioned with one-time bootstrap token.',
+        { role: 'USER' },
+        { role: 'ADMIN' },
+        req.ip,
+        req.get('user-agent') || null
+      ]
+    );
+    await client.query('COMMIT');
+
+    const token = jwt.sign(tokenPayload(adminUser), JWT_SECRET, { expiresIn: '7d' });
+    res.cookie('access_token', token, COOKIE_OPTIONS);
+    return res.json({
+      success: true,
+      message: 'Initial administrator provisioned. Remove ADMIN_BOOTSTRAP_TOKEN now.',
+      token,
+      user: serializeUser(adminUser)
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Admin bootstrap failed:', error);
+    return res.status(500).json({ success: false, error: 'Unable to bootstrap administrator.' });
+  } finally {
+    client.release();
+  }
+});
+
+/**
  * GET /api/v1/auth/me
  * Lấy thông tin user hiện tại qua JWT Cookie / Header
  */
 router.get('/me', verifyToken, async (req, res) => {
   if (getIsPgConnected()) {
-    const result = await queryDb('SELECT id, nickname, name, email, tier, karma_points FROM users WHERE id = $1', [req.user.id]);
+    const result = await queryDb(
+      `SELECT id, nickname, name, email, tier, role, status, karma_points, daily_scans_used
+       FROM users WHERE id = $1`,
+      [req.user.id]
+    );
     if (result && result.rows.length > 0) {
       const u = result.rows[0];
       return res.json({
         success: true,
-        user: {
-          id: u.id,
-          nickname: u.nickname,
-          name: u.name,
-          email: u.email,
-          tier: u.tier,
-          karmaPoints: u.karma_points
-        }
+        user: serializeUser(u)
       });
     }
   }
@@ -257,14 +340,7 @@ router.get('/me', verifyToken, async (req, res) => {
 
   res.json({
     success: true,
-    user: {
-      id: user.id,
-      nickname: user.nickname,
-      name: user.name,
-      email: user.email,
-      tier: user.tier,
-      karmaPoints: user.karmaPoints
-    }
+    user: serializeUser(user)
   });
 });
 

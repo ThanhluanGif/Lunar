@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Moon, Search, Sparkles, Shield, AlertTriangle, Activity, Wrench, 
   CheckCircle2, XCircle, Clock, ChevronDown, Bell, Settings, Filter, 
@@ -6,6 +6,7 @@ import {
   FolderGit2, ShieldAlert, Cpu, Lock, Sliders, ExternalLink, HelpCircle, 
   ArrowLeft, RefreshCw, Zap, User, Database, CreditCard
 } from 'lucide-react';
+import { lunarApi } from '../services/lunarApi';
 
 export default function LunarDashboard({ 
   onBackToSite, 
@@ -18,6 +19,21 @@ export default function LunarDashboard({
   const [timeRange, setTimeRange] = useState('Last 28 days');
   const [hoveredBarIndex, setHoveredBarIndex] = useState(null);
   const [selectedRepoFilter, setSelectedRepoFilter] = useState('ALL');
+  const [dashboard, setDashboard] = useState(null);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    if (!currentUser) {
+      setDashboard(null);
+      return () => { mounted = false; };
+    }
+    setLoadError('');
+    lunarApi.getDashboardOverview(28)
+      .then((data) => { if (mounted) setDashboard(data); })
+      .catch((error) => { if (mounted) setLoadError(error.message); });
+    return () => { mounted = false; };
+  }, [currentUser]);
 
   // Repositories matching exact Figma mockup
   const initialRepos = [
@@ -138,7 +154,49 @@ export default function LunarDashboard({
     { label: 'Perf', count: 6, color: '#a855f7' }
   ];
 
-  const filteredRepos = initialRepos.filter(r => {
+  const liveRepos = dashboard?.repositories?.map((repo) => {
+    const score = Number(repo.securityScore || 0);
+    const passing = score >= 80;
+    return {
+      id: repo.id,
+      name: repo.name,
+      lang: repo.language || 'Unknown',
+      prs: repo.scanCount || 0,
+      score,
+      scoreColor: score >= 90 ? '#10b981' : score >= 80 ? '#3b82f6' : '#f97316',
+      issues: repo.issuesCount || 0,
+      lastUpdated: repo.lastScannedAt ? new Date(repo.lastScannedAt).toLocaleString() : 'Not scanned',
+      status: passing ? 'passing' : 'failed',
+      statusColor: passing ? '#10b981' : '#ef4444',
+      repoUrl: repo.repoUrl
+    };
+  }) || [];
+  const repos = dashboard ? liveRepos : [];
+  const activity = dashboard?.activity || [];
+  const maxReviews = Math.max(...activity.map((item) => Number(item.reviews)), 1);
+  const liveBarData = activity.map((item) => Math.max((Number(item.reviews) / maxReviews) * 100, 2));
+  const displayedBarData = dashboard ? liveBarData : [];
+  const liveIssueTypes = (dashboard?.findingsBySeverity || []).map((item) => ({
+    label: item.severity,
+    count: item.count,
+    color: item.severity === 'critical' ? '#ef4444' : item.severity === 'high' ? '#f97316' : item.severity === 'medium' ? '#3b82f6' : '#a855f7'
+  }));
+  const displayedIssueTypes = dashboard ? liveIssueTypes : [];
+  const liveRecentReviews = (dashboard?.recentScans || []).map((scan) => ({
+    id: scan.id,
+    prNumber: `#${String(scan.id).slice(0, 6)}`,
+    title: `Security scan · score ${scan.score}`,
+    repo: scan.repository || 'Repository',
+    time: new Date(scan.createdAt).toLocaleString(),
+    author: currentUser?.name || 'Lunar user',
+    avatar: (currentUser?.name || 'LU').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase(),
+    avatarBg: '#7c3aed',
+    autoFixed: false,
+    status: Number(scan.score) >= 80 ? 'passing' : 'failed'
+  }));
+  const displayedRecentReviews = dashboard ? liveRecentReviews : [];
+
+  const filteredRepos = repos.filter(r => {
     const matchesQuery = r.name.toLowerCase().includes(searchQuery.toLowerCase()) || r.lang.toLowerCase().includes(searchQuery.toLowerCase());
     if (selectedRepoFilter === 'PASSING') return matchesQuery && r.status === 'passing';
     if (selectedRepoFilter === 'FAILED') return matchesQuery && r.status === 'failed';
@@ -451,6 +509,16 @@ export default function LunarDashboard({
         {/* Scrollable Dashboard Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '28px' }}>
           <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
+            {!currentUser && (
+              <div style={{ padding: '14px 18px', marginBottom: '18px', borderRadius: '10px', background: 'rgba(124,58,237,.12)', border: '1px solid rgba(124,58,237,.3)' }}>
+                Sign in to load your verified repositories, scans and findings from PostgreSQL.
+              </div>
+            )}
+            {loadError && (
+              <div style={{ padding: '14px 18px', marginBottom: '18px', borderRadius: '10px', color: '#fca5a5', background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.3)' }}>
+                Unable to load verified dashboard data: {loadError}
+              </div>
+            )}
             
             {/* ---------------------------------------------------- */}
             {/* SECTION 1: TOP 4 STAT CARDS */}
@@ -484,10 +552,10 @@ export default function LunarDashboard({
                   </div>
                 </div>
                 <div style={{ fontSize: '2.2rem', fontWeight: '800', color: '#ffffff', lineHeight: '1', marginBottom: '8px' }}>
-                  5
+                  {dashboard?.summary?.repositories ?? 0}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                  +1 this week
+                  {dashboard?.summary?.scansInRange ?? 0} scans in range
                 </div>
               </div>
 
@@ -514,10 +582,10 @@ export default function LunarDashboard({
                   </div>
                 </div>
                 <div style={{ fontSize: '2.2rem', fontWeight: '800', color: '#ffffff', lineHeight: '1', marginBottom: '8px' }}>
-                  25
+                  {dashboard?.summary?.openFindings ?? 0}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                  <span style={{ color: '#ef4444', fontWeight: '600' }}>4 critical</span>
+                  <span style={{ color: '#ef4444', fontWeight: '600' }}>{displayedIssueTypes.find((item) => item.label === 'critical')?.count || 0} critical</span>
                 </div>
               </div>
 
@@ -544,10 +612,10 @@ export default function LunarDashboard({
                   </div>
                 </div>
                 <div style={{ fontSize: '2.2rem', fontWeight: '800', color: '#ffffff', lineHeight: '1', marginBottom: '8px' }}>
-                  86
+                  {dashboard?.summary?.averageScore ?? 0}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                  <span style={{ color: '#10b981', fontWeight: '600' }}>+3 vs last week</span>
+                  <span style={{ color: '#10b981', fontWeight: '600' }}>{dashboard?.summary?.findings ?? 0} findings in range</span>
                 </div>
               </div>
 
@@ -574,7 +642,7 @@ export default function LunarDashboard({
                   </div>
                 </div>
                 <div style={{ fontSize: '2.2rem', fontWeight: '800', color: '#ffffff', lineHeight: '1', marginBottom: '8px' }}>
-                  89
+                  {dashboard?.summary?.patchedFindings ?? 0}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
                   This month
@@ -631,7 +699,7 @@ export default function LunarDashboard({
                   paddingTop: '20px',
                   position: 'relative'
                 }}>
-                  {barData.map((val, idx) => (
+                  {displayedBarData.map((val, idx) => (
                     <div
                       key={idx}
                       onMouseEnter={() => setHoveredBarIndex(idx)}
@@ -663,7 +731,7 @@ export default function LunarDashboard({
                           pointerEvents: 'none',
                           boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
                         }}>
-                          Jun {idx + 1}: {Math.round(val * 0.4)} reviews
+                          {activity[idx]?.date}: {activity[idx]?.reviews || 0} reviews
                         </div>
                       )}
                     </div>
@@ -678,8 +746,8 @@ export default function LunarDashboard({
                   fontSize: '0.74rem',
                   color: '#64748b'
                 }}>
-                  <span>Jun 1</span>
-                  <span>Jun 28</span>
+                  <span>{activity[0]?.date || '—'}</span>
+                  <span>{activity[activity.length - 1]?.date || '—'}</span>
                 </div>
               </div>
 
@@ -720,7 +788,7 @@ export default function LunarDashboard({
 
                   {/* Legend List */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
-                    {issueTypes.map((item) => (
+                    {displayedIssueTypes.map((item) => (
                       <div key={item.label} style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -879,7 +947,7 @@ export default function LunarDashboard({
               </h3>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {recentReviews.map((rev) => (
+                {displayedRecentReviews.map((rev) => (
                   <div
                     key={rev.id}
                     style={{

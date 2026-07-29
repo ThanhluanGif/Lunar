@@ -1,5 +1,5 @@
 const express = require('express');
-const { verifyToken, JWT_SECRET } = require('../middleware/auth');
+const { verifyToken, requireRole, JWT_SECRET } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -48,7 +48,7 @@ router.get('/health-check', (req, res) => {
  * GET /api/v1/security/audit-log
  * Trả về nhật ký sự kiện bảo mật (Protected Admin Route)
  */
-router.get('/audit-log', verifyToken, (req, res) => {
+router.get('/audit-log', verifyToken, requireRole('ADMIN'), (req, res) => {
   res.json({
     success: true,
     totalLogs: securityAuditLogs.length,

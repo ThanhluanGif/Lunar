@@ -12,6 +12,8 @@ services:
       DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD before deployment}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
       CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5000}
       PAYMENT_WEBHOOK_SECRET: ${LUNAR_PAYMENT_WEBHOOK_SECRET:?Set LUNAR_PAYMENT_WEBHOOK_SECRET before deployment}
+      ADMIN_BOOTSTRAP_TOKEN: ${LUNAR_ADMIN_BOOTSTRAP_TOKEN:-}
+      COOKIE_SECURE: ${LUNAR_COOKIE_SECURE:-true}
     depends_on:
       db:
         condition: service_healthy
@@ -24,7 +26,7 @@ services:
       POSTGRES_PASSWORD: ${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD before deployment}
       POSTGRES_DB: ${LUNAR_POSTGRES_DB:-lunar_db}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./server/schema.sql:/docker-entrypoint-initdb.d/schema.sql

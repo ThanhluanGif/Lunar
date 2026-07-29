@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { X, Github, Mail, Lock, User, ShieldCheck, Sparkles, AtSign, AlertCircle, Loader2, CheckCircle2, UserCheck, Chrome } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { sendWelcomeGmail } from '../services/gmailMailerService';
+import { lunarApi } from '../services/lunarApi';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
-  const [activeTab, setActiveTab] = useState('gmail'); // 'gmail' | 'github' | 'email' | 'demo'
+  const [activeTab, setActiveTab] = useState('email');
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
   
   // Form states
@@ -105,6 +106,19 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
     setLoading(true);
 
     try {
+      const response = authMode === 'register'
+        ? await lunarApi.register({
+            email,
+            password,
+            name: fullName,
+            nickname: email.split('@')[0]
+          })
+        : await lunarApi.login(email, password);
+      onLoginSuccess(response.user);
+      setLoading(false);
+      onClose();
+      return;
+
       if (authMode === 'register') {
         const { data, error } = await supabase.auth.signUp({
           email: email,
@@ -229,7 +243,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
 
         {/* Auth Method Tabs */}
         <div style={{
-          display: 'flex',
+          display: 'none',
           gap: '4px',
           margin: '16px 0 20px 0',
           background: '#0f172a',

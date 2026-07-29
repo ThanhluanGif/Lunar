@@ -6,24 +6,69 @@ import {
 } from 'lucide-react';
 import { getEmailLogHistory, sendProInvoiceGmail } from '../services/gmailMailerService';
 import { supabaseDb, subscribeToRealtimeTransactions, subscribeToRealtimeEmails } from '../services/supabaseClient';
+import { lunarApi } from '../services/lunarApi';
 
 export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
   const [activeSubTab, setActiveSubTab] = useState('transactions'); // 'transactions' | 'users' | 'emails' | 'sast'
   const [transactions, setTransactions] = useState([]);
   const [emailLogs, setEmailLogs] = useState([]);
-  const [users, setUsers] = useState([
-    { id: 'usr-1', name: 'Nguyen Van A', email: 'nguyenvana@gmail.com', github: 'nguyenvana', tier: 'PRO', karma: 1250, dailyScans: 0, role: 'USER', joined: '15/05/2026' },
-    { id: 'usr-2', name: 'Sarah Chen', email: 'sarah.chen@stripe.com', github: 'sarah_stripe', tier: 'ENTERPRISE', karma: 3400, dailyScans: 0, role: 'USER', joined: '10/04/2026' },
-    { id: 'usr-3', name: 'Alex Whitehat', email: 'alex@lunar.dev', github: 'alex_whitehat', tier: 'PRO', karma: 2890, dailyScans: 0, role: 'ADMIN', joined: '01/01/2026' }
-  ]);
+  const [users, setUsers] = useState([]);
+  const [overview, setOverview] = useState(null);
+  const [loadError, setLoadError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [txFilter, setTxFilter] = useState('ALL');
   const [userTierFilter, setUserTierFilter] = useState('ALL');
   const [actionNotice, setActionNotice] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const loadAdminData = async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const [overviewData, usersData, paymentsData, auditData] = await Promise.all([
+        lunarApi.getAdminOverview(),
+        lunarApi.getAdminUsers(),
+        lunarApi.getAdminPayments(),
+        lunarApi.getAdminAuditLog()
+      ]);
+      setOverview(overviewData);
+      setUsers(usersData.users.map((user) => ({
+        ...user,
+        github: user.nickname?.replace(/^@/, '') || '',
+        karma: user.karmaPoints,
+        dailyScans: user.dailyScansUsed,
+        joined: new Date(user.createdAt).toLocaleDateString()
+      })));
+      setTransactions(paymentsData.payments.map((payment) => ({
+        id: payment.orderCode,
+        userName: payment.userName || 'Unknown user',
+        userEmail: payment.userEmail || 'Unknown email',
+        planName: payment.tierTarget,
+        amount: new Intl.NumberFormat('vi-VN', { style: 'currency', currency: payment.currency || 'VND' }).format(Number(payment.amount)),
+        method: payment.paymentMethod || 'VietQR',
+        status: payment.status
+      })));
+      setEmailLogs(auditData.logs.map((log) => ({
+        id: log.id,
+        to: log.actorEmail || 'system',
+        subject: `${log.actionType}: ${log.targetType}`,
+        status: 'AUDITED',
+        type: 'ADMIN_AUDIT',
+        timestamp: log.createdAt,
+        sentAt: new Date(log.createdAt).toLocaleString()
+      })));
+    } catch (error) {
+      setLoadError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Load Real Data & Set up Supabase Realtime Subscriptions
   useEffect(() => {
+    loadAdminData();
+    return undefined;
+
     async function loadRealData() {
       setLoading(true);
       const dbTxs = await supabaseDb.getTransactions();
@@ -88,6 +133,15 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
 
   // Duyệt nâng cấp Pro thủ công cho giao dịch đang chờ
   const handleApproveTransaction = async (tx) => {
+    try {
+      await lunarApi.updateAdminPayment(tx.id, 'SUCCESS', 'Approved from the Lunar admin dashboard.');
+      await loadAdminData();
+      showNotice(`Payment ${tx.id} approved and audited.`);
+    } catch (error) {
+      showNotice(`Cannot approve payment: ${error.message}`);
+    }
+    return;
+
     const updatedTxs = transactions.map(t => t.id === tx.id ? { ...t, status: 'COMPLETED' } : t);
     setTransactions(updatedTxs);
 
@@ -99,14 +153,32 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
   };
 
   // Thay đổi Hạng người dùng trực tiếp
-  const handleChangeUserTier = (userId, newTier) => {
+  const handleChangeUserTier = async (userId, newTier) => {
+    try {
+      await lunarApi.updateAdminUser(userId, { tier: newTier }, `Tier changed to ${newTier} from the admin dashboard.`);
+      await loadAdminData();
+      showNotice(`User ${userId} is now ${newTier}.`);
+    } catch (error) {
+      showNotice(`Cannot update user: ${error.message}`);
+    }
+    return;
+
     const updated = users.map(u => u.id === userId ? { ...u, tier: newTier } : u);
     setUsers(updated);
     showNotice(`⚡ Đã chuyển người dùng ${userId} sang hạng ${newTier}!`);
   };
 
   // Reset Lượt quét Daily Quota của người dùng
-  const handleResetQuota = (userId) => {
+  const handleResetQuota = async (userId) => {
+    try {
+      await lunarApi.resetAdminQuota(userId, 'Daily quota reset from the Lunar admin dashboard.');
+      await loadAdminData();
+      showNotice(`Quota reset for ${userId}.`);
+    } catch (error) {
+      showNotice(`Cannot reset quota: ${error.message}`);
+    }
+    return;
+
     const updated = users.map(u => u.id === userId ? { ...u, dailyScans: 0 } : u);
     setUsers(updated);
     showNotice(`🔄 Đã khôi phục lượt quét theo ngày cho tài khoản ${userId}!`);
@@ -189,6 +261,11 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
           </div>
         )}
       </div>
+      {loadError && (
+        <div style={{ padding: '12px 16px', marginBottom: '18px', color: '#fca5a5', background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.3)', borderRadius: '8px' }}>
+          Không thể tải dữ liệu quản trị đã xác minh: {loadError}
+        </div>
+      )}
 
       {/* KPI Cards Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '18px', marginBottom: '32px' }}>
@@ -197,9 +274,9 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
             <span>Doanh Thu Tháng (MRR)</span>
             <DollarSign size={18} color="#a855f7" />
           </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>90.480.000đ</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(overview?.metrics?.revenueCurrentMonth || 0)}</div>
           <div style={{ fontSize: '0.78rem', color: '#34d399', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingUp size={14} /> +24% so với tháng trước
+            <TrendingUp size={14} /> {overview?.metrics?.revenueGrowthPercent ?? '—'}% so với tháng trước
           </div>
         </div>
 
@@ -208,9 +285,9 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
             <span>Tổng Người Dùng</span>
             <Users size={18} color="#38bdf8" />
           </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>1.420</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>{overview?.metrics?.totalUsers || 0}</div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            312 tài khoản Pro & Enterprise
+            {(overview?.usersByTier || []).filter((item) => item.tier !== 'FREE').reduce((sum, item) => sum + Number(item.count), 0)} tài khoản Pro & Enterprise
           </div>
         </div>
 
@@ -219,7 +296,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
             <span>Email Gmail Đã Gửi</span>
             <Mail size={18} color="#ea4335" />
           </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>4.890</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>{emailLogs.length}</div>
           <div style={{ fontSize: '0.78rem', color: '#fca5a5', marginTop: '4px' }}>
             100% Khôi phục & Hóa đơn OK
           </div>
@@ -230,9 +307,9 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
             <span>Tổng Lượt Quét Code</span>
             <ShieldCheck size={18} color="#10b981" />
           </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>18.940</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>{overview?.metrics?.totalScans || 0}</div>
           <div style={{ fontSize: '0.78rem', color: '#34d399', marginTop: '4px' }}>
-            4.210 lỗi an ninh được vá
+            {overview?.metrics?.patchedFindings || 0} lỗi an ninh được vá
           </div>
         </div>
       </div>
@@ -321,7 +398,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
         {activeSubTab === 'transactions' && (
           <div style={{ display: 'flex', gap: '8px' }}>
             <button onClick={() => setTxFilter('ALL')} className={`btn btn-sm ${txFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`}>Tất Cả</button>
-            <button onClick={() => setTxFilter('COMPLETED')} className={`btn btn-sm ${txFilter === 'COMPLETED' ? 'btn-emerald' : 'btn-secondary'}`}>Đã Hoàn Tất</button>
+            <button onClick={() => setTxFilter('SUCCESS')} className={`btn btn-sm ${txFilter === 'SUCCESS' ? 'btn-emerald' : 'btn-secondary'}`}>Đã Hoàn Tất</button>
             <button onClick={() => setTxFilter('PENDING')} className={`btn btn-sm ${txFilter === 'PENDING' ? 'btn-yellow' : 'btn-secondary'}`}>Đang Chờ Duyệt</button>
           </div>
         )}
@@ -346,11 +423,8 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                 Chưa Có Dữ Liệu Giao Dịch Nào (0 Record)
               </h4>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', maxWidth: '420px', margin: '0 auto 20px auto' }}>
-                Hệ thống chưa ghi nhận giao dịch chuyển khoản VietQR nào từ Supabase Database.
+                PostgreSQL chưa ghi nhận giao dịch chuyển khoản VietQR nào.
               </p>
-              <button onClick={handleCreateTestRealtimeTransaction} className="btn btn-primary btn-sm" style={{ padding: '10px 18px', gap: '8px', background: 'linear-gradient(135deg, #a855f7 0%, #ea4335 100%)' }}>
-                <PlusCircle size={16} /> Tạo Giao Dịch Mẫu Kiểm Thử Realtime ⚡
-              </button>
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
@@ -377,7 +451,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                     <td style={{ padding: '14px 18px', fontWeight: '800', color: '#ffffff' }}>{tx.amount}</td>
                     <td style={{ padding: '14px 18px', color: 'var(--text-secondary)' }}>{tx.method}</td>
                     <td style={{ padding: '14px 18px' }}>
-                      {tx.status === 'COMPLETED' ? (
+                      {tx.status === 'SUCCESS' ? (
                         <span className="badge badge-emerald" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                           <CheckCircle2 size={12} /> THÀNH CÔNG
                         </span>

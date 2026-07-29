@@ -18,8 +18,10 @@ const communityRoutes = require('./routes/communityRoutes');
 const policyRoutes = require('./routes/policyRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const { router: securityAuditRoutes } = require('./routes/securityAuditRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
-const { initPgDatabase } = require('./db/connection');
+const { initPgDatabase, getIsPgConnected } = require('./db/connection');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -63,6 +65,8 @@ app.use('/api/v1/community', communityRoutes);
 app.use('/api/v1/policies', policyRoutes);
 app.use('/api/v1/payment', paymentRateLimiter, paymentRoutes);
 app.use('/api/v1/security', securityAuditRoutes);
+app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/admin', adminRoutes);
 
 // Health check endpoint
 app.get('/api/v1/health', (req, res) => {
@@ -70,6 +74,15 @@ app.get('/api/v1/health', (req, res) => {
     status: 'HEALTHY',
     service: 'Lunar Security Zero-Trust REST API Engine',
     securityLevel: 'OWASP ASVS Level 2 Standard Compliant',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/v1/ready', (req, res) => {
+  const databaseConnected = getIsPgConnected();
+  return res.status(databaseConnected ? 200 : 503).json({
+    status: databaseConnected ? 'READY' : 'NOT_READY',
+    database: databaseConnected ? 'CONNECTED' : 'UNAVAILABLE',
     timestamp: new Date().toISOString()
   });
 });
