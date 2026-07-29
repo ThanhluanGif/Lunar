@@ -76,16 +76,16 @@ export async function fetchGitHubRepoDetails(urlStr) {
       const treeData = await treeRes.json();
       fileList = (treeData.tree || [])
         .filter(item => item.type === 'blob' && !item.path.includes('node_modules/') && !item.path.includes('.git/'))
-        .slice(0, 30); // Top 30 code files
+        .slice(0, 250);
     }
 
-    // 3. Fetch sample file contents (up to 3 files)
+    // 3. Fetch bounded source previews. Authenticated/private deep scans run on the backend.
     const sampledFiles = [];
     const mainLanguages = ['js', 'ts', 'jsx', 'tsx', 'py', 'go', 'rs', 'java', 'cs', 'cpp', 'html', 'css'];
     
     const candidateFiles = fileList
       .filter(f => mainLanguages.some(ext => f.path.endsWith('.' + ext)))
-      .slice(0, 3);
+      .slice(0, 20);
 
     for (const f of candidateFiles) {
       try {
@@ -95,7 +95,7 @@ export async function fetchGitHubRepoDetails(urlStr) {
           sampledFiles.push({
             path: f.path,
             language: getLanguageFromExtension(f.path),
-            content: text.slice(0, 4000), // Max 4000 chars per file preview
+            content: text.slice(0, 120000),
             annotations: []
           });
         }
@@ -130,6 +130,30 @@ export async function fetchGitHubRepoDetails(urlStr) {
   } catch (error) {
     throw error;
   }
+}
+
+export async function fetchGitHubRepoTree(urlStr, { maxFiles = 250 } = {}) {
+  const parsed = parseGitHubUrl(urlStr);
+  if (!parsed) throw new Error('GitHub repository URL is invalid.');
+  const { owner, repo } = parsed;
+  const repoResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
+  if (!repoResponse.ok) throw new Error(`GitHub repository request failed (${repoResponse.status}).`);
+  const repository = await repoResponse.json();
+  const branch = repository.default_branch || 'main';
+  const treeResponse = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`
+  );
+  if (!treeResponse.ok) throw new Error(`GitHub tree request failed (${treeResponse.status}).`);
+  const tree = await treeResponse.json();
+  if (tree.truncated) throw new Error('GitHub returned a truncated tree.');
+  return {
+    repository,
+    branch,
+    files: (tree.tree || [])
+      .filter((item) => item.type === 'blob')
+      .filter((item) => !/(^|\/)(node_modules|dist|build|vendor|\.git|coverage)(\/|$)/.test(item.path))
+      .slice(0, maxFiles)
+  };
 }
 
 function getLanguageFromExtension(filepath) {

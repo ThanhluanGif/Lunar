@@ -21,6 +21,8 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const { router: securityAuditRoutes } = require('./routes/securityAuditRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const aiRoutes = require('./routes/aiRoutes');
+const deepScanRoutes = require('./routes/deepScanRoutes');
 
 const { initPgDatabase, getIsPgConnected } = require('./db/connection');
 
@@ -69,6 +71,8 @@ app.use('/api/v1/payment', paymentRateLimiter, paymentRoutes);
 app.use('/api/v1/security', securityAuditRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/ai', aiRoutes);
+app.use('/api/v1/deep-scans', deepScanRoutes);
 
 // Health check endpoint
 app.get('/api/v1/health', (req, res) => {

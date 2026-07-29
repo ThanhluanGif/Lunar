@@ -45,6 +45,15 @@ export const lunarApi = {
   }),
   getPaymentStatus: (orderCode) => request(`/payment/status/${encodeURIComponent(orderCode)}`),
   getSubscription: () => request('/payment/subscription'),
+  getAiProviders: () => request('/ai/providers'),
+  reviewCodeWithAi: (payload) => request('/ai/review', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
+  deepScanRepository: (payload) => request('/deep-scans/repository', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
   updateAdminUser: (userId, changes, reason) => request(`/admin/users/${userId}`, {
     method: 'PATCH',
     body: JSON.stringify({ ...changes, reason })

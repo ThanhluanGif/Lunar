@@ -178,6 +178,7 @@ CREATE TABLE IF NOT EXISTS admin_action_logs (
     user_agent TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS file_path TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_created_at ON admin_action_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_actor ON admin_action_logs(actor_user_id);
@@ -197,4 +198,18 @@ CREATE TABLE IF NOT EXISTS github_connections (
 );
 
 CREATE INDEX IF NOT EXISTS idx_github_connections_login ON github_connections(github_login);
+
+-- 13. AI usage accounting for server-enforced daily quotas
+CREATE TABLE IF NOT EXISTS ai_usage_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    provider VARCHAR(40) NOT NULL,
+    model VARCHAR(120) NOT NULL,
+    operation VARCHAR(40) NOT NULL,
+    input_characters INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_user_created
+    ON ai_usage_logs(user_id, created_at DESC);
 

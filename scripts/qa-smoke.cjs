@@ -10,7 +10,10 @@ const child = spawn(process.execPath, ['server/index.js'], {
     NODE_ENV: 'production',
     JWT_SECRET: 'qa-secret-at-least-32-characters-long',
     PAYMENT_WEBHOOK_SECRET: 'qa-payment-webhook-secret',
-    ADMIN_BOOTSTRAP_TOKEN: process.env.ADMIN_BOOTSTRAP_TOKEN || 'qa-one-time-admin-bootstrap-token'
+    ADMIN_BOOTSTRAP_TOKEN: process.env.ADMIN_BOOTSTRAP_TOKEN || 'qa-one-time-admin-bootstrap-token',
+    GEMINI_API_KEY: '',
+    OPENAI_API_KEY: '',
+    ANTHROPIC_API_KEY: ''
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -114,6 +117,43 @@ async function run() {
       throw new Error('FREE user access profile is incorrect.');
     }
     await request('/api/v1/admin/overview', { headers: { cookie: regular.cookie } }, 403);
+
+    const aiProviders = await request('/api/v1/ai/providers', {
+      headers: { cookie: regular.cookie }
+    });
+    if (aiProviders.body.providers.some((provider) => provider.configured)) {
+      throw new Error('QA expected external AI providers to be disabled.');
+    }
+    await request('/api/v1/ai/review', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: regular.cookie },
+      body: JSON.stringify({ code: 'const value = input;', filename: 'fixture.js', provider: 'gemini' })
+    }, 503);
+
+    const deepCapabilities = await request('/api/v1/deep-scans/capabilities', {
+      headers: { cookie: regular.cookie }
+    });
+    if (deepCapabilities.body.supportedLanguages.length < 20) {
+      throw new Error('Deep scanner does not advertise 20+ supported languages.');
+    }
+    await request('/api/v1/deep-scans/repository', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: regular.cookie },
+      body: JSON.stringify({ repository: 'ThanhluanGif/Lunar' })
+    }, 409);
+
+    const scannerModule = await import('../src/services/securityScannerEngine.js');
+    const deterministicScan = scannerModule.scanCodeForSecurityVulnerabilities(
+      `const password = "hardcoded-secret";
+eval(userInput);`,
+      'fixture.js'
+    );
+    if (
+      scannerModule.SECURITY_RULE_SIGNATURE_COUNT < 100
+      || deterministicScan.stats.criticalCount < 2
+    ) {
+      throw new Error('Expanded deterministic SAST rules did not detect the security fixture.');
+    }
 
     const scan = await request('/api/v1/scans/run', {
       method: 'POST',
@@ -235,6 +275,9 @@ async function run() {
       guestAccess: 'PASS',
       userRbac: 'PASS',
       persistedDashboard: 'PASS',
+      aiFailClosed: 'PASS',
+      deepScanGuard: 'PASS',
+      sastRuleSignatures: scannerModule.SECURITY_RULE_SIGNATURE_COUNT,
       adminRbac: 'PASS',
       auditedAdminActions: auditLog.body.logs.length,
       paymentFlow: paymentStatus.body.status

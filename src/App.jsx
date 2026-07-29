@@ -275,13 +275,22 @@ export default function App() {
         
         {/* TAB 1: EXACT FIGMA LUNAR LANDING */}
         {activeTab === 'explore' && (
-          <FigmaLunarLanding
-            onOpenAuth={() => setIsAuthOpen(true)}
-            onOpenSubmit={() => setIsSubmitOpen(true)}
-            onOpenGitBot={() => setIsGitBotOpen(true)}
-            onSelectDemoProject={handleSelectProject}
-            onOpenPricing={handleOpenPricing}
-          />
+          <>
+            <FigmaLunarLanding
+              onOpenAuth={() => setIsAuthOpen(true)}
+              onOpenSubmit={() => setIsSubmitOpen(true)}
+              onOpenGitBot={() => setIsGitBotOpen(true)}
+              onSelectDemoProject={handleSelectProject}
+              onOpenPricing={handleOpenPricing}
+            />
+            <div style={{ maxWidth: '1240px', margin: '0 auto' }}>
+              <UserGitHubWorkspace
+                currentUser={currentUser}
+                onSelectProject={handleSelectProject}
+                onOpenAuth={() => setIsAuthOpen(true)}
+              />
+            </div>
+          </>
         )}
 
         {/* TAB 1.5: EXACT FIGMA DASHBOARD MOCKUP */}
