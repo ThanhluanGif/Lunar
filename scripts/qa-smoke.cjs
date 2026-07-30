@@ -465,6 +465,53 @@ eval(userInput);`,
     ) {
       throw new Error('Expanded deterministic SAST rules did not detect the security fixture.');
     }
+    const frontendPrecisionScan = scannerModule.scanCodeForSecurityVulnerabilities(
+      [
+        "const service = require('../services/example');",
+        "const fixture = 'eval(userInput)';"
+      ].join('\n'),
+      'src/example.js'
+    );
+    if (frontendPrecisionScan.stats.total !== 0) {
+      throw new Error('Frontend SAST precision regressed on imports or embedded code fixtures.');
+    }
+    const { createAuditReportPdf } = require('../server/services/reportService');
+    const detailedReport = createAuditReportPdf('QA detailed report', {
+      maxCvss: 9.1,
+      criticalCount: 1,
+      highCount: 0,
+      mediumCount: 0,
+      lowCount: 0,
+      total: 1,
+      metadata: {
+        scanId: '00000000-0000-4000-8000-000000000000',
+        score: 80,
+        engine: 'qa-engine',
+        scannedAt: new Date().toISOString()
+      },
+      findings: [{
+        ruleId: 'LUNAR-001',
+        cwe: 'CWE-798',
+        title: 'Hardcoded credential',
+        severity: 'critical',
+        cvss: 9.1,
+        filePath: 'server/config.js',
+        line: 12,
+        evidence: 'const password = "qa-super-secret";',
+        recommendation: 'Move the value to a secret manager.',
+        status: 'open'
+      }]
+    });
+    const reportText = detailedReport.toString('latin1');
+    if (
+      !reportText.startsWith('%PDF-1.4')
+      || !reportText.includes('Detailed findings')
+      || !reportText.includes('server/config.js:12')
+      || reportText.includes('qa-super-secret')
+      || !reportText.includes('[REDACTED]')
+    ) {
+      throw new Error('Detailed PDF report contract or evidence redaction failed.');
+    }
 
     const scan = await request('/api/v1/scans/run', {
       method: 'POST',

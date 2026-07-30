@@ -4,10 +4,11 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, optionalToken, verifyToken } = require('../middleware/auth');
 const { getPool } = require('../db/connection');
-const { tokenPayload } = require('../services/userSerializer');
+const { serializeUser, tokenPayload } = require('../services/userSerializer');
 
 const router = express.Router();
 const GITHUB_API = 'https://api.github.com';
+const GITHUB_DEVICE_COOKIE = 'github_device_session';
 
 const cookieSecure = process.env.COOKIE_SECURE !== undefined
   ? process.env.COOKIE_SECURE === 'true'
@@ -25,8 +26,13 @@ function getOAuthConfig() {
   const clientSecret = process.env.GITHUB_CLIENT_SECRET;
   const callbackUrl = process.env.GITHUB_OAUTH_CALLBACK_URL;
   const encryptionSecret = process.env.GITHUB_TOKEN_ENCRYPTION_KEY;
+  const authFlow = String(process.env.GITHUB_AUTH_FLOW || 'web').toLowerCase();
   const redirectMode = String(process.env.GITHUB_OAUTH_REDIRECT_MODE || 'registered').toLowerCase();
   if (!clientId || !clientSecret || !callbackUrl || !encryptionSecret || encryptionSecret.length < 32) {
+    return null;
+  }
+  if (!['device', 'web'].includes(authFlow)) {
+    console.error('GITHUB_AUTH_FLOW must be "device" or "web".');
     return null;
   }
   if (!['registered', 'explicit'].includes(redirectMode)) {
@@ -37,6 +43,7 @@ function getOAuthConfig() {
     clientId,
     clientSecret,
     callbackUrl,
+    authFlow,
     redirectMode,
     encryptionKey: crypto.createHash('sha256').update(encryptionSecret).digest(),
     scopes: (process.env.GITHUB_OAUTH_SCOPES || 'read:user user:email')
@@ -125,6 +132,10 @@ async function syncRepositories(client, userId, repositories) {
   }
 }
 
+function parseScopes(value) {
+  return String(value || '').split(/[\s,]+/).filter(Boolean);
+}
+
 function publicRepository(repository) {
   return {
     id: repository.id,
@@ -137,12 +148,130 @@ function publicRepository(repository) {
   };
 }
 
+async function persistGitHubIdentity({
+  pool,
+  config,
+  accessToken,
+  grantedScopes,
+  requestedUser
+}) {
+  const [profile, repositories] = await Promise.all([
+    githubRequest('/user', accessToken),
+    fetchRepositories(accessToken)
+  ]);
+  const githubEmail = await fetchVerifiedEmail(accessToken, profile);
+  const client = await pool.connect();
+  let committed = false;
+
+  try {
+    await client.query('BEGIN');
+
+    const existingConnection = await client.query(
+      'SELECT user_id FROM github_connections WHERE github_id = $1 FOR UPDATE',
+      [profile.id]
+    );
+    if (
+      requestedUser
+      && existingConnection.rows[0]
+      && String(existingConnection.rows[0].user_id) !== String(requestedUser.id)
+    ) {
+      throw new Error('This GitHub account is already linked to another Lunar account.');
+    }
+
+    let userId = requestedUser?.id || existingConnection.rows[0]?.user_id;
+    if (!userId) {
+      const emailUser = await client.query('SELECT id FROM users WHERE email = $1', [githubEmail]);
+      userId = emailUser.rows[0]?.id;
+    }
+
+    if (!userId) {
+      const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('base64url'), 12);
+      const baseNickname = `@${String(profile.login).slice(0, 35)}`;
+      const nicknameExists = await client.query('SELECT 1 FROM users WHERE nickname = $1', [baseNickname]);
+      const nickname = nicknameExists.rows.length
+        ? `${baseNickname.slice(0, 35)}-${profile.id}`
+        : baseNickname;
+      const inserted = await client.query(
+        `INSERT INTO users (
+           nickname, name, email, password_hash, tier, role, status, email_verified_at
+         )
+         VALUES ($1, $2, $3, $4, 'FREE', 'USER', 'ACTIVE', CURRENT_TIMESTAMP)
+         RETURNING id`,
+        [nickname, profile.name || profile.login, githubEmail, passwordHash]
+      );
+      userId = inserted.rows[0].id;
+    } else {
+      await client.query(
+        `UPDATE users
+         SET email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [userId]
+      );
+    }
+
+    const encryptedToken = encryptToken(accessToken, config.encryptionKey);
+    await client.query(
+      `INSERT INTO github_connections (
+         user_id, github_id, github_login, github_email, avatar_url,
+         access_token_encrypted, scopes, last_synced_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+       ON CONFLICT (user_id) DO UPDATE SET
+         github_id = EXCLUDED.github_id,
+         github_login = EXCLUDED.github_login,
+         github_email = EXCLUDED.github_email,
+         avatar_url = EXCLUDED.avatar_url,
+         access_token_encrypted = EXCLUDED.access_token_encrypted,
+         scopes = EXCLUDED.scopes,
+         last_synced_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP`,
+      [
+        userId,
+        profile.id,
+        profile.login,
+        githubEmail,
+        profile.avatar_url,
+        encryptedToken,
+        parseScopes(grantedScopes)
+      ]
+    );
+    await syncRepositories(client, userId, repositories);
+
+    const userResult = await client.query(
+      `SELECT u.id, u.email, u.nickname, u.name, u.email_verified_at, u.auth_version,
+              u.tier, u.role, u.status, u.daily_scans_used,
+              gc.avatar_url
+       FROM users u
+       LEFT JOIN github_connections gc ON gc.user_id = u.id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    const user = userResult.rows[0];
+    if (!user) throw new Error('Unable to load the Lunar account after GitHub login.');
+    if (user.status === 'SUSPENDED') throw new Error('This Lunar account is suspended.');
+
+    await client.query('COMMIT');
+    committed = true;
+    return {
+      user,
+      profile,
+      repositories
+    };
+  } catch (error) {
+    if (!committed) await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 router.get('/config', (req, res) => {
   const config = getOAuthConfig();
   return res.json({
     success: true,
     configured: Boolean(config),
     callbackUrl: config ? config.callbackUrl : null,
+    authFlow: config ? config.authFlow : null,
     redirectMode: config ? config.redirectMode : null
   });
 });
@@ -176,6 +305,190 @@ router.get('/start', (req, res) => {
   return res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 });
 
+router.post('/device/start', async (req, res) => {
+  const config = getOAuthConfig();
+  if (!config) {
+    return res.status(503).json({
+      success: false,
+      error: 'GitHub login is not configured. Set the GitHub OAuth environment variables.'
+    });
+  }
+  if (config.authFlow !== 'device') {
+    return res.status(409).json({
+      success: false,
+      error: 'GitHub Device Flow is not enabled for this environment.'
+    });
+  }
+
+  try {
+    const response = await fetch('https://github.com/login/device/code', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Lunar-Security-Dashboard'
+      },
+      body: JSON.stringify({
+        client_id: config.clientId,
+        scope: config.scopes.join(' ')
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (
+      !response.ok
+      || !payload.device_code
+      || !payload.user_code
+      || !payload.verification_uri
+    ) {
+      throw new Error(payload.error_description || 'GitHub Device Flow could not be started.');
+    }
+
+    const expiresIn = Math.max(60, Number(payload.expires_in) || 900);
+    const interval = Math.max(5, Number(payload.interval) || 5);
+    const encryptedSession = encryptToken(JSON.stringify({
+      deviceCode: payload.device_code,
+      expiresAt: Date.now() + (expiresIn * 1000),
+      interval
+    }), config.encryptionKey);
+    res.cookie(GITHUB_DEVICE_COOKIE, encryptedSession, {
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite: 'lax',
+      maxAge: expiresIn * 1000
+    });
+
+    return res.json({
+      success: true,
+      userCode: payload.user_code,
+      verificationUri: payload.verification_uri,
+      expiresIn,
+      interval
+    });
+  } catch (error) {
+    console.error('GitHub Device Flow start failed:', error.message);
+    return res.status(502).json({
+      success: false,
+      error: 'Không thể tạo mã xác thực GitHub. Hãy thử lại sau.'
+    });
+  }
+});
+
+router.post('/device/poll', optionalToken, async (req, res) => {
+  const config = getOAuthConfig();
+  const pool = getPool();
+  const encryptedSession = req.cookies?.[GITHUB_DEVICE_COOKIE];
+  if (!config || !pool) {
+    return res.status(503).json({ success: false, error: 'GitHub login is not available.' });
+  }
+  if (config.authFlow !== 'device') {
+    return res.status(409).json({ success: false, error: 'GitHub Device Flow is not enabled.' });
+  }
+  if (!encryptedSession) {
+    return res.status(400).json({
+      success: false,
+      error: 'Phiên xác thực GitHub đã hết hạn. Hãy tạo mã mới.'
+    });
+  }
+
+  let deviceSession;
+  try {
+    deviceSession = JSON.parse(decryptToken(encryptedSession, config.encryptionKey));
+    if (
+      !deviceSession.deviceCode
+      || !deviceSession.expiresAt
+      || Date.now() >= Number(deviceSession.expiresAt)
+    ) {
+      throw new Error('Expired GitHub device session.');
+    }
+  } catch {
+    res.clearCookie(GITHUB_DEVICE_COOKIE, {
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite: 'lax'
+    });
+    return res.status(400).json({
+      success: false,
+      error: 'Phiên xác thực GitHub không hợp lệ hoặc đã hết hạn.'
+    });
+  }
+
+  try {
+    const response = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Lunar-Security-Dashboard'
+      },
+      body: JSON.stringify({
+        client_id: config.clientId,
+        device_code: deviceSession.deviceCode,
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
+      })
+    });
+    const githubToken = await response.json().catch(() => ({}));
+    if (
+      githubToken.error === 'authorization_pending'
+      || githubToken.error === 'slow_down'
+    ) {
+      const retryAfter = githubToken.error === 'slow_down'
+        ? Math.max(10, Number(deviceSession.interval) + 5)
+        : Math.max(5, Number(deviceSession.interval) || 5);
+      return res.status(202).json({
+        success: false,
+        pending: true,
+        retryAfter
+      });
+    }
+    if (!response.ok || githubToken.error || !githubToken.access_token) {
+      res.clearCookie(GITHUB_DEVICE_COOKIE, {
+        httpOnly: true,
+        secure: cookieSecure,
+        sameSite: 'lax'
+      });
+      return res.status(400).json({
+        success: false,
+        error: githubToken.error === 'access_denied'
+          ? 'Bạn đã từ chối quyền truy cập GitHub.'
+          : 'Mã xác thực GitHub đã hết hạn hoặc không còn hợp lệ.'
+      });
+    }
+
+    const result = await persistGitHubIdentity({
+      pool,
+      config,
+      accessToken: githubToken.access_token,
+      grantedScopes: githubToken.scope,
+      requestedUser: req.user
+    });
+    const token = jwt.sign(tokenPayload(result.user), JWT_SECRET, { expiresIn: '7d' });
+    res.cookie('access_token', token, authCookieOptions);
+    res.clearCookie(GITHUB_DEVICE_COOKIE, {
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite: 'lax'
+    });
+    return res.json({
+      success: true,
+      connected: true,
+      user: serializeUser(result.user),
+      github: {
+        login: result.profile.login,
+        email: result.user.email,
+        avatarUrl: result.profile.avatar_url
+      },
+      repositoriesSynced: result.repositories.length,
+      repositories: result.repositories.map(publicRepository)
+    });
+  } catch (error) {
+    console.error('GitHub Device Flow completion failed:', error.message);
+    return res.status(502).json({
+      success: false,
+      error: 'GitHub đã xác thực nhưng Lunar chưa thể lưu tài khoản hoặc repository.'
+    });
+  }
+});
+
 router.get('/callback', optionalToken, async (req, res) => {
   const config = getOAuthConfig();
   const pool = getPool();
@@ -197,7 +510,6 @@ router.get('/callback', optionalToken, async (req, res) => {
   }
   if (!req.query.code) return res.redirect('/?github_auth=denied');
 
-  let client;
   try {
     const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
@@ -213,113 +525,24 @@ router.get('/callback', optionalToken, async (req, res) => {
         ...(config.redirectMode === 'explicit' ? { redirect_uri: config.callbackUrl } : {})
       })
     });
-    const tokenPayload = await tokenResponse.json();
-    if (!tokenResponse.ok || !tokenPayload.access_token) {
-      throw new Error(tokenPayload.error_description || 'GitHub token exchange failed.');
+    const githubToken = await tokenResponse.json();
+    if (!tokenResponse.ok || !githubToken.access_token) {
+      throw new Error(githubToken.error_description || 'GitHub token exchange failed.');
     }
 
-    const [profile, repositories] = await Promise.all([
-      githubRequest('/user', tokenPayload.access_token),
-      fetchRepositories(tokenPayload.access_token)
-    ]);
-    const githubEmail = await fetchVerifiedEmail(tokenPayload.access_token, profile);
-
-    client = await pool.connect();
-    await client.query('BEGIN');
-
-    const existingConnection = await client.query(
-      'SELECT user_id FROM github_connections WHERE github_id = $1 FOR UPDATE',
-      [profile.id]
-    );
-    if (
-      req.user
-      && existingConnection.rows[0]
-      && String(existingConnection.rows[0].user_id) !== String(req.user.id)
-    ) {
-      throw new Error('This GitHub account is already linked to another Lunar account.');
-    }
-
-    let userId = req.user?.id || existingConnection.rows[0]?.user_id;
-    if (!userId) {
-      const emailUser = await client.query('SELECT id FROM users WHERE email = $1', [githubEmail]);
-      userId = emailUser.rows[0]?.id;
-    }
-
-    if (!userId) {
-      const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('base64url'), 12);
-      const baseNickname = `@${String(profile.login).slice(0, 35)}`;
-      const nicknameExists = await client.query('SELECT 1 FROM users WHERE nickname = $1', [baseNickname]);
-      const nickname = nicknameExists.rows.length
-        ? `${baseNickname.slice(0, 35)}-${profile.id}`
-        : baseNickname;
-      const inserted = await client.query(
-        `INSERT INTO users (
-           nickname, name, email, password_hash, tier, role, status, email_verified_at
-         )
-         VALUES ($1, $2, $3, $4, 'FREE', 'USER', 'ACTIVE', CURRENT_TIMESTAMP)
-         RETURNING id`,
-        [nickname, profile.name || profile.login, githubEmail, passwordHash]
-      );
-      userId = inserted.rows[0].id;
-    } else {
-      await client.query(
-        `UPDATE users
-         SET email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP),
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1`,
-        [userId]
-      );
-    }
-
-    const encryptedToken = encryptToken(tokenPayload.access_token, config.encryptionKey);
-    await client.query(
-      `INSERT INTO github_connections (
-         user_id, github_id, github_login, github_email, avatar_url,
-         access_token_encrypted, scopes, last_synced_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
-       ON CONFLICT (user_id) DO UPDATE SET
-         github_id = EXCLUDED.github_id,
-         github_login = EXCLUDED.github_login,
-         github_email = EXCLUDED.github_email,
-         avatar_url = EXCLUDED.avatar_url,
-         access_token_encrypted = EXCLUDED.access_token_encrypted,
-         scopes = EXCLUDED.scopes,
-         last_synced_at = CURRENT_TIMESTAMP,
-         updated_at = CURRENT_TIMESTAMP`,
-      [
-        userId,
-        profile.id,
-        profile.login,
-        githubEmail,
-        profile.avatar_url,
-        encryptedToken,
-        String(tokenPayload.scope || '').split(',').filter(Boolean)
-      ]
-    );
-    await syncRepositories(client, userId, repositories);
-
-    const userResult = await client.query(
-      `SELECT u.id, u.email, u.nickname, u.name, u.email_verified_at, u.auth_version,
-              u.tier, u.role, u.status, u.daily_scans_used,
-              gc.avatar_url
-       FROM users u
-       LEFT JOIN github_connections gc ON gc.user_id = u.id
-       WHERE u.id = $1`,
-      [userId]
-    );
-    const user = userResult.rows[0];
-    if (user.status === 'SUSPENDED') throw new Error('This Lunar account is suspended.');
-    await client.query('COMMIT');
-
-    const token = jwt.sign(tokenPayload(user), JWT_SECRET, { expiresIn: '7d' });
+    const result = await persistGitHubIdentity({
+      pool,
+      config,
+      accessToken: githubToken.access_token,
+      grantedScopes: githubToken.scope,
+      requestedUser: req.user
+    });
+    const token = jwt.sign(tokenPayload(result.user), JWT_SECRET, { expiresIn: '7d' });
     res.cookie('access_token', token, authCookieOptions);
     return res.redirect('/?github_auth=success');
   } catch (error) {
-    if (client) await client.query('ROLLBACK').catch(() => {});
     console.error('GitHub OAuth callback failed:', error.message);
     return res.redirect('/?github_auth=failed');
-  } finally {
-    client?.release();
   }
 });
 

@@ -1,5 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { X, Github, Mail, ShieldCheck, Sparkles, AlertCircle, Loader2, KeyRound } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  X,
+  Github,
+  Mail,
+  ShieldCheck,
+  Sparkles,
+  AlertCircle,
+  Loader2,
+  KeyRound,
+  Copy,
+  ExternalLink
+} from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialResetToken = '' }) {
@@ -15,6 +26,9 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [noticeMsg, setNoticeMsg] = useState('');
+  const [deviceAuth, setDeviceAuth] = useState(null);
+  const devicePollTimerRef = useRef(null);
+  const deviceFlowActiveRef = useRef(false);
 
   useEffect(() => {
     if (!initialResetToken) return;
@@ -24,17 +38,72 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
     setErrorMsg('');
   }, [initialResetToken]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      deviceFlowActiveRef.current = false;
+      window.clearTimeout(devicePollTimerRef.current);
+      setDeviceAuth(null);
+      setLoading(false);
+    }
+    return () => {
+      deviceFlowActiveRef.current = false;
+      window.clearTimeout(devicePollTimerRef.current);
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const stopDevicePolling = () => {
+    deviceFlowActiveRef.current = false;
+    window.clearTimeout(devicePollTimerRef.current);
+  };
+
+  const scheduleDevicePoll = (seconds) => {
+    window.clearTimeout(devicePollTimerRef.current);
+    devicePollTimerRef.current = window.setTimeout(async () => {
+      if (!deviceFlowActiveRef.current) return;
+      try {
+        const response = await lunarApi.pollGitHubDeviceAuth();
+        if (!deviceFlowActiveRef.current) return;
+        if (response.success && response.user) {
+          stopDevicePolling();
+          setLoading(false);
+          onLoginSuccess(
+            response.user,
+            `Đã kết nối @${response.github?.login || 'GitHub'} và đồng bộ ${response.repositoriesSynced || 0} repository.`
+          );
+          onClose();
+          return;
+        }
+        scheduleDevicePoll(response.retryAfter || seconds || 5);
+      } catch (error) {
+        if (!deviceFlowActiveRef.current) return;
+        stopDevicePolling();
+        setLoading(false);
+        setErrorMsg(error.message || 'Không thể hoàn tất đăng nhập GitHub.');
+      }
+    }, Math.max(5, Number(seconds) || 5) * 1000);
+  };
 
   // Option 1: GitHub OAuth
   const handleConnectGitHub = async (e) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+    setNoticeMsg('');
     try {
       const config = await lunarApi.getGitHubConfig();
       if (!config.configured) {
         throw new Error('GitHub OAuth chưa được cấu hình. Hãy đặt các biến LUNAR_GITHUB_* trong file .env.');
+      }
+      if (config.authFlow === 'device') {
+        const authorization = await lunarApi.startGitHubDeviceAuth();
+        deviceFlowActiveRef.current = true;
+        setDeviceAuth(authorization);
+        setLoading(false);
+        scheduleDevicePoll(authorization.interval);
+        window.open(authorization.verificationUri, '_blank', 'noopener,noreferrer');
+        return;
       }
       window.location.assign('/api/v1/auth/github/start');
     } catch (error) {
@@ -201,49 +270,116 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
         {/* TAB 1: Direct GitHub Sync */}
         {activeTab === 'github' && (
           <form onSubmit={handleConnectGitHub}>
-            <div style={{
-              padding: '18px',
-              borderRadius: '12px',
-              border: '1px solid rgba(96, 165, 250, 0.22)',
-              background: 'rgba(37, 99, 235, 0.08)',
-              textAlign: 'center',
-              marginBottom: '14px'
-            }}>
-              <div style={{
-                width: '42px',
-                height: '42px',
-                display: 'grid',
-                placeItems: 'center',
-                margin: '0 auto 10px',
-                borderRadius: '50%',
-                background: 'rgba(255,255,255,.08)'
-              }}>
-                <Github size={22} color="#e2e8f0" />
+            {deviceAuth ? (
+              <div
+                data-testid="github-device-authorization"
+                style={{
+                  padding: '18px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(96, 165, 250, 0.35)',
+                  background: 'rgba(37, 99, 235, 0.1)',
+                  textAlign: 'center',
+                  marginBottom: '14px'
+                }}
+              >
+                <strong style={{ display: 'block', color: '#f8fafc', fontSize: '0.9rem' }}>
+                  Nhập mã này trên GitHub
+                </strong>
+                <button
+                  type="button"
+                  data-testid="github-device-code"
+                  onClick={async () => {
+                    await navigator.clipboard?.writeText(deviceAuth.userCode);
+                    setNoticeMsg('Đã sao chép mã GitHub.');
+                  }}
+                  title="Sao chép mã"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    margin: '13px 0',
+                    padding: '10px 15px',
+                    border: '1px dashed rgba(147, 197, 253, 0.65)',
+                    borderRadius: '9px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    color: '#bfdbfe',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '1.25rem',
+                    fontWeight: 800,
+                    letterSpacing: '0.08em',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {deviceAuth.userCode} <Copy size={15} />
+                </button>
+                <a
+                  href={deviceAuth.verificationUri}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-secondary"
+                  style={{ width: '100%', padding: '9px', gap: '7px' }}
+                >
+                  Mở GitHub để xác nhận <ExternalLink size={14} />
+                </a>
+                <p style={{ margin: '12px 0 0', color: 'var(--text-secondary)', fontSize: '0.74rem', lineHeight: 1.5 }}>
+                  Lunar đang chờ GitHub xác nhận. Sau đó tài khoản và repository sẽ tự xuất hiện.
+                </p>
               </div>
-              <strong style={{ display: 'block', color: '#f8fafc', fontSize: '0.9rem', marginBottom: '5px' }}>
-                Một lần xác thực GitHub
-              </strong>
-              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.76rem', lineHeight: 1.55 }}>
-                GitHub xác minh tài khoản; Lunar tạo phiên đăng nhập và đồng bộ repository bạn cấp quyền.
-              </p>
-            </div>
+            ) : (
+              <div style={{
+                padding: '18px',
+                borderRadius: '12px',
+                border: '1px solid rgba(96, 165, 250, 0.22)',
+                background: 'rgba(37, 99, 235, 0.08)',
+                textAlign: 'center',
+                marginBottom: '14px'
+              }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  display: 'grid',
+                  placeItems: 'center',
+                  margin: '0 auto 10px',
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,.08)'
+                }}>
+                  <Github size={22} color="#e2e8f0" />
+                </div>
+                <strong style={{ display: 'block', color: '#f8fafc', fontSize: '0.9rem', marginBottom: '5px' }}>
+                  Một lần xác thực GitHub
+                </strong>
+                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.76rem', lineHeight: 1.55 }}>
+                  GitHub xác minh tài khoản; Lunar tạo phiên đăng nhập và đồng bộ repository bạn cấp quyền.
+                </p>
+              </div>
+            )}
 
             <button
               type="submit"
               data-testid="github-oauth-continue"
-              disabled={loading}
+              disabled={loading || Boolean(deviceAuth)}
               className="btn btn-primary"
               style={{ width: '100%', padding: '11px', gap: '8px', marginTop: '8px' }}
             >
-              {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Github size={16} />}
-              Tiếp Tục Với GitHub
+              {loading || deviceAuth
+                ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                : <Github size={16} />}
+              {deviceAuth ? 'Đang chờ xác nhận trên GitHub…' : 'Tiếp Tục Với GitHub'}
             </button>
             <div style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '0.7rem', textAlign: 'center' }}>
-              Bạn sẽ được chuyển tới github.com để xác nhận quyền truy cập.
+              {deviceAuth
+                ? 'Không đóng cửa sổ này trong lúc xác nhận.'
+                : 'GitHub sẽ mở để bạn xác nhận quyền truy cập.'}
             </div>
             <button
               type="button"
-              onClick={() => { setActiveTab('email'); setErrorMsg(''); setNoticeMsg(''); }}
+              onClick={() => {
+                stopDevicePolling();
+                setDeviceAuth(null);
+                setActiveTab('email');
+                setErrorMsg('');
+                setNoticeMsg('');
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',

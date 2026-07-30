@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Cpu, RefreshCw, Layers, ShieldCheck, Sparkles, Database, GitBranch, ArrowRight } from 'lucide-react';
 import mermaid from 'mermaid';
 
 mermaid.initialize({
   startOnLoad: false,
   theme: 'dark',
-  securityLevel: 'loose',
+  securityLevel: 'strict',
   themeVariables: {
     fontFamily: 'Inter, Mona Sans, sans-serif',
     primaryColor: '#6366f1',
@@ -18,9 +18,8 @@ mermaid.initialize({
 });
 
 export default function SystemArchitectureDiagram() {
-  const containerRef = useRef(null);
   const [activeDiagram, setActiveDiagram] = useState('c4'); // 'c4' | 'compaction' | 'sast'
-  const [renderedSvg, setRenderedSvg] = useState('');
+  const [renderedSvgDataUrl, setRenderedSvgDataUrl] = useState('');
 
   const diagrams = {
     c4: `
@@ -58,7 +57,7 @@ export default function SystemArchitectureDiagram() {
       try {
         const id = `mermaid-svg-${Date.now()}`;
         const { svg } = await mermaid.render(id, diagrams[activeDiagram]);
-        setRenderedSvg(svg);
+        setRenderedSvgDataUrl(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
       } catch (err) {
         console.warn('Mermaid render notice:', err);
       }
@@ -129,7 +128,6 @@ export default function SystemArchitectureDiagram() {
 
       {/* Rendered Mermaid.js SVG Diagram */}
       <div
-        ref={containerRef}
         style={{
           background: 'rgba(11, 15, 25, 0.8)',
           border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -141,8 +139,17 @@ export default function SystemArchitectureDiagram() {
           minHeight: '260px',
           overflowX: 'auto'
         }}
-        dangerouslySetInnerHTML={{ __html: renderedSvg }}
-      />
+      >
+        {renderedSvgDataUrl ? (
+          <img
+            src={renderedSvgDataUrl}
+            alt={`Sơ đồ kiến trúc Lunar: ${activeDiagram}`}
+            style={{ display: 'block', width: '100%', maxWidth: '980px', height: 'auto' }}
+          />
+        ) : (
+          <span style={{ color: 'var(--text-secondary)' }}>Đang dựng sơ đồ kiến trúc…</span>
+        )}
+      </div>
     </div>
   );
 }

@@ -16,17 +16,18 @@ async function readJsonResponse(response) {
 }
 
 async function request(path, options = {}) {
+  const { acceptedStatuses = [], ...fetchOptions } = options;
   const response = await fetch(`${API_ROOT}${path}`, {
     credentials: 'include',
-    ...options,
+    ...fetchOptions,
     headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {})
+      ...(fetchOptions.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(fetchOptions.headers || {})
     }
   });
 
   const payload = await readJsonResponse(response);
-  if (!response.ok) {
+  if (!response.ok && !acceptedStatuses.includes(response.status)) {
     const error = new Error(payload.error || payload.message || `HTTP ${response.status}`);
     error.status = response.status;
     error.payload = payload;
@@ -85,6 +86,11 @@ export const lunarApi = {
   getScanHistory: (limit = 30) => request(`/auth/scan-history?limit=${limit}`),
   logout: () => request('/auth/logout', { method: 'POST' }),
   getGitHubConfig: () => request('/auth/github/config'),
+  startGitHubDeviceAuth: () => request('/auth/github/device/start', { method: 'POST' }),
+  pollGitHubDeviceAuth: () => request('/auth/github/device/poll', {
+    method: 'POST',
+    acceptedStatuses: [202]
+  }),
   getGitHubStatus: () => request('/auth/github/status'),
   getGitHubRepositories: () => request('/auth/github/repositories'),
   syncGitHubRepositories: () => request('/auth/github/sync', { method: 'POST' }),

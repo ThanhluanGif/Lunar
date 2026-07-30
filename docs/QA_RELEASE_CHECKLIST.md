@@ -50,6 +50,8 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 
 - [ ] Code rỗng, whitespace, > limit, filename dài/sai type.
 - [ ] Fixture SQLi/XSS/RCE/secret/JWT phát hiện đúng và không quá nhiều false positive.
+- [ ] Import/path tĩnh, chuỗi mô tả, regex rule và JSX text không bị báo như mã thực thi.
+- [ ] Source production tự quét không còn critical/high; test/fixture được thống kê là excluded.
 - [ ] Guest result không lộ line/snippet/patch.
 - [ ] Quota Free đạt ngưỡng, reset ngày, renew, gửi lặp và concurrent requests.
 - [ ] Hai request scan đồng thời không vượt quota.
@@ -101,6 +103,8 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 ## 9. Report/export
 
 - [ ] PDF dùng dữ liệu server-authoritative, UTF-8 tiếng Việt đúng.
+- [ ] PDF có rule/CWE/CVSS/file/dòng/evidence/remediation, phân trang không cắt nội dung.
+- [ ] Password, token, API key và Bearer credential trong evidence được che trước khi xuất.
 - [ ] Project/finding chứa `<script>`, HTML, control char không thực thi.
 - [ ] CSV chống formula injection (`=`, `+`, `-`, `@`) và encoding đúng.
 - [ ] Popup blocked/download failed có error state, không dùng alert thô.
@@ -135,6 +139,7 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 - [ ] `npm run build`
 - [ ] `npm run qa:docker`
 - [ ] `npm run qa:security`
+- [ ] `npm run qa:sast`
 - [ ] `npm run qa:ui:mac`
 - [ ] `npm audit --omit=dev`
 - [ ] `docker compose up -d --build` và cả app/db đều healthy.

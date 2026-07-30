@@ -18,6 +18,7 @@ Các gate tự động đã đạt trên baseline:
 - `npm run build`
 - `npm run qa:docker`
 - `npm run qa:security`
+- `npm run qa:sast`
 - `npm run qa:ui:mac`
 - `npm audit --omit=dev`
 - Docker production image build
@@ -43,6 +44,10 @@ Chrome không có lỗi console/network.
 - Authenticated scan lưu project, scan và finding trong PostgreSQL.
 - Deterministic SAST hỗ trợ 22 ngôn ngữ với 555 language-rule signatures.
 - Babel AST analysis cho JavaScript/TypeScript.
+- Scanner bỏ qua import/path tĩnh, chuỗi/regex/JSX text không thực thi và thư
+  mục test/fixture; finding được khử trùng theo file, dòng và CWE.
+- Regression SAST tự kiểm tra cả precision/recall và quét toàn bộ source
+  production; gate thất bại nếu còn finding critical/high.
 - Deep repository scan có giới hạn file, kích thước, tổng byte và concurrency.
 - AI review qua Gemini/OpenAI/Anthropic; fail-closed nếu provider chưa cấu hình.
 - Native project attack simulation và repair workbench.
@@ -57,14 +62,21 @@ Chrome không có lỗi console/network.
 - GitHub OAuth, repository sync và bounded deep scan.
 - Quick Scan đặt ngay dưới hero, hợp nhất repository OAuth, public username và
   thư mục local; không còn hai khối GitHub trùng chức năng.
-- OAuth local dùng callback đã đăng ký trong GitHub để tránh `redirect_uri`
-  mismatch; tra cứu public chấp nhận username, `@username` hoặc URL profile.
+- OAuth local dùng GitHub Device Flow để không phụ thuộc callback host/port;
+  device code chỉ nằm trong cookie HttpOnly được mã hóa. Production vẫn dùng
+  web callback trên domain HTTPS. Tra cứu public chấp nhận username,
+  `@username` hoặc URL profile.
+- Sau khi xác thực, Lunar tạo/cập nhật user, đặt session JWT, lưu avatar/email,
+  đồng bộ repository trong cùng transaction và Quick Scan tự nạp dữ liệu thật.
 - Quick Scan chưa có phiên đi thẳng GitHub OAuth; modal đăng nhập mặc định mở
   GitHub với một CTA duy nhất, còn Email được thu gọn thành liên kết phụ.
 - GitHub webhook yêu cầu HMAC SHA-256 và delivery receipt chống replay.
 - Backend có luồng tạo branch/commit/PR với kiểm tra owner, tier và stale SHA.
-- Audit report PDF và badge cho GitHub README.
+- Audit report PDF nhiều trang gồm rule, CWE, severity, CVSS, file/dòng,
+  evidence đã che secret, hướng khắc phục và badge cho GitHub README.
 - Report export yêu cầu auth, ownership và dữ liệu scan từ server.
+- Mermaid architecture chạy ở chế độ `strict` và SVG được hiển thị trong ngữ
+  cảnh ảnh, không chèn HTML trực tiếp vào DOM.
 
 ### Payment và dashboard
 

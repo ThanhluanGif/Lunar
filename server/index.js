@@ -37,9 +37,15 @@ app.disable('x-powered-by');
 app.use(securityHeaders);
 
 // 2. CORS configuration with credential & origin validation
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:3001,http://localhost:5173')
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5050,http://127.0.0.1:5050,http://localhost:3000,http://127.0.0.1:3000')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) => {
+    try {
+      return new URL(origin.trim()).origin;
+    } catch {
+      return '';
+    }
+  })
   .filter(Boolean);
 
 app.use(cors({

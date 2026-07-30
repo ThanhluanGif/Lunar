@@ -240,6 +240,8 @@ nối trực tiếp tới service `db:5432`.
 Các giá trị local mặc định đủ để chạy thử. Trước khi triển khai production, hãy
 đổi toàn bộ secret `LUNAR_*`, đặt `LUNAR_COOKIE_SECURE=true`, cập nhật
 `LUNAR_CORS_ORIGINS`, và dùng callback GitHub HTTPS thực tế.
+Môi trường local cho phép `localhost`/`127.0.0.1` ở cổng Docker `5050` và cổng
+Vite `3000`; production chỉ nên giữ đúng origin HTTPS đang dùng.
 
 ### Kết nối GitHub OAuth trên Mac
 
@@ -258,14 +260,20 @@ LUNAR_GITHUB_CLIENT_ID=...
 LUNAR_GITHUB_CLIENT_SECRET=...
 LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY=chuỗi-ngẫu-nhiên-tối-thiểu-32-ký-tự
 LUNAR_GITHUB_OAUTH_CALLBACK_URL=http://localhost:5050/api/v1/auth/github/callback
+LUNAR_GITHUB_AUTH_FLOW=device
 LUNAR_GITHUB_OAUTH_REDIRECT_MODE=registered
 LUNAR_GITHUB_OAUTH_SCOPES=read:user user:email
 ```
 
 4. Tạo encryption key bằng `openssl rand -hex 32`.
-5. Chạy lại `docker compose up -d --build`, mở trang và bấm **GitHub**.
+5. Trong OAuth App, bật **Enable Device Flow**.
+6. Chạy lại `docker compose up -d --build`, mở trang và bấm **GitHub**.
+   Lunar sẽ hiện một mã dùng một lần; nhập mã đó tại trang xác nhận của GitHub.
+   Khi GitHub chấp thuận, Lunar tự đăng nhập, lưu avatar/tài khoản và đồng bộ
+   repository vào Quick Scan.
 
 Ở production, thay cả Homepage URL và callback URL bằng HTTPS của domain thật.
+Đặt `LUNAR_GITHUB_AUTH_FLOW=web` để dùng callback thông thường trên domain đó.
 Chế độ `registered` không gửi tham số `redirect_uri`; GitHub sử dụng trực tiếp
 Authorization callback URL đã lưu trong OAuth App, nhờ đó tránh lỗi khác nhau
 giữa `localhost` và `127.0.0.1`. Callback đã đăng ký vẫn phải trỏ tới route
@@ -277,6 +285,26 @@ Scope mặc định chỉ đọc hồ sơ, email và repository public; không t
 
 Ô “Repo công khai” chấp nhận cả `ThanhluanGif`, `@ThanhluanGif` và URL profile
 `https://github.com/ThanhluanGif`.
+
+### Security scan và báo cáo PDF
+
+```bash
+npm run qa:sast
+npm run qa:security
+```
+
+Gate SAST kiểm tra các mẫu tấn công thật, chống regression false positive và
+quét source production; critical/high finding làm command thất bại. Test,
+fixture và demo vulnerability được loại khỏi scan production nhưng vẫn được
+dùng làm regression input.
+
+PDF audit được tạo từ dữ liệu scan thuộc tài khoản trên backend. Báo cáo gồm
+rule, CWE, severity, CVSS, file/dòng, evidence đã che credential và hướng khắc
+phục. Báo cáo cũ là snapshot bất biến; sau khi cập nhật scanner cần chạy Quick
+Scan mới rồi tải lại PDF để nhận kết quả mới.
+
+Workflow `lunar-security.yml` chỉ chạy script `qa:security` nằm trong chính
+repository bằng `npm ci`; không dùng package CLI chưa khóa phiên bản qua `npx`.
 
 ### Cấu hình trợ lý ảo Lunar AI
 

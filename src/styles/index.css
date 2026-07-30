@@ -687,6 +687,20 @@ table {
   color: #86efac;
 }
 
+.quick-scan-avatar {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(134, 239, 172, 0.45);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.quick-scan-avatar.source {
+  width: 30px;
+  height: 30px;
+}
+
 .quick-scan-modes {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

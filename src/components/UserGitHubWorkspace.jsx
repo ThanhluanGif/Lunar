@@ -23,7 +23,7 @@ const SCAN_MODES = [
   {
     id: 'connected',
     label: 'GitHub của tôi',
-    description: 'Public & private',
+    description: 'Repo đã cấp quyền',
     icon: KeyRound
   },
   {
@@ -87,7 +87,7 @@ function projectFromDeepScan(result, repository) {
   };
 }
 
-export default function UserGitHubWorkspace({ currentUser, onSelectProject }) {
+export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOpenGitHubAuth }) {
   const [scanMode, setScanMode] = useState('public');
   const [inputUsername, setInputUsername] = useState('');
   const [activeUsername, setActiveUsername] = useState('');
@@ -103,6 +103,9 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject }) {
     loading: false,
     connected: false,
     login: '',
+    email: '',
+    avatarUrl: '',
+    scopes: [],
     lastSyncedAt: null
   });
   const [scanProgress, setScanProgress] = useState(0);
@@ -115,7 +118,15 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject }) {
     setScanError('');
 
     if (!currentUser?.id) {
-      setGitHubConnection({ loading: false, connected: false, login: '', lastSyncedAt: null });
+      setGitHubConnection({
+        loading: false,
+        connected: false,
+        login: '',
+        email: '',
+        avatarUrl: '',
+        scopes: [],
+        lastSyncedAt: null
+      });
       setScanMode('public');
       return () => { cancelled = true; };
     }
@@ -130,6 +141,9 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject }) {
           loading: false,
           connected,
           login,
+          email: status.connection?.email || '',
+          avatarUrl: status.connection?.avatarUrl || '',
+          scopes: status.connection?.scopes || [],
           lastSyncedAt: status.connection?.lastSyncedAt || null
         });
 
@@ -247,6 +261,10 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject }) {
       if (!config.configured) {
         throw new Error('GitHub OAuth chưa được cấu hình. Hãy thêm LUNAR_GITHUB_CLIENT_ID, LUNAR_GITHUB_CLIENT_SECRET và LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY.');
       }
+      if (config.authFlow === 'device' && onOpenGitHubAuth) {
+        onOpenGitHubAuth();
+        return;
+      }
       window.location.assign('/api/v1/auth/github/start');
     } catch (error) {
       setScanError(error.message || 'Không thể khởi tạo kết nối GitHub.');
@@ -350,7 +368,17 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject }) {
           {githubConnection.loading ? (
             <><Loader2 size={14} className="spin" /> Đang kiểm tra GitHub</>
           ) : githubConnection.connected ? (
-            <><CheckCircle2 size={14} /> Đã kết nối @{githubConnection.login}</>
+            <>
+              {githubConnection.avatarUrl ? (
+                <img
+                  src={githubConnection.avatarUrl}
+                  alt=""
+                  className="quick-scan-avatar"
+                  referrerPolicy="no-referrer"
+                />
+              ) : <CheckCircle2 size={14} />}
+              Đã kết nối @{githubConnection.login}
+            </>
           ) : (
             <><Github size={14} /> Chưa kết nối GitHub</>
           )}
@@ -385,11 +413,20 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject }) {
           githubConnection.connected ? (
             <>
               <div className="quick-scan-source">
-                <Github size={17} color="#86efac" />
+                {githubConnection.avatarUrl ? (
+                  <img
+                    src={githubConnection.avatarUrl}
+                    alt={`Ảnh đại diện @${githubConnection.login}`}
+                    className="quick-scan-avatar source"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : <Github size={17} color="#86efac" />}
                 <span>
                   <strong>@{githubConnection.login}</strong>
                   <small>
-                    {githubConnection.lastSyncedAt
+                    {githubConnection.email
+                      ? githubConnection.email
+                      : githubConnection.lastSyncedAt
                       ? `Đồng bộ ${new Date(githubConnection.lastSyncedAt).toLocaleString('vi-VN')}`
                       : 'Sẵn sàng đồng bộ repository'}
                   </small>

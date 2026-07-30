@@ -11,7 +11,7 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
 
   const cvss = scanResult?.stats?.maxCvss || 0;
   const isSecure = cvss < 4.0;
-  const badgeColor = isSecure ? '10b981' : cvss < 4.0 ? 'f59e0b' : 'f43f5e';
+  const badgeColor = isSecure ? '10b981' : cvss < 7.0 ? 'f59e0b' : 'f43f5e';
   const badgeLabel = isSecure ? 'SECURITY_PASSED' : `CVSS_${cvss.toFixed(1)}_VULNERABLE`;
 
   const badgeMarkdown = `[![Lunar.dev Audit](https://img.shields.io/badge/Lunar.dev-${badgeLabel}-${badgeColor}?style=for-the-badge&logo=shield)](${project.githubUrl || 'https://lunar.dev'})`;
@@ -94,7 +94,7 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
               Báo Cáo Kiểm Định An Ninh (Security Audit Report)
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              Xuất chứng chỉ an ninh cho repository GitHub
+              Xuất báo cáo có file, dòng, evidence đã che secret và khuyến nghị
             </p>
           </div>
         </div>
@@ -145,7 +145,7 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <button onClick={handleDownloadPdf} disabled={downloading} className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
             <Download size={18} />
-            {downloading ? 'Đang Khởi Tạo Báo Cáo...' : 'Tải Báo Cáo Executive Security Audit (PDF)'}
+            {downloading ? 'Đang Khởi Tạo Báo Cáo...' : 'Tải Báo Cáo Security Audit Chi Tiết (PDF)'}
           </button>
         </div>
 

@@ -1,4 +1,8 @@
-import { scanCodeForSecurityVulnerabilities, languageFromPath } from './securityScannerEngine';
+import {
+  scanCodeForSecurityVulnerabilities,
+  isLikelyTestOrFixture,
+  languageFromPath
+} from './securityScannerEngine';
 import { simulateProjectHackerAttack } from './geminiService';
 
 const DEFAULT_CONCURRENCY = 4;
@@ -62,7 +66,11 @@ export async function scanLocalFiles(files, {
   simulateAttack = true,
   provider = 'auto'
 } = {}) {
-  const sourceFiles = Array.from(files || []).filter((file) => file.size <= 512000);
+  const allFiles = Array.from(files || []);
+  const sourceFiles = allFiles.filter((file) => {
+    const path = file.webkitRelativePath || file.name;
+    return file.size <= 512000 && !isLikelyTestOrFixture(path);
+  });
   const results = await mapConcurrent(
     sourceFiles,
     Math.min(Math.max(concurrency, 1), 8),
@@ -101,6 +109,7 @@ export async function scanLocalFiles(files, {
     files: results,
     findings: results.flatMap((file) => file.findings),
     filesScanned: results.length,
+    filesExcluded: Math.max(0, allFiles.length - sourceFiles.length),
     projectAttackSimulation,
     projectAttackSimulationError
   };
@@ -110,12 +119,15 @@ export async function scanRepository(projectFiles, {
   repositoryName = 'repository',
   provider = 'auto'
 } = {}) {
-  const normalizedFiles = Array.from(projectFiles || []).map((file, index) => ({
+  const allProjectFiles = Array.from(projectFiles || []);
+  const normalizedFiles = allProjectFiles
+    .map((file, index) => ({
     path: file.path || file.name || `file-${index + 1}.txt`,
     language: file.language || languageFromPath(file.path || file.name),
     content: String(file.content || ''),
     size: file.size ?? String(file.content || '').length
-  }));
+    }))
+    .filter((file) => !isLikelyTestOrFixture(file.path));
   const scannedFiles = normalizedFiles.map((file) => {
     const scan = scanCodeForSecurityVulnerabilities(file.content, file.path, file.language);
     return {
@@ -133,6 +145,7 @@ export async function scanRepository(projectFiles, {
     files: scannedFiles,
     findings: scannedFiles.flatMap((file) => file.findings),
     filesScanned: scannedFiles.length,
+    filesExcluded: Math.max(0, allProjectFiles.length - normalizedFiles.length),
     projectAttackSimulation,
     projectAttackSimulationError: null
   };

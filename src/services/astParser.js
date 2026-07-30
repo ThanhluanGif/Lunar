@@ -36,6 +36,45 @@ function walk(node, visit) {
   }
 }
 
+export function findJavaScriptNonExecutableRanges(code) {
+  let ast;
+  try {
+    ast = parse(String(code || ''), {
+      sourceType: 'unambiguous',
+      errorRecovery: true,
+      plugins: [
+        'jsx',
+        'typescript',
+        'decorators-legacy',
+        'classProperties',
+        'dynamicImport',
+        'optionalChaining',
+        'topLevelAwait'
+      ]
+    });
+  } catch {
+    return [];
+  }
+  const ignoredTypes = new Set([
+    'StringLiteral',
+    'DirectiveLiteral',
+    'RegExpLiteral',
+    'TemplateElement',
+    'JSXText'
+  ]);
+  const ranges = [];
+  walk(ast.program, (node) => {
+    if (
+      ignoredTypes.has(node.type)
+      && Number.isInteger(node.start)
+      && Number.isInteger(node.end)
+    ) {
+      ranges.push([node.start, node.end]);
+    }
+  });
+  return ranges;
+}
+
 export function analyzeJavaScriptAst(code, filePath = 'source.js') {
   let ast;
   try {

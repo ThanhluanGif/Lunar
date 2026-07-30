@@ -37,16 +37,32 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: lunar-security-\${{ github.workflow }}-\${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lunar-security-audit:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: npx lunar-security-cli scan --strict --fail-on-critical
+          node-version: "22"
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Require repository-owned security gate
+        run: node -e "const p=require('./package.json'); if(!p.scripts?.['qa:security']) throw new Error('Missing qa:security script')"
+      - name: Run Lunar security gate
+        run: npm run qa:security
   `.trim();
 }

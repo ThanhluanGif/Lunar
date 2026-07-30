@@ -127,7 +127,15 @@ async function waitFor(expression, label, timeoutMs = 10000) {
     if (await evaluate(expression)) return;
     await sleep(150);
   }
-  throw new Error(`Timed out waiting for ${label}.`);
+  const snapshot = await evaluate(`(() => ({
+    url: location.href,
+    title: document.title,
+    body: document.body?.innerText.slice(-3000) || '',
+    workbench: Boolean(document.querySelector('[data-testid="code-repair-workbench"]')),
+    payloadSandbox: Boolean(document.querySelector('[data-testid="payload-sandbox"]')),
+    authModal: Boolean(document.querySelector('#auth-modal'))
+  }))()`).catch(() => null);
+  throw new Error(`Timed out waiting for ${label}: ${JSON.stringify(snapshot)}`);
 }
 
 async function clickButton(label) {
@@ -315,6 +323,7 @@ try {
   const githubConfiguration = await evaluate(`fetch('/api/v1/auth/github/config')
     .then((response) => response.json())`);
   results.githubOAuthConfigured = Boolean(githubConfiguration.configured);
+  results.githubOAuthFlow = githubConfiguration.authFlow;
   results.githubOAuthRedirectMode = githubConfiguration.redirectMode;
   if (!githubConfiguration.configured) {
     await clickButton('Tiếp Tục Với GitHub');
@@ -323,6 +332,19 @@ try {
       'GitHub configuration warning'
     );
     results.githubMissingConfigHandled = true;
+  } else if (githubConfiguration.authFlow === 'device') {
+    await clickButton('Tiếp Tục Với GitHub');
+    await waitFor(
+      `Boolean(document.querySelector('[data-testid="github-device-authorization"]'))
+        && Boolean(document.querySelector('[data-testid="github-device-code"]')?.textContent.trim())`,
+      'GitHub Device Flow authorization code',
+      15000
+    );
+    results.githubDeviceFlow = await evaluate(`(() => ({
+      authorizationRendered: Boolean(document.querySelector('[data-testid="github-device-authorization"]')),
+      codeRendered: Boolean(document.querySelector('[data-testid="github-device-code"]')?.textContent.trim()),
+      waitingState: document.querySelector('#auth-modal')?.innerText.includes('Đang chờ xác nhận trên GitHub')
+    }))()`);
   }
 
   await evaluate(`document.querySelector('#auth-modal button[aria-label="Đóng hộp đăng nhập"]')?.click()`);
@@ -463,12 +485,12 @@ try {
 
   await clickButton('Audit Report & Badge');
   await waitFor(
-    `document.body.innerText.includes('Tải Báo Cáo Executive Security Audit (PDF)')`,
+    `document.body.innerText.includes('Tải Báo Cáo Security Audit Chi Tiết (PDF)')`,
     'audit report PDF action'
   );
   results.auditReportAvailable = await evaluate(`(() => {
     const button = [...document.querySelectorAll('button')]
-      .find((item) => item.textContent.includes('Tải Báo Cáo Executive Security Audit'));
+      .find((item) => item.textContent.includes('Tải Báo Cáo Security Audit Chi Tiết'));
     return Boolean(button && !button.disabled);
   })()`);
   await evaluate(`document.querySelector('button[aria-label="Đóng báo cáo audit"]')?.click()`);

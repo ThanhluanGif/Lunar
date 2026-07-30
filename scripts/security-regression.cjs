@@ -16,8 +16,10 @@ const child = spawn(process.execPath, ['server/index.js'], {
     GITHUB_CLIENT_ID: 'regression-client-id',
     GITHUB_CLIENT_SECRET: 'regression-client-secret',
     GITHUB_OAUTH_CALLBACK_URL: `${baseUrl}/api/v1/auth/github/callback`,
+    GITHUB_AUTH_FLOW: 'web',
     GITHUB_OAUTH_REDIRECT_MODE: 'registered',
-    GITHUB_TOKEN_ENCRYPTION_KEY: 'regression-github-encryption-key-at-least-32-characters'
+    GITHUB_TOKEN_ENCRYPTION_KEY: 'regression-github-encryption-key-at-least-32-characters',
+    CORS_ORIGINS: 'http://localhost:3000,http://127.0.0.1:3000'
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -91,11 +93,33 @@ async function run() {
     ) {
       throw new Error('GitHub registered-callback OAuth mode emitted an unsafe or mismatched authorization URL.');
     }
+    const oauthConfig = await expectStatus('/api/v1/auth/github/config', {}, 200);
+    const oauthConfigPayload = await oauthConfig.json();
+    if (oauthConfigPayload.authFlow !== 'web') {
+      throw new Error('GitHub OAuth config did not expose the selected authentication flow.');
+    }
+    await expectStatus('/api/v1/auth/github/device/start', { method: 'POST' }, 409);
+    await expectStatus('/api/v1/auth/github/device/start', {
+      method: 'POST',
+      headers: {
+        cookie: 'access_token=csrf-regression-cookie',
+        origin: 'http://localhost:3000'
+      }
+    }, 409);
+    await expectStatus('/api/v1/auth/github/device/start', {
+      method: 'POST',
+      headers: {
+        cookie: 'access_token=csrf-regression-cookie',
+        origin: 'http://untrusted.example'
+      }
+    }, 403);
 
     console.log(JSON.stringify({
       productionMockPaymentRoute: 'PASS',
       serverAuthoritativePlanCatalog: 'PASS',
       githubOAuthRegisteredCallbackMode: 'PASS',
+      githubOAuthFlowBoundary: 'PASS',
+      csrfOriginAllowlist: 'PASS',
       githubWebhookSignatureGuard: 'PASS',
       reportAuthenticationGuard: 'PASS'
     }, null, 2));

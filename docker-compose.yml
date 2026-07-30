@@ -19,7 +19,7 @@ services:
       JWT_SECRET: ${LUNAR_JWT_SECRET:?Set LUNAR_JWT_SECRET to a strong random value}
       DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:-lunar_local_password}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
       DATABASE_SSL: ${LUNAR_DATABASE_SSL:-false}
-      CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5050,http://127.0.0.1:5050}
+      CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5050,http://127.0.0.1:5050,http://localhost:3000,http://127.0.0.1:3000}
       # An empty secret disables webhook confirmation with HTTP 503; never use a public default.
       PAYMENT_WEBHOOK_SECRET: ${LUNAR_PAYMENT_WEBHOOK_SECRET:-}
       # The app stays available without beneficiary details; order creation fails closed with HTTP 503.

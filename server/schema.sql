@@ -149,9 +149,14 @@ CREATE TABLE IF NOT EXISTS admin_action_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS file_path TEXT;
+ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS rule_id VARCHAR(80);
+ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS source_severity VARCHAR(20);
+ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS cvss NUMERIC(3, 1);
 
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_created_at ON admin_action_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_actor ON admin_action_logs(actor_user_id);
+CREATE INDEX IF NOT EXISTS idx_vulnerabilities_scan_rule
+    ON vulnerabilities(scan_id, rule_id);
 
 -- 9. Encrypted GitHub OAuth connections
 CREATE TABLE IF NOT EXISTS github_connections (

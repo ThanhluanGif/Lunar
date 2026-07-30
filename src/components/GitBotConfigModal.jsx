@@ -100,6 +100,7 @@ export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
           </div>
           <ol style={{ paddingLeft: '20px', fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: '1.6' }}>
             <li>Tạo file cấu hình <code style={{ color: 'var(--accent-cyan)' }}>.github/workflows/lunar-security.yml</code> trong kho GitHub.</li>
+            <li>Repository cần có script <code style={{ color: 'var(--accent-cyan)' }}>qa:security</code>; workflow không tải CLI chưa được khóa phiên bản bằng <code>npx</code>.</li>
             <li>Mỗi khi lập trình viên Push Code hoặc mở Pull Request, <strong>Lunar Bot</strong> sẽ tự động quét lỗ hổng OWASP.</li>
             <li>Nếu phát hiện lỗ hổng Critical, Bot sẽ tự động rẽ nhánh và tạo <strong>Pull Request chứa bản vá safe code</strong>.</li>
           </ol>
