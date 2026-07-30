@@ -1,7 +1,9 @@
 import React from 'react';
 import { X, Zap, Shield } from 'lucide-react';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 export default function QuotaDepletedModal({ isOpen, onClose, onOpenPricing, currentUser }) {
+  const dialogRef = useModalFocusTrap({ isOpen, onClose });
   if (!isOpen) return null;
 
   const userNickname = currentUser?.nickname || '@dev';
@@ -18,7 +20,14 @@ export default function QuotaDepletedModal({ isOpen, onClose, onOpenPricing, cur
       justifyContent: 'center',
       padding: '20px'
     }}>
-      <div className="glass-panel" style={{
+      <div
+        ref={dialogRef}
+        className="glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quota-depleted-dialog-title"
+        tabIndex={-1}
+        style={{
         maxWidth: '500px',
         width: '100%',
         padding: '32px',
@@ -29,6 +38,7 @@ export default function QuotaDepletedModal({ isOpen, onClose, onOpenPricing, cur
         {/* Close Button */}
         <button
           onClick={onClose}
+          aria-label="Đóng thông báo hết lượt scan"
           style={{
             position: 'absolute',
             top: '20px',
@@ -58,7 +68,7 @@ export default function QuotaDepletedModal({ isOpen, onClose, onOpenPricing, cur
             <Zap size={32} color="#fff" />
           </div>
 
-          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.6rem', fontWeight: '800', color: '#fff' }}>
+          <h2 id="quota-depleted-dialog-title" style={{ fontFamily: 'var(--font-heading)', fontSize: '1.6rem', fontWeight: '800', color: '#fff' }}>
             Hết Lượt AI Scan Hôm Nay!
           </h2>
           <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginTop: '6px' }}>

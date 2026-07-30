@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Copy, Check, Download } from 'lucide-react';
+import { X, ShieldCheck, Copy, Check, Download, FileSpreadsheet } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 export default function AuditReportExportModal({ isOpen, onClose, project, scanResult }) {
   const [copied, setCopied] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [downloadFormat, setDownloadFormat] = useState('');
   const [downloadMessage, setDownloadMessage] = useState('');
+  const dialogRef = useModalFocusTrap({ isOpen: isOpen && Boolean(project), onClose });
 
   if (!isOpen || !project) return null;
 
@@ -22,17 +24,19 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownloadPdf = async () => {
-    setDownloading(true);
+  const handleDownload = async (format) => {
+    setDownloadFormat(format);
     setDownloadMessage('');
     try {
       const scanId = project.deepScan?.scanId || project.scanId;
       if (!scanId) {
-        throw new Error('Hãy chạy và lưu một verified scan trước khi xuất PDF.');
+        throw new Error('Hãy chạy và lưu một verified scan trước khi xuất báo cáo.');
       }
-      const { blob, contentDisposition } = await lunarApi.downloadAuditReportPdf(scanId);
+      const { blob, contentDisposition } = format === 'csv'
+        ? await lunarApi.downloadAuditReportCsv(scanId)
+        : await lunarApi.downloadAuditReportPdf(scanId);
       const filename = contentDisposition.match(/filename="([^"]+)"/i)?.[1]
-        || 'lunar-security-audit-report.pdf';
+        || `lunar-security-audit-report.${format}`;
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -44,7 +48,7 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
     } catch (error) {
       setDownloadMessage(error.message || 'Không thể tạo file báo cáo.');
     } finally {
-      setDownloading(false);
+      setDownloadFormat('');
     }
   };
 
@@ -61,10 +65,12 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
       padding: '20px'
     }}>
       <div
+        ref={dialogRef}
         className="glass-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="audit-report-dialog-title"
+        tabIndex={-1}
         style={{
         maxWidth: '540px',
         width: '100%',
@@ -143,9 +149,13 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <button onClick={handleDownloadPdf} disabled={downloading} className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
+          <button onClick={() => handleDownload('pdf')} disabled={Boolean(downloadFormat)} className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
             <Download size={18} />
-            {downloading ? 'Đang Khởi Tạo Báo Cáo...' : 'Tải Báo Cáo Security Audit Chi Tiết (PDF)'}
+            {downloadFormat === 'pdf' ? 'Đang Khởi Tạo PDF...' : 'Tải Báo Cáo Security Audit Chi Tiết (PDF)'}
+          </button>
+          <button onClick={() => handleDownload('csv')} disabled={Boolean(downloadFormat)} className="btn btn-secondary" style={{ width: '100%', padding: '12px' }}>
+            <FileSpreadsheet size={18} />
+            {downloadFormat === 'csv' ? 'Đang Khởi Tạo CSV...' : 'Tải Dữ Liệu Phát Hiện An Toàn (CSV)'}
           </button>
         </div>
 

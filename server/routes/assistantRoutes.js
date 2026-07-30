@@ -145,7 +145,8 @@ router.post('/chat', optionalToken, assistantRateLimiter, async (req, res) => {
     });
   } catch (error) {
     const invalidInput = ['INVALID_MESSAGE', 'MESSAGE_TOO_LONG'].includes(error.code);
-    console.error('Assistant chat failed:', invalidInput ? error.message : error);
+    if (invalidInput) req.log?.warn('Assistant chat input was rejected.', error, 400);
+    else req.log?.error('Assistant chat failed.', error, 500);
     return res.status(invalidInput ? 400 : 500).json({
       success: false,
       error: invalidInput ? error.message : 'Trợ lý đang tạm gián đoạn. Vui lòng thử lại.'
@@ -177,7 +178,7 @@ router.get('/history', verifyToken, async (req, res) => {
     const messages = await loadMessages(conversation.id, req.user.id);
     return res.json({ success: true, conversation, messages });
   } catch (error) {
-    console.error('Assistant history failed:', error);
+    req.log?.error('Assistant history lookup failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Không thể tải lịch sử trợ lý.' });
   }
 });
@@ -196,7 +197,7 @@ router.delete('/history/:conversationId', verifyToken, async (req, res) => {
     }
     return res.json({ success: true });
   } catch (error) {
-    console.error('Assistant history deletion failed:', error);
+    req.log?.error('Assistant history deletion failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Không thể xóa lịch sử trợ lý.' });
   }
 });

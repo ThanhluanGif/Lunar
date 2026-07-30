@@ -10,7 +10,7 @@ ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --include=optional
 COPY . .
 RUN npm run build
 
@@ -23,7 +23,7 @@ ENV PORT=5000
 
 COPY package*.json ./
 
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --include=optional
 
 COPY server ./server
 COPY --from=frontend-builder /app/dist ./dist

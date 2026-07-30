@@ -7,6 +7,7 @@ const path = require('path');
 // Security Middlewares
 const securityHeaders = require('./middleware/securityHeaders');
 const inputSanitizer = require('./middleware/inputSanitizer');
+const { correlationLogger, writeSystemLog } = require('./middleware/logger');
 const { publicApiRateLimiter } = require('./middleware/rateLimiter');
 
 // Routes
@@ -35,6 +36,7 @@ app.disable('x-powered-by');
 
 // 1. OWASP ASVS Security Headers
 app.use(securityHeaders);
+app.use(correlationLogger);
 
 // 2. CORS configuration with credential & origin validation
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5050,http://127.0.0.1:5050,http://localhost:3000,http://127.0.0.1:3000')
@@ -52,12 +54,13 @@ app.use(cors({
   origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Correlation-ID'],
+  exposedHeaders: ['X-Correlation-ID', 'Content-Disposition']
 }));
 
-// 3. Body parser with 10MB payload size limit (Anti-DDOS Buffer Overflow)
+// 3. Global payload bounds; scan routes enforce smaller field-level limits.
 app.use(express.json({
-  limit: '10mb',
+  limit: '1mb',
   verify: (req, res, buffer) => {
     if (
       req.originalUrl?.startsWith('/api/v1/payment/webhook')
@@ -67,7 +70,7 @@ app.use(express.json({
     }
   }
 }));
-app.use(express.urlencoded({ extended: false, parameterLimit: 1000, limit: '2mb' }));
+app.use(express.urlencoded({ extended: false, parameterLimit: 1000, limit: '256kb' }));
 app.use(cookieParser());
 
 // SameSite cookies are the primary CSRF control. Origin validation adds a
@@ -135,6 +138,23 @@ app.use('/api', (req, res) => {
   });
 });
 
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  if (error?.type === 'entity.too.large') {
+    req.log?.warn('Rejected oversized request payload.', undefined, 413);
+    return res.status(413).json({ success: false, error: 'Request payload exceeds the 1MB limit.' });
+  }
+  if (error instanceof SyntaxError && error.status === 400 && Object.hasOwn(error, 'body')) {
+    req.log?.warn('Rejected malformed JSON request body.', undefined, 400);
+    return res.status(400).json({ success: false, error: 'Malformed JSON request body.' });
+  }
+  req.log?.error('Unhandled Express request error.', {
+    errorName: error?.name || 'Error',
+    errorCode: error?.code || null
+  }, 500);
+  return res.status(500).json({ success: false, error: 'Internal server error.' });
+});
+
 // Serve the Mac frontend bundle in the production container.
 const distPath = path.join(__dirname, '..', 'dist');
 app.use(express.static(distPath));
@@ -146,6 +166,6 @@ app.use((req, res, next) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`🛡️ Lunar Zero-Trust REST API Server running on port ${PORT}`);
+  writeSystemLog('INFO', `Lunar Zero-Trust REST API server is running on port ${PORT}.`);
   await initPgDatabase();
 });

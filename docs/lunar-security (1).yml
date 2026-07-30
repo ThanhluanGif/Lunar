@@ -1,36 +1,3 @@
-import { lunarApi } from './lunarApi';
-
-function repositoryFromUrl(repoUrl) {
-  try {
-    const url = new URL(repoUrl);
-    if (url.hostname !== 'github.com') return '';
-    return url.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '');
-  } catch {
-    return '';
-  }
-}
-
-export async function createGitHubSecurityPR(repoUrl, fileContent, patchedContent, vulnInfo) {
-  const repository = repositoryFromUrl(repoUrl);
-  if (!repository) {
-    throw new Error('Chọn một GitHub repository đã kết nối trước khi tạo Pull Request.');
-  }
-  const filePath = vulnInfo?.filePath || vulnInfo?.path;
-  if (!filePath) {
-    throw new Error('Không xác định được file cần vá trên GitHub.');
-  }
-  return lunarApi.createGitHubSecurityPR({
-    repository,
-    filePath,
-    originalCode: fileContent,
-    patchedCode: patchedContent,
-    expectedBlobSha: vulnInfo?.githubBlobSha,
-    title: `[Lunar Security] ${vulnInfo?.title || 'Security remediation'}`
-  });
-}
-
-export function generateLunarGitHubActionYaml() {
-  return `
 name: Lunar Security Scan
 
 on:
@@ -46,7 +13,7 @@ env:
   CI: "true"
 
 concurrency:
-  group: lunar-security-\${{ github.workflow }}-\${{ github.ref }}
+  group: lunar-security-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -71,5 +38,3 @@ jobs:
         run: node -e "const p=require('./package.json'); if(!p.scripts?.['qa:security']) throw new Error('Missing qa:security script')"
       - name: Run Lunar security gate
         run: npm run qa:security
-  `.trim();
-}

@@ -1,6 +1,7 @@
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const { writeSystemLog } = require('../middleware/logger');
 
 const connectionString = process.env.DATABASE_URL || [
   'postgresql://',
@@ -34,15 +35,15 @@ async function initPgDatabase() {
   try {
     client = await pool.connect();
     isPgConnected = true;
-    console.log('PostgreSQL database pool connected.');
+    writeSystemLog('INFO', 'PostgreSQL database pool connected.');
 
     const schemaSql = fs.readFileSync(path.join(__dirname, '../schema.sql'), 'utf8');
     await client.query(schemaSql);
 
-    console.log('PostgreSQL schema initialized and verified.');
+    writeSystemLog('INFO', 'PostgreSQL schema initialized and verified.');
   } catch (error) {
     isPgConnected = false;
-    console.warn('PostgreSQL initialization failed. Resilient DB mode enabled:', error.message);
+    writeSystemLog('WARN', 'PostgreSQL initialization failed; resilient database mode enabled.', error);
   } finally {
     client?.release();
   }
@@ -53,7 +54,7 @@ async function queryDb(text, params) {
   try {
     return await pool.query(text, params);
   } catch (error) {
-    console.error('SQL execution error:', error.message);
+    writeSystemLog('ERROR', 'SQL execution failed.', error);
     throw error;
   }
 }

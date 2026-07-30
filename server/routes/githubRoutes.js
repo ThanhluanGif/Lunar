@@ -146,7 +146,7 @@ router.post('/pull-requests', verifyToken, requireTier('ENTERPRISE'), async (req
       title: pullRequest.title
     });
   } catch (error) {
-    console.error('GitHub pull request creation failed:', error.message);
+    req.log?.error('GitHub pull request creation failed.', error, 500);
     const status = error.status === 401 || error.status === 403 ? 409 : 502;
     return res.status(status).json({
       success: false,
@@ -230,7 +230,7 @@ router.post('/webhook', async (req, res) => {
       message: 'Pull request delivery accepted for security scanning.'
     });
   } catch (error) {
-    console.error('GitHub webhook receipt failed:', error.message);
+    req.log?.error('GitHub webhook receipt failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to record GitHub webhook delivery.' });
   }
 });

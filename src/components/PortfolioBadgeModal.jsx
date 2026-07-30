@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { X, Award, Copy, Check, ExternalLink, Sparkles } from 'lucide-react';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 export default function PortfolioBadgeModal({ isOpen, onClose, project }) {
   const [copiedMd, setCopiedMd] = useState(false);
   const [copiedHtml, setCopiedHtml] = useState(false);
+  const dialogRef = useModalFocusTrap({ isOpen: isOpen && Boolean(project), onClose });
 
   if (!isOpen || !project) return null;
 
@@ -36,7 +38,14 @@ export default function PortfolioBadgeModal({ isOpen, onClose, project }) {
       justifyContent: 'center',
       padding: '20px'
     }}>
-      <div className="glass-panel" style={{
+      <div
+        ref={dialogRef}
+        className="glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="portfolio-badge-dialog-title"
+        tabIndex={-1}
+        style={{
         maxWidth: '540px',
         width: '100%',
         padding: '28px',
@@ -44,6 +53,7 @@ export default function PortfolioBadgeModal({ isOpen, onClose, project }) {
       }}>
         <button
           onClick={onClose}
+          aria-label="Đóng hộp xuất portfolio badge"
           style={{
             position: 'absolute',
             top: '20px',
@@ -60,7 +70,7 @@ export default function PortfolioBadgeModal({ isOpen, onClose, project }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
           <Award size={28} color="#fbbf24" />
           <div>
-            <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.25rem', fontWeight: '800' }}>
+            <h3 id="portfolio-badge-dialog-title" style={{ fontFamily: 'var(--font-heading)', fontSize: '1.25rem', fontWeight: '800' }}>
               Xuất Portfolio Badge Cho GitHub README
             </h3>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>

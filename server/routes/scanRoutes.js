@@ -225,7 +225,7 @@ router.post('/run', verifyToken, scanRateLimiter, async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Verified scan failed:', error);
+    req.log?.error('Verified scan failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to persist verified scan.' });
   } finally {
     client.release();

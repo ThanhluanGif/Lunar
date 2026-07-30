@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, ShieldCheck, Sparkles, Zap, Bot, CreditCard, QrCode, ArrowRight, Loader2, Award } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', currentUser, onUpgradeSuccess, initialPlan = 'PRO' }) {
   const [selectedPlan, setSelectedPlan] = useState(initialPlan || 'PRO'); // 'PRO' | 'ENTERPRISE'
@@ -11,6 +12,7 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
   const [paymentOrder, setPaymentOrder] = useState(null);
   const [paymentError, setPaymentError] = useState('');
   const [plans, setPlans] = useState([]);
+  const dialogRef = useModalFocusTrap({ isOpen, onClose });
 
   useEffect(() => {
     let cancelled = false;
@@ -127,10 +129,12 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
       padding: '20px'
     }}>
       <div
+        ref={dialogRef}
         className="glass-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="pricing-dialog-title"
+        tabIndex={-1}
         style={{
         maxWidth: paymentStep === 'select' ? '1000px' : '520px',
         width: '100%',
@@ -165,7 +169,7 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
               <div className="badge badge-purple" style={{ marginBottom: '10px' }}>
                 <Sparkles size={14} /> Nâng Cấp Quyền Hạn Lunar AI
               </div>
-              <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: '800' }}>
+              <h2 id="pricing-dialog-title" style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: '800' }}>
                 Chọn Gói Cước Phù Hợp Với Bạn
               </h2>
               <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
@@ -367,7 +371,7 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
               <Award size={36} color="#34d399" />
             </div>
 
-            <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.6rem', fontWeight: '800', color: '#34d399', marginBottom: '8px' }}>
+            <h3 id="pricing-dialog-title" style={{ fontFamily: 'var(--font-heading)', fontSize: '1.6rem', fontWeight: '800', color: '#34d399', marginBottom: '8px' }}>
               Nâng Cấp Thành Công Gói {selectedPlan}!
             </h3>
 

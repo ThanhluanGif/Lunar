@@ -113,6 +113,7 @@ export const lunarApi = {
   getPaymentStatus: (orderCode) => request(`/payment/status/${encodeURIComponent(orderCode)}`),
   getSubscription: () => request('/payment/subscription'),
   downloadAuditReportPdf: (scanId) => download(`/reports/export/pdf/${encodeURIComponent(scanId)}`),
+  downloadAuditReportCsv: (scanId) => download(`/reports/export/csv/${encodeURIComponent(scanId)}`),
   getAiProviders: () => request('/ai/providers'),
   reviewCodeWithAi: (payload) => request('/ai/review', {
     method: 'POST',

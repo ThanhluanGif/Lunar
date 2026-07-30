@@ -326,11 +326,11 @@ router.post('/repository', verifyToken, deepScanRateLimiter, async (req, res) =>
   } catch (error) {
     if (quotaReserved) {
       await releaseScanQuota(pool, req.user.id).catch((releaseError) => {
-        console.error('Unable to release deep scan quota reservation:', releaseError.message);
+        req.log?.error('Unable to release deep scan quota reservation.', releaseError, 500);
       });
     }
-    console.error('Deep repository scan failed:', error.message);
     const status = [400, 401, 404, 409, 422, 429, 503].includes(error.status) ? error.status : 502;
+    req.log?.error('Deep repository scan failed.', error, status);
     const message = {
       400: 'Invalid deep scan request.',
       401: 'Your account is no longer available.',

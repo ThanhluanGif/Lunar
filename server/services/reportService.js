@@ -26,14 +26,31 @@ function asciiPdfText(value) {
     .replace(/([\\()])/g, '\\$1');
 }
 
-function safeFilename(value) {
+function safeFilename(value, extension = 'pdf') {
   const base = String(value || 'lunar-security-audit')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
-  return `${base || 'lunar-security-audit'}-audit-report.pdf`;
+  const safeExtension = extension === 'csv' ? 'csv' : 'pdf';
+  return `${base || 'lunar-security-audit'}-audit-report.${safeExtension}`;
+}
+
+function sanitizeCsvField(value) {
+  if (typeof value !== 'string') return value;
+  const formulaLike = /^(?:[=+\-@\t\r\n]|[ \u00a0\ufeff]+[=+\-@])/u.test(value);
+  return formulaLike ? `'${value}` : value;
+}
+
+function quoteCsvField(value) {
+  const sanitized = sanitizeCsvField(value ?? '');
+  const text = typeof sanitized === 'string'
+    ? sanitized
+    : typeof sanitized === 'number' || typeof sanitized === 'boolean'
+      ? String(sanitized)
+      : JSON.stringify(sanitized);
+  return `"${String(text || '').replace(/\0/g, '').replace(/"/g, '""')}"`;
 }
 
 function redactEvidence(value) {
@@ -282,6 +299,72 @@ function createAuditReportPdf(projectTitle, scanSummary) {
   return createPdfFromPages(paginateBlocks(blocks));
 }
 
+function createAuditReportCsv(projectTitle, scanSummary) {
+  const summary = normalizeSummary(scanSummary);
+  const metadata = scanSummary?.metadata || {};
+  const findings = Array.isArray(scanSummary?.findings)
+    ? scanSummary.findings.slice(0, 500)
+    : [];
+  const generatedAt = new Date().toISOString();
+  const headers = [
+    'scan_id',
+    'project_name',
+    'scanned_at',
+    'generated_at',
+    'security_score',
+    'engine',
+    'critical_count',
+    'high_count',
+    'medium_count',
+    'low_count',
+    'total_findings',
+    'maximum_cvss',
+    'rule_id',
+    'cwe',
+    'title',
+    'severity',
+    'cvss',
+    'file_path',
+    'line',
+    'evidence',
+    'recommendation',
+    'status'
+  ];
+  const reportFields = [
+    metadata.scanId || '',
+    projectTitle || 'Lunar Security Audit',
+    metadata.scannedAt || '',
+    generatedAt,
+    safeNumber(metadata.score, 100),
+    metadata.engine || 'Lunar deterministic SAST',
+    summary.criticalCount,
+    summary.highCount,
+    summary.mediumCount,
+    summary.lowCount,
+    summary.total,
+    summary.maxCvss
+  ];
+  const rows = findings.length
+    ? findings.map((finding) => [
+        ...reportFields,
+        finding.ruleId || 'LEGACY-RULE',
+        finding.cwe || 'CWE-UNKNOWN',
+        finding.title || 'Security finding',
+        finding.severity || 'info',
+        safeNumber(finding.cvss, 10),
+        finding.filePath || '',
+        safeNumber(finding.line),
+        redactEvidence(finding.evidence),
+        finding.recommendation || 'Review and apply the least-privilege safe pattern.',
+        finding.status || 'open'
+      ])
+    : [[...reportFields, '', '', '', '', '', '', '', '', '', '']];
+  const csv = [headers, ...rows]
+    .map((row) => row.map(quoteCsvField).join(','))
+    .join('\r\n');
+  return Buffer.from(`\ufeff${csv}\r\n`, 'utf8');
+}
+
 async function loadOwnedScanSummary(pool, scanId, userId) {
   const result = await pool.query(
     `SELECT
@@ -369,8 +452,10 @@ async function loadOwnedScanSummary(pool, scanId, userId) {
 
 module.exports = {
   UUID_PATTERN,
+  createAuditReportCsv,
   createAuditReportPdf,
   loadOwnedScanSummary,
   normalizeSummary,
-  safeFilename
+  safeFilename,
+  sanitizeCsvField
 };

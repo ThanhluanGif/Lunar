@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const { verifyToken } = require('../middleware/auth');
+const { requireRole, verifyToken } = require('../middleware/auth');
 const router = express.Router();
 
 // Memory store for custom security policies
@@ -43,7 +43,7 @@ router.get('/', (req, res) => {
  * POST /api/v1/policies
  * Create a new custom security policy
  */
-router.post('/', verifyToken, (req, res) => {
+router.post('/', verifyToken, requireRole('ADMIN'), (req, res) => {
   const name = String(req.body?.name || '').trim();
   const category = String(req.body?.category || 'custom').trim();
   const description = String(req.body?.description || '').trim();
@@ -71,7 +71,7 @@ router.post('/', verifyToken, (req, res) => {
  * PATCH /api/v1/policies/:id/toggle
  * Toggle policy status
  */
-router.patch('/:id/toggle', verifyToken, (req, res) => {
+router.patch('/:id/toggle', verifyToken, requireRole('ADMIN'), (req, res) => {
   const { id } = req.params;
   const policy = defaultPolicies.find(p => p.id === id);
   if (policy) {

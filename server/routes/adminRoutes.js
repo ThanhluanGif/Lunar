@@ -57,8 +57,8 @@ async function writeAudit(client, req, {
   await client.query(
     `INSERT INTO admin_action_logs (
        actor_user_id, target_user_id, action_type, target_type, target_id,
-       reason, before_state, after_state, ip_address, user_agent
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+       reason, before_state, after_state, ip_address, user_agent, correlation_id
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       req.user.id,
       targetUserId,
@@ -69,7 +69,8 @@ async function writeAudit(client, req, {
       beforeState,
       afterState,
       req.ip,
-      req.get('user-agent') || null
+      req.get('user-agent') || null,
+      req.correlationId
     ]
   );
 }
@@ -177,7 +178,7 @@ router.get('/overview', async (req, res) => {
       recentAdminActions: recentActions.rows
     });
   } catch (error) {
-    console.error('Admin overview query failed:', error);
+    req.log?.error('Admin overview query failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to load admin dashboard data.' });
   }
 });
@@ -218,7 +219,7 @@ router.get('/users', async (req, res) => {
       users: result.rows.map(sanitizeUser)
     });
   } catch (error) {
-    console.error('Admin users query failed:', error);
+    req.log?.error('Admin users query failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to load users.' });
   }
 });
@@ -291,7 +292,7 @@ router.patch('/users/:userId', async (req, res) => {
     return res.json({ success: true, user: updatedUser });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Admin user update failed:', error);
+    req.log?.error('Admin user update failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to update user.' });
   } finally {
     client.release();
@@ -342,7 +343,7 @@ router.post('/users/:userId/reset-quota', async (req, res) => {
     return res.json({ success: true, user: updatedUser });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Admin quota reset failed:', error);
+    req.log?.error('Admin quota reset failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to reset quota.' });
   } finally {
     client.release();
@@ -391,7 +392,7 @@ router.get('/payments', async (req, res) => {
       payments: result.rows.map(({ total_count, ...payment }) => payment)
     });
   } catch (error) {
-    console.error('Admin payments query failed:', error);
+    req.log?.error('Admin payments query failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to load payments.' });
   }
 });
@@ -459,7 +460,7 @@ router.patch('/payments/:orderCode', async (req, res) => {
     return res.json({ success: true, payment: updatedResult.rows[0] });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Admin payment update failed:', error);
+    req.log?.error('Admin payment update failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to update payment.' });
   } finally {
     client.release();
@@ -483,6 +484,7 @@ router.get('/audit-log', async (req, res) => {
          l.after_state AS "afterState",
          l.ip_address AS "ipAddress",
          l.user_agent AS "userAgent",
+         l.correlation_id AS "correlationId",
          l.created_at AS "createdAt",
          actor.id AS "actorUserId",
          actor.email AS "actorEmail"
@@ -494,7 +496,7 @@ router.get('/audit-log', async (req, res) => {
     );
     return res.json({ success: true, logs: result.rows });
   } catch (error) {
-    console.error('Admin audit log query failed:', error);
+    req.log?.error('Admin audit log query failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to load admin audit log.' });
   }
 });

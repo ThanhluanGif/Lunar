@@ -5,9 +5,7 @@
 
 export const NINE_ROUTER_CONFIG = {
   defaultEndpoint: import.meta.env.VITE_NINE_ROUTER_ENDPOINT || 'http://localhost:9000/v1',
-  // VITE_ values are public browser configuration. Never place a provider
-  // secret here; use the authenticated backend proxy for production traffic.
-  apiKey: import.meta.env.VITE_NINE_ROUTER_KEY || '',
+  enabled: import.meta.env.DEV && import.meta.env.VITE_NINE_ROUTER_ENABLED === 'true',
   fallbackModel: 'gpt-4o-mini',
   models: [
     { id: '9router/gemini-2.0-flash', name: 'Gemini 2.0 Flash (9Router)', speed: '⚡ Rất Nhanh', provider: 'Google AI' },
@@ -17,11 +15,21 @@ export const NINE_ROUTER_CONFIG = {
   ]
 };
 
+function isLoopbackEndpoint(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:'
+      && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Khởi tạo kết nối và gọi 9Router Proxy AI Engine
  */
 export async function queryNineRouterAI({ prompt, codeSnippet, model = '9router/gemini-2.0-flash' }) {
-  if (!NINE_ROUTER_CONFIG.apiKey) {
+  if (!NINE_ROUTER_CONFIG.enabled || !isLoopbackEndpoint(NINE_ROUTER_CONFIG.defaultEndpoint)) {
     return {
       success: true,
       router: '9Router Local Fallback Engine',
@@ -44,8 +52,7 @@ export async function queryNineRouterAI({ prompt, codeSnippet, model = '9router/
     const res = await fetch(`${NINE_ROUTER_CONFIG.defaultEndpoint}/chat/completions`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${NINE_ROUTER_CONFIG.apiKey}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
     });
@@ -76,6 +83,9 @@ export async function queryNineRouterAI({ prompt, codeSnippet, model = '9router/
  * Kiểm tra trạng thái máy chủ 9Router Proxy Server
  */
 export async function checkNineRouterStatus() {
+  if (!NINE_ROUTER_CONFIG.enabled || !isLoopbackEndpoint(NINE_ROUTER_CONFIG.defaultEndpoint)) {
+    return false;
+  }
   try {
     const res = await fetch(`${NINE_ROUTER_CONFIG.defaultEndpoint}/models`, { method: 'GET' });
     return res.ok;

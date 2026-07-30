@@ -3,8 +3,18 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, optionalToken, verifyToken } = require('../middleware/auth');
+const {
+  githubAuthPollRateLimiter,
+  githubAuthStartRateLimiter
+} = require('../middleware/rateLimiter');
 const { getPool } = require('../db/connection');
+const {
+  UNVERIFIED_EMAIL_LINK_CODE,
+  githubEmailMatchesLunarAccount,
+  resolveVerifiedEmailAutoLink
+} = require('../services/githubAccountLinking');
 const { serializeUser, tokenPayload } = require('../services/userSerializer');
+const { writeSystemLog } = require('../middleware/logger');
 
 const router = express.Router();
 const GITHUB_API = 'https://api.github.com';
@@ -32,11 +42,11 @@ function getOAuthConfig() {
     return null;
   }
   if (!['device', 'web'].includes(authFlow)) {
-    console.error('GITHUB_AUTH_FLOW must be "device" or "web".');
+    writeSystemLog('ERROR', 'GITHUB_AUTH_FLOW must be "device" or "web".');
     return null;
   }
   if (!['registered', 'explicit'].includes(redirectMode)) {
-    console.error('GITHUB_OAUTH_REDIRECT_MODE must be "registered" or "explicit".');
+    writeSystemLog('ERROR', 'GITHUB_OAUTH_REDIRECT_MODE must be "registered" or "explicit".');
     return null;
   }
   return {
@@ -180,8 +190,11 @@ async function persistGitHubIdentity({
 
     let userId = requestedUser?.id || existingConnection.rows[0]?.user_id;
     if (!userId) {
-      const emailUser = await client.query('SELECT id FROM users WHERE email = $1', [githubEmail]);
-      userId = emailUser.rows[0]?.id;
+      const emailUser = await client.query(
+        'SELECT id, email_verified_at FROM users WHERE email = $1',
+        [githubEmail]
+      );
+      userId = resolveVerifiedEmailAutoLink(emailUser.rows[0]);
     }
 
     if (!userId) {
@@ -201,12 +214,20 @@ async function persistGitHubIdentity({
       );
       userId = inserted.rows[0].id;
     } else {
+      const accountEmail = await client.query('SELECT email FROM users WHERE id = $1', [userId]);
+      const verifiesLocalEmail = githubEmailMatchesLunarAccount(
+        accountEmail.rows[0]?.email,
+        githubEmail
+      );
       await client.query(
         `UPDATE users
-         SET email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP),
+         SET email_verified_at = CASE
+               WHEN $2 THEN COALESCE(email_verified_at, CURRENT_TIMESTAMP)
+               ELSE email_verified_at
+             END,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1`,
-        [userId]
+        [userId, verifiesLocalEmail]
       );
     }
 
@@ -276,7 +297,7 @@ router.get('/config', (req, res) => {
   });
 });
 
-router.get('/start', (req, res) => {
+router.get('/start', githubAuthStartRateLimiter, (req, res) => {
   const config = getOAuthConfig();
   if (!config) {
     return res.status(503).json({
@@ -305,7 +326,7 @@ router.get('/start', (req, res) => {
   return res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 });
 
-router.post('/device/start', async (req, res) => {
+router.post('/device/start', githubAuthStartRateLimiter, async (req, res) => {
   const config = getOAuthConfig();
   if (!config) {
     return res.status(503).json({
@@ -365,7 +386,7 @@ router.post('/device/start', async (req, res) => {
       interval
     });
   } catch (error) {
-    console.error('GitHub Device Flow start failed:', error.message);
+    req.log?.error('GitHub Device Flow start failed.', error, 500);
     return res.status(502).json({
       success: false,
       error: 'Không thể tạo mã xác thực GitHub. Hãy thử lại sau.'
@@ -373,7 +394,7 @@ router.post('/device/start', async (req, res) => {
   }
 });
 
-router.post('/device/poll', optionalToken, async (req, res) => {
+router.post('/device/poll', githubAuthPollRateLimiter, optionalToken, async (req, res) => {
   const config = getOAuthConfig();
   const pool = getPool();
   const encryptedSession = req.cookies?.[GITHUB_DEVICE_COOKIE];
@@ -481,7 +502,13 @@ router.post('/device/poll', optionalToken, async (req, res) => {
       repositories: result.repositories.map(publicRepository)
     });
   } catch (error) {
-    console.error('GitHub Device Flow completion failed:', error.message);
+    req.log?.error('GitHub Device Flow completion failed.', error, 500);
+    if (error.code === UNVERIFIED_EMAIL_LINK_CODE) {
+      return res.status(409).json({
+        success: false,
+        error: 'Email này đã có tài khoản Lunar chưa xác minh. Hãy đăng nhập và xác minh tài khoản đó trước khi kết nối GitHub.'
+      });
+    }
     return res.status(502).json({
       success: false,
       error: 'GitHub đã xác thực nhưng Lunar chưa thể lưu tài khoản hoặc repository.'
@@ -541,7 +568,10 @@ router.get('/callback', optionalToken, async (req, res) => {
     res.cookie('access_token', token, authCookieOptions);
     return res.redirect('/?github_auth=success');
   } catch (error) {
-    console.error('GitHub OAuth callback failed:', error.message);
+    req.log?.error('GitHub OAuth callback failed.', error, 500);
+    if (error.code === UNVERIFIED_EMAIL_LINK_CODE) {
+      return res.redirect('/?github_auth=link_required');
+    }
     return res.redirect('/?github_auth=failed');
   }
 });
@@ -617,7 +647,7 @@ router.post('/sync', verifyToken, async (req, res) => {
       repositories: repositories.map(publicRepository)
     });
   } catch (error) {
-    console.error('GitHub repository sync failed:', error.message);
+    req.log?.error('GitHub repository sync failed.', error, 500);
     return res.status(502).json({ success: false, error: 'Unable to synchronize GitHub repositories.' });
   }
 });

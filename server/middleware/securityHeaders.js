@@ -16,8 +16,13 @@ function securityHeadersMiddleware(req, res, next) {
   // Referrer Policy bảo vệ quyền riêng tư người dùng
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
-  // Anti-XSS Filter trên các trình duyệt cũ
-  res.setHeader('X-XSS-Protection', '1; mode=block');
+  // Disable the obsolete auditor, which can create side channels in legacy browsers.
+  res.setHeader('X-XSS-Protection', '0');
+
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('X-DNS-Prefetch-Control', 'off');
 
   // Content Security Policy (CSP) nghiêm ngặt cho REST API
   res.setHeader(

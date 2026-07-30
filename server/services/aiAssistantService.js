@@ -5,6 +5,7 @@ const DEFAULT_FALLBACK_MODELS = [
 ];
 const MAX_MESSAGE_LENGTH = 4000;
 const MAX_HISTORY_MESSAGES = 12;
+const { writeSystemLog } = require('../middleware/logger');
 
 const ASSISTANT_INSTRUCTIONS = [
   'Bạn là Lunar AI, trợ lý phòng thủ an ninh mạng được tích hợp trong website Lunar Security.',
@@ -228,7 +229,7 @@ async function generateAssistantReply({
         generateTextImpl
       });
     } catch (error) {
-      console.warn('AI Gateway assistant fallback activated:', error?.message || 'unknown error');
+      writeSystemLog('WARN', 'AI Gateway assistant fallback activated.', error);
       return {
         reply: createNativeReply(normalizedMessage, normalizedContext),
         mode: 'native',

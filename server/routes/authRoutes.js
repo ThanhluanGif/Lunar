@@ -14,6 +14,8 @@ const router = express.Router();
 // Development-only fallback store. It starts empty and is never used in
 // production, where authentication must fail closed if PostgreSQL is down.
 const usersDb = [];
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NICKNAME_PATTERN = /^[A-Za-z0-9_.-]{2,49}$/;
 
 // Cookie security configuration (HttpOnly, Secure, SameSite=Strict)
 const COOKIE_OPTIONS = {
@@ -25,6 +27,25 @@ const COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
 };
 
+function normalizeEmail(value) {
+  if (typeof value !== 'string') return '';
+  const email = value.trim().toLowerCase();
+  return email.length <= 254 && EMAIL_PATTERN.test(email) ? email : '';
+}
+
+function normalizeNickname(value) {
+  if (typeof value !== 'string') return '';
+  const nickname = value.trim().replace(/^@/, '');
+  return NICKNAME_PATTERN.test(nickname) ? `@${nickname}` : '';
+}
+
+function normalizeName(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value !== 'string') return '';
+  const name = value.trim();
+  return name.length >= 2 && name.length <= 120 ? name : '';
+}
+
 /**
  * POST /api/v1/auth/register
  * Zero-Trust Secured Registration Endpoint with Rate Limiter
@@ -32,17 +53,20 @@ const COOKIE_OPTIONS = {
 router.post('/register', authRateLimiter, async (req, res) => {
   try {
     const { name, nickname, email, password } = req.body;
+    const cleanEmail = normalizeEmail(email);
+    const cleanNickname = normalizeNickname(nickname);
+    const cleanName = normalizeName(name, cleanNickname.replace('@', ''));
 
-    if (!email || !password || !nickname) {
-      return res.status(400).json({ success: false, error: 'Email, nickname và mật khẩu là bắt buộc.' });
+    if (!cleanEmail || !cleanNickname || !cleanName || typeof password !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Email, tên, nickname và mật khẩu hợp lệ là bắt buộc.'
+      });
     }
 
     if (password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
       return res.status(400).json({ success: false, error: 'Mật khẩu phải có tối thiểu 8 ký tự và tối đa 72 byte.' });
     }
-
-    const cleanNickname = nickname.startsWith('@') ? nickname : `@${nickname}`;
-    const cleanEmail = email.toLowerCase().trim();
 
     if (process.env.NODE_ENV === 'production' && !getIsPgConnected()) {
       return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
@@ -63,7 +87,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
          VALUES ($1, $2, $3, $4, 'FREE', $5)
          RETURNING id, nickname, name, email, email_verified_at, auth_version,
                    tier, role, status, daily_scans_used`,
-        [cleanNickname, name || cleanNickname.replace('@', ''), cleanEmail, passwordHash, 'USER']
+        [cleanNickname, cleanName, cleanEmail, passwordHash, 'USER']
       );
 
       const newUser = result.rows[0];
@@ -91,7 +115,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
           });
           verificationEmailSent = true;
         } catch (emailError) {
-          console.warn('Registration verification email failed:', emailError.message);
+          req.log?.warn('Registration verification email failed.', emailError);
         }
       }
 
@@ -114,7 +138,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
     const newUser = {
       id: `usr-${Date.now()}`,
       nickname: cleanNickname,
-      name: name || cleanNickname.replace('@', ''),
+      name: cleanName,
       email: cleanEmail,
       passwordHash,
       tier: 'FREE',
@@ -140,7 +164,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
       user: serializeUser(newUser)
     });
   } catch (err) {
-    console.error('Error during registration:', err);
+    req.log?.error('Registration failed.', err, 500);
     res.status(500).json({ success: false, error: 'Lỗi hệ thống khi đăng ký tài khoản.' });
   }
 });
@@ -152,11 +176,15 @@ router.post('/register', authRateLimiter, async (req, res) => {
 router.post('/login', authRateLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
+    const cleanEmail = normalizeEmail(email);
+    if (
+      !cleanEmail
+      || typeof password !== 'string'
+      || password.length === 0
+      || Buffer.byteLength(password, 'utf8') > 72
+    ) {
       return res.status(400).json({ success: false, error: 'Vui lòng cung cấp email và mật khẩu.' });
     }
-
-    const cleanEmail = email.toLowerCase().trim();
 
     if (process.env.NODE_ENV === 'production' && !getIsPgConnected()) {
       return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
@@ -220,7 +248,7 @@ router.post('/login', authRateLimiter, async (req, res) => {
       user: serializeUser(user)
     });
   } catch (err) {
-    console.error('Error during login:', err);
+    req.log?.error('Login failed.', err, 500);
     res.status(500).json({ success: false, error: 'Lỗi máy chủ khi xác thực đăng nhập.' });
   }
 });
@@ -281,15 +309,16 @@ router.post('/bootstrap-admin', verifyToken, async (req, res) => {
     await client.query(
       `INSERT INTO admin_action_logs (
          actor_user_id, target_user_id, action_type, target_type, target_id,
-         reason, before_state, after_state, ip_address, user_agent
-       ) VALUES ($1::uuid, $1::uuid, 'ADMIN_BOOTSTRAPPED', 'USER', $1::text, $2, $3, $4, $5, $6)`,
+         reason, before_state, after_state, ip_address, user_agent, correlation_id
+       ) VALUES ($1::uuid, $1::uuid, 'ADMIN_BOOTSTRAPPED', 'USER', $1::text, $2, $3, $4, $5, $6, $7)`,
       [
         req.user.id,
         'Initial administrator provisioned with one-time bootstrap token.',
         { role: 'USER' },
         { role: 'ADMIN' },
         req.ip,
-        req.get('user-agent') || null
+        req.get('user-agent') || null,
+        req.correlationId
       ]
     );
     await client.query('COMMIT');
@@ -303,7 +332,7 @@ router.post('/bootstrap-admin', verifyToken, async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Admin bootstrap failed:', error);
+    req.log?.error('Admin bootstrap failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to bootstrap administrator.' });
   } finally {
     client.release();

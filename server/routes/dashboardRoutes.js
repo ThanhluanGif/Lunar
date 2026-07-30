@@ -176,7 +176,7 @@ router.get('/overview', verifyToken, async (req, res) => {
       recentScans: recentResult.rows
     });
   } catch (error) {
-    console.error('Dashboard overview query failed:', error);
+    req.log?.error('Dashboard overview query failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to load verified dashboard data.' });
   }
 });

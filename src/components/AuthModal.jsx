@@ -12,6 +12,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialResetToken = '' }) {
   const [activeTab, setActiveTab] = useState('github');
@@ -29,6 +30,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
   const [deviceAuth, setDeviceAuth] = useState(null);
   const devicePollTimerRef = useRef(null);
   const deviceFlowActiveRef = useRef(false);
+  const dialogRef = useModalFocusTrap({ isOpen, onClose });
 
   useEffect(() => {
     if (!initialResetToken) return;
@@ -175,11 +177,13 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
       padding: '20px'
     }}>
       <div
+        ref={dialogRef}
         id="auth-modal"
         className="glass-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="auth-modal-title"
+        tabIndex={-1}
         style={{
         maxWidth: '480px',
         width: '100%',

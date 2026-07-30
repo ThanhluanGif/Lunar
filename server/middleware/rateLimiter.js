@@ -34,6 +34,28 @@ const accountMutationRateLimiter = rateLimit({
   }
 });
 
+const githubAuthStartRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu bắt đầu đăng nhập GitHub.'
+  }
+});
+
+const githubAuthPollRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu kiểm tra xác thực GitHub.'
+  }
+});
+
 // 2. Payment Rate Limiter - Chống Spam đơn hàng thanh toán (Max 10 req / 1 phút)
 const paymentRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 phút
@@ -119,6 +141,8 @@ module.exports = {
   authRateLimiter,
   accountRecoveryRateLimiter,
   accountMutationRateLimiter,
+  githubAuthStartRateLimiter,
+  githubAuthPollRateLimiter,
   paymentRateLimiter,
   publicApiRateLimiter,
   assistantRateLimiter,

@@ -524,8 +524,8 @@ async function handleReview(req, res) {
       review: output.result
     });
   } catch (error) {
-    console.error('AI review failed:', error.message);
     const status = [400, 429, 503].includes(error.status) ? error.status : 502;
+    req.log?.error('AI review failed.', error, status);
     return res.status(status).json({
       success: false,
       error: status === 503
@@ -595,8 +595,8 @@ async function handleProjectAttackSimulation(req, res) {
       simulation: output.result
     });
   } catch (error) {
-    console.error('Project attack simulation failed:', error.message);
     const status = [400, 429, 503].includes(error.status) ? error.status : 502;
+    req.log?.error('Project attack simulation failed.', error, status);
     return res.status(status).json({
       success: false,
       error: status === 503

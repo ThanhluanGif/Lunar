@@ -3,6 +3,7 @@ import { X, Github, Sparkles, Loader2, Code, ShieldCheck, AlertCircle } from 'lu
 import { fetchGitHubRepoDetails } from '../services/githubService';
 import { scanRepository } from '../services/repoScanner';
 import { lunarApi } from '../services/lunarApi';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 const MAX_LOCAL_FILE_BYTES = 512000;
 
@@ -14,6 +15,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser
   const [loading, setLoading] = useState(false);
   const [stepText, setStepText] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const dialogRef = useModalFocusTrap({ isOpen, onClose, closeOnEscape: !loading });
 
   if (!isOpen) return null;
 
@@ -172,7 +174,14 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser
       justifyContent: 'center',
       padding: '20px'
     }}>
-      <div className="glass-panel" style={{
+      <div
+        ref={dialogRef}
+        className="glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="submit-dialog-title"
+        tabIndex={-1}
+        style={{
         maxWidth: '560px',
         width: '100%',
         padding: '28px',
@@ -184,6 +193,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser
         <button
           onClick={onClose}
           disabled={loading}
+          aria-label="Đóng hộp tải repository"
           style={{
             position: 'absolute',
             top: '20px',
@@ -211,7 +221,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser
             <Sparkles size={20} color="#fff" />
           </div>
           <div>
-            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.3rem', fontWeight: '800' }}>
+            <h2 id="submit-dialog-title" style={{ fontFamily: 'var(--font-heading)', fontSize: '1.3rem', fontWeight: '800' }}>
               Upload Repo & Chấm Điểm AI
             </h2>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>

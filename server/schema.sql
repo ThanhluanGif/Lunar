@@ -146,8 +146,10 @@ CREATE TABLE IF NOT EXISTS admin_action_logs (
     after_state JSONB,
     ip_address VARCHAR(64),
     user_agent TEXT,
+    correlation_id VARCHAR(128),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE admin_action_logs ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(128);
 ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS file_path TEXT;
 ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS rule_id VARCHAR(80);
 ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS source_severity VARCHAR(20);

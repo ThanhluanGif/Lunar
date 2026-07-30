@@ -11,6 +11,7 @@ import {
   X
 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 const TABS = [
   { id: 'profile', label: 'Hồ sơ', icon: UserRound },
@@ -35,6 +36,7 @@ export default function AccountSettingsModal({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const dialogRef = useModalFocusTrap({ isOpen: isOpen && Boolean(currentUser), onClose });
 
   useEffect(() => {
     if (!isOpen || !currentUser) return;
@@ -115,11 +117,13 @@ export default function AccountSettingsModal({
       padding: '20px'
     }}>
       <section
+        ref={dialogRef}
         id="account-settings-modal"
         className="glass-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="account-settings-title"
+        tabIndex={-1}
         style={{
           width: 'min(860px, 100%)',
           maxHeight: '86vh',

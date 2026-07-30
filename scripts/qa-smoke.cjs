@@ -475,7 +475,7 @@ eval(userInput);`,
     if (frontendPrecisionScan.stats.total !== 0) {
       throw new Error('Frontend SAST precision regressed on imports or embedded code fixtures.');
     }
-    const { createAuditReportPdf } = require('../server/services/reportService');
+    const { createAuditReportCsv, createAuditReportPdf } = require('../server/services/reportService');
     const detailedReport = createAuditReportPdf('QA detailed report', {
       maxCvss: 9.1,
       criticalCount: 1,
@@ -512,6 +512,40 @@ eval(userInput);`,
     ) {
       throw new Error('Detailed PDF report contract or evidence redaction failed.');
     }
+    const safeCsvReport = createAuditReportCsv('=QA formula probe', {
+      criticalCount: 1,
+      total: 1,
+      metadata: {
+        scanId: '00000000-0000-4000-8000-000000000000',
+        score: 80,
+        engine: '+qa-engine',
+        scannedAt: new Date().toISOString()
+      },
+      findings: [{
+        ruleId: '@LUNAR-001',
+        cwe: 'CWE-798',
+        title: '\t=HYPERLINK("https://attacker.invalid")',
+        severity: 'critical',
+        cvss: 9.1,
+        filePath: '-server/config.js',
+        line: 12,
+        evidence: '@malicious-cell',
+        recommendation: '  =malicious-cell',
+        status: '+open'
+      }]
+    }).toString('utf8');
+    if (
+      !safeCsvReport.startsWith('\ufeff')
+      || !safeCsvReport.includes("'=QA formula probe")
+      || !safeCsvReport.includes("'@LUNAR-001")
+      || !safeCsvReport.includes("'\t=HYPERLINK")
+      || !safeCsvReport.includes("'-server/config.js")
+      || !safeCsvReport.includes("'@malicious-cell")
+      || !safeCsvReport.includes("'  =malicious-cell")
+      || !safeCsvReport.includes("'+open")
+    ) {
+      throw new Error('CSV formula-injection protection failed.');
+    }
 
     const scan = await request('/api/v1/scans/run', {
       method: 'POST',
@@ -524,6 +558,24 @@ eval(userInput);`,
     }, 201);
     if (scan.body.source !== 'postgresql' || scan.body.scan.issuesCount < 1) {
       throw new Error('Verified scan was not analyzed and persisted.');
+    }
+    const reportMetadata = await request('/api/v1/reports/export', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: regular.cookie },
+      body: JSON.stringify({ scanId: scan.body.scan.id })
+    });
+    if (!reportMetadata.body.report?.csvDownloadUrl?.endsWith(`/export/csv/${scan.body.scan.id}`)) {
+      throw new Error('Report metadata did not expose the authenticated CSV download URL.');
+    }
+    const csvDownload = await request(`/api/v1/reports/export/csv/${scan.body.scan.id}`, {
+      headers: { cookie: regular.cookie }
+    });
+    if (
+      !csvDownload.response.headers.get('content-type')?.includes('text/csv')
+      || !csvDownload.response.headers.get('content-disposition')?.includes('.csv')
+      || !String(csvDownload.body).includes('QA security fixture')
+    ) {
+      throw new Error('Authenticated CSV report download contract failed.');
     }
     const scanHistory = await request('/api/v1/auth/scan-history', {
       headers: { cookie: regular.cookie }
@@ -574,10 +626,18 @@ eval(userInput);`,
     if (adminOverview.body.source !== 'postgresql') {
       throw new Error('Admin overview did not use PostgreSQL.');
     }
+    await request(`/api/v1/reports/export/csv/${scan.body.scan.id}`, {
+      headers: { cookie: admin.cookie }
+    }, 404);
 
+    const adminCorrelationId = crypto.randomBytes(16).toString('hex');
     const userUpdate = await request(`/api/v1/admin/users/${regular.user.id}`, {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json', cookie: admin.cookie },
+      headers: {
+        'content-type': 'application/json',
+        cookie: admin.cookie,
+        'x-correlation-id': adminCorrelationId
+      },
       body: JSON.stringify({ tier: 'PRO', reason: 'QA validates audited tier management' })
     });
     if (userUpdate.body.user.tier !== 'PRO') {
@@ -600,8 +660,11 @@ eval(userInput);`,
     const auditLog = await request('/api/v1/admin/audit-log', {
       headers: { cookie: admin.cookie }
     });
-    if (auditLog.body.logs.length < 2) {
-      throw new Error('Admin changes were not recorded in the audit log.');
+    if (
+      auditLog.body.logs.length < 2
+      || !auditLog.body.logs.some((entry) => entry.correlationId === adminCorrelationId)
+    ) {
+      throw new Error('Admin changes were not recorded with their correlation IDs.');
     }
 
     const createOrder = await request('/api/v1/payment/create-order', {
@@ -667,6 +730,8 @@ eval(userInput);`,
       removedNotificationEndpoints: 'PASS',
       userRbac: 'PASS',
       persistedDashboard: 'PASS',
+      correlationAuditTrail: 'PASS',
+      csvReportExport: 'PASS',
       aiFailClosed: 'PASS',
       deepScanGuard: 'PASS',
       sastRuleSignatures: scannerModule.SECURITY_RULE_SIGNATURE_COUNT,

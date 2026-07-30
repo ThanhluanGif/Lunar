@@ -64,12 +64,12 @@ router.post('/forgot-password', accountRecoveryRateLimiter, async (req, res) => 
         name: user.name,
         token
       }).catch((error) => {
-        console.warn('Password-reset email delivery failed:', error.message);
+        req.log?.warn('Password-reset email delivery failed.', error);
       });
     }
     return res.json({ success: true, message: GENERIC_FORGOT_RESPONSE });
   } catch (error) {
-    console.error('Forgot-password request failed:', error);
+    req.log?.error('Forgot-password request failed.', error, 500);
     return res.json({ success: true, message: GENERIC_FORGOT_RESPONSE });
   }
 });
@@ -125,7 +125,7 @@ router.post('/reset-password', accountRecoveryRateLimiter, async (req, res) => {
     return res.json({ success: true, message: 'Mật khẩu đã được đặt lại. Hãy đăng nhập lại.' });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Reset-password request failed:', error);
+    req.log?.error('Reset-password request failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Không thể đặt lại mật khẩu.' });
   } finally {
     client.release();
@@ -172,7 +172,7 @@ router.post('/verify-email', accountRecoveryRateLimiter, async (req, res) => {
     return res.json({ success: true, message: 'Email đã được xác minh thành công.' });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Email verification failed:', error);
+    req.log?.error('Email verification failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Không thể xác minh email.' });
   } finally {
     client.release();
@@ -207,7 +207,7 @@ router.post('/resend-verification', verifyToken, accountRecoveryRateLimiter, asy
     await sendEmailVerification({ email: user.email, name: user.name, token });
     return res.json({ success: true, message: 'Đã gửi lại email xác minh.' });
   } catch (error) {
-    console.error('Verification email resend failed:', error);
+    req.log?.error('Verification email resend failed.', error, 500);
     return res.status(502).json({ success: false, error: 'Không thể gửi email xác minh.' });
   }
 });
