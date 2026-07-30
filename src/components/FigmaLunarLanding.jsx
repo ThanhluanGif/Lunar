@@ -323,7 +323,7 @@ export default function FigmaLunarLanding({
                 <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#e2e5f0', marginBottom: '4px' }}>
                   {stat.val}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#4a5070' }}>
+                <div style={{ fontSize: '0.75rem', color: '#8993b8' }}>
                   {stat.label}
                 </div>
               </div>
@@ -408,7 +408,7 @@ export default function FigmaLunarLanding({
                   {cap.title}
                 </h3>
 
-                <p style={{ fontSize: '0.88rem', color: '#6a7090', lineHeight: '1.6' }}>
+                <p style={{ fontSize: '0.88rem', color: '#929abd', lineHeight: '1.6' }}>
                   {cap.desc}
                 </p>
               </div>
@@ -472,7 +472,7 @@ export default function FigmaLunarLanding({
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }} />
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f97316' }} />
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e' }} />
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#3a3f60', marginLeft: '8px' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#8b94b8', marginLeft: '8px' }}>
                     userService.ts
                   </span>
                 </div>
@@ -486,7 +486,7 @@ export default function FigmaLunarLanding({
                       fontSize: '0.78rem',
                       fontWeight: '600',
                       background: demoState === 'before' ? 'rgba(108, 142, 239, 0.18)' : 'transparent',
-                      color: demoState === 'before' ? '#6c8eef' : '#3a3f60',
+                      color: demoState === 'before' ? '#6c8eef' : '#8b94b8',
                       border: 'none',
                       cursor: 'pointer'
                     }}
@@ -502,7 +502,7 @@ export default function FigmaLunarLanding({
                       fontSize: '0.78rem',
                       fontWeight: '600',
                       background: demoState === 'after' ? 'rgba(34, 197, 94, 0.18)' : 'transparent',
-                      color: demoState === 'after' ? '#86efac' : '#3a3f60',
+                      color: demoState === 'after' ? '#86efac' : '#8b94b8',
                       border: 'none',
                       cursor: 'pointer'
                     }}
@@ -521,7 +521,7 @@ export default function FigmaLunarLanding({
                   
                   return (
                     <div key={i} style={{ display: 'flex', gap: '16px', padding: '2px 20px', background: bg }}>
-                      <span style={{ width: '24px', textAlign: 'right', color: '#3a3f60', userSelect: 'none', shrink: 0 }}>
+                      <span style={{ width: '24px', textAlign: 'right', color: '#8b94b8', userSelect: 'none', shrink: 0 }}>
                         {line.num}
                       </span>
                       <span style={{ width: '12px', color: textColor, userSelect: 'none', shrink: 0 }}>
@@ -597,7 +597,7 @@ export default function FigmaLunarLanding({
                       <span style={{ fontSize: '0.82rem', fontWeight: '700', color: issue.color }}>
                         {issue.label}
                       </span>
-                      <span style={{ fontSize: '0.74rem', color: '#3a3f60', marginLeft: 'auto' }}>
+                      <span style={{ fontSize: '0.74rem', color: '#8b94b8', marginLeft: 'auto' }}>
                         line {issue.line}
                       </span>
                     </div>
@@ -716,7 +716,7 @@ export default function FigmaLunarLanding({
                 justifyContent: 'space-between'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Github size={16} color="#4a5070" />
+                  <Github size={16} color="#8993b8" />
                   <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#e2e5f0' }}>acme-corp</span>
                 </div>
                 <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '9999px', background: 'rgba(34, 197, 94, 0.12)', color: '#86efac' }}>
@@ -737,7 +737,7 @@ export default function FigmaLunarLanding({
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', fontWeight: '700', color: '#e2e5f0', marginBottom: '2px' }}>
                         {repo.name.split('/')[1]}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#3a3f60' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#8b94b8' }}>
                         {repo.lang} · <span style={{ color: repo.issues > 5 ? '#f97316' : '#7880a0' }}>{repo.issues} issues</span>
                       </div>
                     </div>
@@ -877,7 +877,7 @@ export default function FigmaLunarLanding({
                     <span style={{ fontSize: '2.4rem', fontWeight: '900', color: '#e2e5f0', letterSpacing: '-0.03em' }}>
                       {plan.displayPrice}
                     </span>
-                    <span style={{ fontSize: '0.88rem', color: '#4a5070' }}>{plan.period}</span>
+                    <span style={{ fontSize: '0.88rem', color: '#8993b8' }}>{plan.period}</span>
                   </div>
 
                   <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '32px' }}>
@@ -912,9 +912,9 @@ export default function FigmaLunarLanding({
           </div>
 
           <div style={{ marginTop: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
-            <span style={{ fontSize: '0.78rem', color: '#3a3f60' }}>Secured by</span>
+            <span style={{ fontSize: '0.78rem', color: '#8b94b8' }}>Secured by</span>
             {['Stripe', 'Visa', 'Mastercard', 'PayPal'].map((brand, idx) => (
-              <span key={idx} style={{ fontSize: '0.78rem', fontWeight: '700', color: '#3a3f60' }}>
+              <span key={idx} style={{ fontSize: '0.78rem', fontWeight: '700', color: '#8b94b8' }}>
                 {brand}
               </span>
             ))}
@@ -988,7 +988,7 @@ export default function FigmaLunarLanding({
 
                   <div>
                     <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#e2e5f0' }}>{test.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#3a3f60' }}>{test.role}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#8b94b8' }}>{test.role}</div>
                   </div>
                 </div>
               </div>
@@ -1009,14 +1009,14 @@ export default function FigmaLunarLanding({
                   <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)' }} />
                   <span style={{ fontSize: '1.1rem', fontWeight: '800', color: '#e2e5f0' }}>lunar</span>
                 </div>
-                <p style={{ fontSize: '0.84rem', color: '#3a3f60', maxWidth: '280px', lineHeight: '1.6' }}>
+                <p style={{ fontSize: '0.84rem', color: '#8b94b8', maxWidth: '280px', lineHeight: '1.6' }}>
                   AI-powered code review and auto-fix platform. Ship faster, break less.
                 </p>
               </div>
 
               <div>
-                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '16px' }}>Product</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#3a3f60' }}>
+                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#7f89ad', marginBottom: '16px' }}>Product</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#8b94b8' }}>
                   <span>Features</span>
                   <span>Pricing</span>
                   <span>Changelog</span>
@@ -1025,8 +1025,8 @@ export default function FigmaLunarLanding({
               </div>
 
               <div>
-                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '16px' }}>Docs</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#3a3f60' }}>
+                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#7f89ad', marginBottom: '16px' }}>Docs</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#8b94b8' }}>
                   <span>Getting started</span>
                   <span>API reference</span>
                   <span>GitHub App</span>
@@ -1035,8 +1035,8 @@ export default function FigmaLunarLanding({
               </div>
 
               <div>
-                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '16px' }}>Company</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#3a3f60' }}>
+                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#7f89ad', marginBottom: '16px' }}>Company</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#8b94b8' }}>
                   <span>About</span>
                   <span>Blog</span>
                   <span>Careers</span>
@@ -1045,7 +1045,7 @@ export default function FigmaLunarLanding({
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.04)', paddingTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#2a3050' }}>
+            <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.04)', paddingTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#7f89ad' }}>
               <div>© 2025 Lunar Technologies, Inc. All rights reserved.</div>
               <div>Built for developers who care about quality.</div>
             </div>

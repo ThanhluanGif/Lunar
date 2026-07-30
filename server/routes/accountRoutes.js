@@ -62,7 +62,8 @@ router.post('/forgot-password', accountRecoveryRateLimiter, async (req, res) => 
       await sendPasswordResetEmail({
         email: user.email,
         name: user.name,
-        token
+        token,
+        correlationId: req.correlationId
       }).catch((error) => {
         req.log?.warn('Password-reset email delivery failed.', error);
       });
@@ -204,7 +205,12 @@ router.post('/resend-verification', verifyToken, accountRecoveryRateLimiter, asy
       purpose: PURPOSES.EMAIL_VERIFICATION,
       ttlMinutes: 24 * 60
     });
-    await sendEmailVerification({ email: user.email, name: user.name, token });
+    await sendEmailVerification({
+      email: user.email,
+      name: user.name,
+      token,
+      correlationId: req.correlationId
+    });
     return res.json({ success: true, message: 'Đã gửi lại email xác minh.' });
   } catch (error) {
     req.log?.error('Verification email resend failed.', error, 500);

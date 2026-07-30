@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -31,8 +31,16 @@ const { initPgDatabase, getIsPgConnected } = require('./db/connection');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+function trustProxySetting(value) {
+  const configured = String(value || '').trim();
+  if (!configured) return false;
+  if (/^\d+$/.test(configured)) return Number.parseInt(configured, 10);
+  return configured;
+}
+
 // Disable Express fingerprinting
 app.disable('x-powered-by');
+app.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY));
 
 // 1. OWASP ASVS Security Headers
 app.use(securityHeaders);

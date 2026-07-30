@@ -106,7 +106,8 @@ router.post('/chat', optionalToken, assistantRateLimiter, async (req, res) => {
       message,
       history,
       context,
-      user: req.user
+      user: req.user,
+      correlationId: req.correlationId
     });
 
     if (conversation) {
@@ -145,11 +146,16 @@ router.post('/chat', optionalToken, assistantRateLimiter, async (req, res) => {
     });
   } catch (error) {
     const invalidInput = ['INVALID_MESSAGE', 'MESSAGE_TOO_LONG'].includes(error.code);
+    const providerFailure = [402, 429, 503].includes(error.status);
     if (invalidInput) req.log?.warn('Assistant chat input was rejected.', error, 400);
-    else req.log?.error('Assistant chat failed.', error, 500);
-    return res.status(invalidInput ? 400 : 500).json({
+    else req.log?.error('Assistant chat failed.', error, providerFailure ? error.status : 500);
+    return res.status(invalidInput ? 400 : providerFailure ? error.status : 500).json({
       success: false,
-      error: invalidInput ? error.message : 'Trợ lý đang tạm gián đoạn. Vui lòng thử lại.'
+      error: invalidInput
+        ? error.message
+        : providerFailure
+          ? 'AI Gateway chưa sẵn sàng hoặc đang giới hạn yêu cầu.'
+          : 'Trợ lý đang tạm gián đoạn. Vui lòng thử lại.'
     });
   }
 });

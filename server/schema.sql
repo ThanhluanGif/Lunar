@@ -157,6 +157,7 @@ ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS cvss NUMERIC(3, 1);
 
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_created_at ON admin_action_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_actor ON admin_action_logs(actor_user_id);
+CREATE INDEX IF NOT EXISTS idx_admin_action_logs_correlation ON admin_action_logs(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_vulnerabilities_scan_rule
     ON vulnerabilities(scan_id, rule_id);
 
@@ -220,8 +221,10 @@ CREATE TABLE IF NOT EXISTS payment_webhook_events (
     order_code VARCHAR(100),
     payload_hash CHAR(64) NOT NULL,
     status VARCHAR(30) NOT NULL,
+    correlation_id VARCHAR(128),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE payment_webhook_events ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(128);
 
 -- 13. Durable GitHub webhook replay protection and processing receipts
 CREATE TABLE IF NOT EXISTS github_webhook_deliveries (
@@ -231,12 +234,18 @@ CREATE TABLE IF NOT EXISTS github_webhook_deliveries (
     repository VARCHAR(255),
     payload_hash CHAR(64) NOT NULL,
     status VARCHAR(30) NOT NULL CHECK (status IN ('RECEIVED', 'PROCESSED', 'IGNORED', 'FAILED')),
+    correlation_id VARCHAR(128),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP WITH TIME ZONE
 );
+ALTER TABLE github_webhook_deliveries ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(128);
 
 CREATE INDEX IF NOT EXISTS idx_github_webhook_deliveries_created
     ON github_webhook_deliveries(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_github_webhook_deliveries_correlation
+    ON github_webhook_deliveries(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_payment_webhook_events_correlation
+    ON payment_webhook_events(correlation_id);
 
 -- 14. Per-user Lunar AI assistant conversation history
 CREATE TABLE IF NOT EXISTS assistant_conversations (

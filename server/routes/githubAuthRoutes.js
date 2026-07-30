@@ -15,6 +15,7 @@ const {
 } = require('../services/githubAccountLinking');
 const { serializeUser, tokenPayload } = require('../services/userSerializer');
 const { writeSystemLog } = require('../middleware/logger');
+const { providerFetch } = require('../services/providerHttp');
 
 const router = express.Router();
 const GITHUB_API = 'https://api.github.com';
@@ -85,13 +86,17 @@ function decryptToken(value, key) {
   ]).toString('utf8');
 }
 
-async function githubRequest(path, token) {
-  const response = await fetch(`${GITHUB_API}${path}`, {
+async function githubRequest(path, token, correlationId) {
+  const response = await providerFetch(`${GITHUB_API}${path}`, {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
       'User-Agent': 'Lunar-Security-Dashboard'
     }
+  }, {
+    correlationId,
+    timeoutMs: 15000,
+    maxRetries: 1
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -100,8 +105,8 @@ async function githubRequest(path, token) {
   return payload;
 }
 
-async function fetchVerifiedEmail(token, profile) {
-  const emails = await githubRequest('/user/emails?per_page=100', token);
+async function fetchVerifiedEmail(token, profile, correlationId) {
+  const emails = await githubRequest('/user/emails?per_page=100', token, correlationId);
   const preferred = emails.find((email) => email.primary && email.verified)
     || emails.find((email) => email.verified);
   if (preferred?.email) return preferred.email.toLowerCase();
@@ -109,10 +114,11 @@ async function fetchVerifiedEmail(token, profile) {
   throw new Error('A verified GitHub email is required.');
 }
 
-async function fetchRepositories(token) {
+async function fetchRepositories(token, correlationId) {
   return githubRequest(
     '/user/repos?per_page=100&sort=updated&affiliation=owner%2Ccollaborator%2Corganization_member',
-    token
+    token,
+    correlationId
   );
 }
 
@@ -163,13 +169,14 @@ async function persistGitHubIdentity({
   config,
   accessToken,
   grantedScopes,
-  requestedUser
+  requestedUser,
+  correlationId
 }) {
   const [profile, repositories] = await Promise.all([
-    githubRequest('/user', accessToken),
-    fetchRepositories(accessToken)
+    githubRequest('/user', accessToken, correlationId),
+    fetchRepositories(accessToken, correlationId)
   ]);
-  const githubEmail = await fetchVerifiedEmail(accessToken, profile);
+  const githubEmail = await fetchVerifiedEmail(accessToken, profile, correlationId);
   const client = await pool.connect();
   let committed = false;
 
@@ -342,7 +349,7 @@ router.post('/device/start', githubAuthStartRateLimiter, async (req, res) => {
   }
 
   try {
-    const response = await fetch('https://github.com/login/device/code', {
+    const response = await providerFetch('https://github.com/login/device/code', {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -353,6 +360,10 @@ router.post('/device/start', githubAuthStartRateLimiter, async (req, res) => {
         client_id: config.clientId,
         scope: config.scopes.join(' ')
       })
+    }, {
+      correlationId: req.correlationId,
+      timeoutMs: 15000,
+      maxRetries: 0
     });
     const payload = await response.json().catch(() => ({}));
     if (
@@ -434,7 +445,7 @@ router.post('/device/poll', githubAuthPollRateLimiter, optionalToken, async (req
   }
 
   try {
-    const response = await fetch('https://github.com/login/oauth/access_token', {
+    const response = await providerFetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -446,6 +457,10 @@ router.post('/device/poll', githubAuthPollRateLimiter, optionalToken, async (req
         device_code: deviceSession.deviceCode,
         grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
       })
+    }, {
+      correlationId: req.correlationId,
+      timeoutMs: 15000,
+      maxRetries: 0
     });
     const githubToken = await response.json().catch(() => ({}));
     if (
@@ -480,7 +495,8 @@ router.post('/device/poll', githubAuthPollRateLimiter, optionalToken, async (req
       config,
       accessToken: githubToken.access_token,
       grantedScopes: githubToken.scope,
-      requestedUser: req.user
+      requestedUser: req.user,
+      correlationId: req.correlationId
     });
     const token = jwt.sign(tokenPayload(result.user), JWT_SECRET, { expiresIn: '7d' });
     res.cookie('access_token', token, authCookieOptions);
@@ -538,7 +554,7 @@ router.get('/callback', optionalToken, async (req, res) => {
   if (!req.query.code) return res.redirect('/?github_auth=denied');
 
   try {
-    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+    const tokenResponse = await providerFetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -551,6 +567,10 @@ router.get('/callback', optionalToken, async (req, res) => {
         code: req.query.code,
         ...(config.redirectMode === 'explicit' ? { redirect_uri: config.callbackUrl } : {})
       })
+    }, {
+      correlationId: req.correlationId,
+      timeoutMs: 15000,
+      maxRetries: 0
     });
     const githubToken = await tokenResponse.json();
     if (!tokenResponse.ok || !githubToken.access_token) {
@@ -562,7 +582,8 @@ router.get('/callback', optionalToken, async (req, res) => {
       config,
       accessToken: githubToken.access_token,
       grantedScopes: githubToken.scope,
-      requestedUser: req.user
+      requestedUser: req.user,
+      correlationId: req.correlationId
     });
     const token = jwt.sign(tokenPayload(result.user), JWT_SECRET, { expiresIn: '7d' });
     res.cookie('access_token', token, authCookieOptions);
@@ -625,7 +646,7 @@ router.post('/sync', verifyToken, async (req, res) => {
 
   try {
     const token = decryptToken(connection.rows[0].access_token_encrypted, config.encryptionKey);
-    const repositories = await fetchRepositories(token);
+    const repositories = await fetchRepositories(token, req.correlationId);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');

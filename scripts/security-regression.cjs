@@ -1,8 +1,15 @@
 const { spawn } = require('child_process');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { correlationIdFromRequest } = require('../server/middleware/logger');
+const {
+  REDACTED,
+  REDACTED_PII,
+  cleanLogMessage,
+  correlationIdFromRequest,
+  serializeLogEntry
+} = require('../server/middleware/logger');
 const { createAuditReportCsv, sanitizeCsvField } = require('../server/services/reportService');
+const { providerFetch, providerPolicy } = require('../server/services/providerHttp');
 const {
   UNVERIFIED_EMAIL_LINK_CODE,
   githubEmailMatchesLunarAccount,
@@ -22,10 +29,41 @@ assert.equal(githubEmailMatchesLunarAccount('Owner@Example.com', 'owner@example.
 assert.equal(githubEmailMatchesLunarAccount('attacker@example.com', 'victim@example.com'), false);
 
 const acceptedCorrelationId = '0123456789abcdef0123456789abcdef';
-assert.equal(correlationIdFromRequest(acceptedCorrelationId), acceptedCorrelationId);
+assert.equal(correlationIdFromRequest(acceptedCorrelationId, true), acceptedCorrelationId);
+assert.notEqual(correlationIdFromRequest(acceptedCorrelationId), acceptedCorrelationId);
 assert.match(correlationIdFromRequest('invalid correlation id'), /^[0-9a-f-]{36}$/i);
 
-for (const dangerousValue of ['=1+1', '+cmd', '-2+3', '@SUM(A1:A2)', '\t=1+1', '\r=1+1', '\n=1+1', '  =1+1']) {
+const redactedLog = serializeLogEntry({
+  authorization: 'Bearer top-secret-auth-token',
+  cookie: 'access_token=top-secret-cookie',
+  body: { password: 'top-secret-password' },
+  details: {
+    email: 'security@example.com',
+    phone: '+84 912 345 678',
+    apiKey: 'top-secret-api-key',
+    paymentCard: '4111111111111111'
+  }
+});
+for (const forbiddenValue of [
+  'top-secret-auth-token',
+  'top-secret-cookie',
+  'top-secret-password',
+  'security@example.com',
+  '+84 912 345 678',
+  'top-secret-api-key',
+  '4111111111111111'
+]) {
+  assert.equal(redactedLog.includes(forbiddenValue), false, `Sensitive log value leaked: ${forbiddenValue}`);
+}
+assert.equal(redactedLog.includes(REDACTED), true);
+assert.equal(redactedLog.includes(REDACTED_PII), true);
+assert.equal(
+  cleanLogMessage('Authorization: Bearer top-secret-auth-token email=security@example.com')
+    .includes('top-secret-auth-token'),
+  false
+);
+
+for (const dangerousValue of ['=1+1', '+cmd', '-2+3', '@SUM(A1:A2)', '\t=1+1', '\r=1+1', '\n=1+1', '  =1+1', '\0=1+1', '\u000b=1+1']) {
   assert.equal(sanitizeCsvField(dangerousValue).startsWith("'"), true);
 }
 
@@ -74,6 +112,124 @@ for (const modalFile of modalFiles) {
   assert.match(source, /tabIndex=\{-1\}/);
 }
 
+async function verifyProviderContracts() {
+  let attempts = 0;
+  let propagatedCorrelationId;
+  const retriedResponse = await providerFetch('https://provider.example/resource', {}, {
+    correlationId: acceptedCorrelationId,
+    maxRetries: 1,
+    fetchImpl: async (url, options) => {
+      attempts += 1;
+      propagatedCorrelationId = options.headers.get('x-correlation-id');
+      return new Response(null, { status: attempts === 1 ? 503 : 200 });
+    }
+  });
+  assert.equal(retriedResponse.status, 200);
+  assert.equal(attempts, 2);
+  assert.equal(propagatedCorrelationId, acceptedCorrelationId);
+
+  attempts = 0;
+  const postResponse = await providerFetch('https://provider.example/mutation', {
+    method: 'POST',
+    body: '{}'
+  }, {
+    maxRetries: 2,
+    fetchImpl: async () => {
+      attempts += 1;
+      return new Response(null, { status: 503 });
+    }
+  });
+  assert.equal(postResponse.status, 503);
+  assert.equal(attempts, 1, 'Unsafe provider POST requests must not be retried automatically.');
+
+  await assert.rejects(
+    providerFetch('https://provider.example/timeout', {}, {
+      timeoutMs: 1000,
+      maxRetries: 0,
+      fetchImpl: async (url, options) => new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      })
+    }),
+    (error) => error.code === 'PROVIDER_TIMEOUT' && error.status === 503
+  );
+  assert.deepEqual(providerPolicy({ timeoutMs: 999999, maxRetries: 99 }), {
+    timeoutMs: 60000,
+    maxRetries: 2
+  });
+
+  const managedEmailKeys = [
+    'NODE_ENV',
+    'AUTH_EMAIL_DRY_RUN',
+    'AUTH_EMAIL_ALLOW_INSECURE_BASE_URL',
+    'AUTH_EMAIL_SMTP_URL',
+    'AUTH_EMAIL_FROM',
+    'AUTH_EMAIL_BASE_URL'
+  ];
+  const previousEmail = Object.fromEntries(managedEmailKeys.map((key) => [key, process.env[key]]));
+  try {
+    Object.assign(process.env, {
+      NODE_ENV: 'production',
+      AUTH_EMAIL_DRY_RUN: 'false',
+      AUTH_EMAIL_ALLOW_INSECURE_BASE_URL: 'false',
+      AUTH_EMAIL_SMTP_URL: 'https://invalid.example',
+      AUTH_EMAIL_FROM: 'Lunar <no-reply@example.com>',
+      AUTH_EMAIL_BASE_URL: 'https://app.example.com'
+    });
+    const emailService = require('../server/services/accountEmailService');
+    assert.equal(emailService.getAccountEmailConfiguration().configured, false);
+    await assert.rejects(
+      emailService.sendEmailVerification({
+        email: 'recipient@example.com',
+        name: 'QA',
+        token: 'test-only-verification-token-at-least-32-characters'
+      }),
+      (error) => error.code === 'AUTH_EMAIL_NOT_CONFIGURED'
+    );
+
+    process.env.AUTH_EMAIL_DRY_RUN = 'true';
+    process.env.AUTH_EMAIL_BASE_URL = 'http://app.example.com';
+    assert.equal(emailService.getAccountEmailConfiguration().configured, false);
+    process.env.AUTH_EMAIL_ALLOW_INSECURE_BASE_URL = 'true';
+    assert.equal(emailService.getAccountEmailConfiguration().configured, true);
+    process.env.AUTH_EMAIL_ALLOW_INSECURE_BASE_URL = 'false';
+    process.env.AUTH_EMAIL_BASE_URL = 'https://app.example.com';
+    const dryRun = await emailService.sendEmailVerification({
+      email: 'recipient@example.com',
+      name: 'QA',
+      token: 'test-only-verification-token-at-least-32-characters',
+      correlationId: acceptedCorrelationId
+    });
+    assert.equal(dryRun.mode, 'dry-run');
+  } finally {
+    managedEmailKeys.forEach((key) => {
+      if (previousEmail[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEmail[key];
+    });
+  }
+
+  const previousGatewayKey = process.env.AI_GATEWAY_API_KEY;
+  process.env.AI_GATEWAY_API_KEY = 'contract-only-invalid-gateway-key';
+  try {
+    const assistant = require('../server/services/aiAssistantService');
+    await assert.rejects(
+      assistant.generateAssistantReply({
+        message: 'Fail closed when the configured provider rejects credentials.',
+        user: { id: 'contract-user' },
+        correlationId: acceptedCorrelationId,
+        generateTextImpl: async () => {
+          const error = new Error('Provider rejected credentials.');
+          error.status = 503;
+          throw error;
+        }
+      }),
+      (error) => error.status === 503
+    );
+  } finally {
+    if (previousGatewayKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
+    else process.env.AI_GATEWAY_API_KEY = previousGatewayKey;
+  }
+}
+
 const port = 6100 + Math.floor(Math.random() * 300);
 const baseUrl = `http://127.0.0.1:${port}`;
 const child = spawn(process.execPath, ['server/index.js'], {
@@ -93,6 +249,15 @@ const child = spawn(process.execPath, ['server/index.js'], {
     GITHUB_AUTH_FLOW: 'web',
     GITHUB_OAUTH_REDIRECT_MODE: 'registered',
     GITHUB_TOKEN_ENCRYPTION_KEY: 'regression-github-encryption-key-at-least-32-characters',
+    GEMINI_API_KEY: '',
+    OPENAI_API_KEY: '',
+    ANTHROPIC_API_KEY: '',
+    AI_GATEWAY_API_KEY: '',
+    VERCEL_OIDC_TOKEN: '',
+    AUTH_EMAIL_DRY_RUN: 'true',
+    AUTH_EMAIL_ALLOW_INSECURE_BASE_URL: 'true',
+    AUTH_EMAIL_BASE_URL: baseUrl,
+    TRUST_PROXY: 'loopback',
     CORS_ORIGINS: 'http://localhost:3000,http://127.0.0.1:3000'
   },
   stdio: ['ignore', 'pipe', 'pipe']
@@ -125,6 +290,7 @@ async function expectStatus(path, options, expectedStatus) {
 
 async function run() {
   try {
+    await verifyProviderContracts();
     await waitForServer();
     const healthResponse = await fetch(`${baseUrl}/api/v1/health`);
     if (
@@ -138,7 +304,8 @@ async function run() {
     const correlatedHealth = await fetch(`${baseUrl}/api/v1/health?token=must-not-be-logged`, {
       headers: {
         origin: 'http://localhost:3000',
-        'x-correlation-id': acceptedCorrelationId
+        'x-correlation-id': acceptedCorrelationId,
+        'x-forwarded-for': '203.0.113.20'
       }
     });
     if (
@@ -146,6 +313,13 @@ async function run() {
       || !correlatedHealth.headers.get('access-control-expose-headers')?.includes('X-Correlation-ID')
     ) {
       throw new Error('Valid correlation IDs were not propagated and exposed through CORS.');
+    }
+
+    const spoofedCorrelation = await fetch(`${baseUrl}/api/v1/health`, {
+      headers: { 'x-correlation-id': acceptedCorrelationId }
+    });
+    if (spoofedCorrelation.headers.get('x-correlation-id') === acceptedCorrelationId) {
+      throw new Error('Direct clients were able to spoof a trusted proxy correlation ID.');
     }
 
     const replacedCorrelation = await fetch(`${baseUrl}/api/v1/health`, {
@@ -158,7 +332,11 @@ async function run() {
 
     const malformedJson = await expectStatus('/api/v1/auth/register', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-correlation-id': acceptedCorrelationId },
+      headers: {
+        'content-type': 'application/json',
+        'x-correlation-id': acceptedCorrelationId,
+        'x-forwarded-for': '203.0.113.20'
+      },
       body: '{malformed'
     }, 400);
     if (malformedJson.headers.get('x-correlation-id') !== acceptedCorrelationId) {
@@ -262,7 +440,7 @@ async function run() {
       !correlatedLog
       || correlatedLog.path.includes('?')
       || !correlatedLog.timestamp
-      || !correlatedLog.ip
+      || correlatedLog.ip !== '203.0.113.0'
       || correlatedLog.method !== 'GET'
       || correlatedLog.status !== 200
     ) {
@@ -281,10 +459,14 @@ async function run() {
       requestPayloadLimit: 'PASS',
       hardenedSecurityHeaders: 'PASS',
       structuredCorrelationLogging: 'PASS',
+      structuredLogRedaction: 'PASS',
+      trustedProxyCorrelationBoundary: 'PASS',
       csvFormulaInjectionProtection: 'PASS',
       modalFocusTrapContract: 'PASS',
       githubWebhookSignatureGuard: 'PASS',
-      reportAuthenticationGuard: 'PASS'
+      reportAuthenticationGuard: 'PASS',
+      providerTimeoutAndRetryPolicy: 'PASS',
+      providerCredentialFailClosed: 'PASS'
     }, null, 2));
   } finally {
     child.kill();

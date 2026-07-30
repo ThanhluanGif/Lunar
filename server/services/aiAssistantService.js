@@ -151,6 +151,7 @@ async function generateGatewayReply({
   history,
   context,
   userId,
+  correlationId,
   generateTextImpl
 }) {
   const config = getGatewayConfiguration();
@@ -170,6 +171,8 @@ async function generateGatewayReply({
     maxOutputTokens: 900,
     temperature: 0.2,
     timeout: 25000,
+    maxRetries: 1,
+    headers: correlationId ? { 'X-Correlation-ID': correlationId } : undefined,
     providerOptions: {
       gateway: {
         models: config.fallbackModels,
@@ -204,6 +207,7 @@ async function generateAssistantReply({
   history = [],
   context,
   user,
+  correlationId,
   generateTextImpl
 }) {
   const normalizedMessage = normalizeText(message);
@@ -226,18 +230,17 @@ async function generateAssistantReply({
         history,
         context: normalizedContext,
         userId: user.id,
+        correlationId,
         generateTextImpl
       });
     } catch (error) {
-      writeSystemLog('WARN', 'AI Gateway assistant fallback activated.', error);
-      return {
-        reply: createNativeReply(normalizedMessage, normalizedContext),
-        mode: 'native',
-        provider: 'lunar-native',
-        model: 'lunar-assistant-rules-v1',
-        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-        fallback: true
-      };
+      writeSystemLog('ERROR', 'AI Gateway assistant request failed closed.', error, {
+        correlationId,
+        userId: user.id,
+        status: error.status || 503
+      });
+      if (!error.status) error.status = 503;
+      throw error;
     }
   }
 

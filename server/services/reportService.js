@@ -39,8 +39,9 @@ function safeFilename(value, extension = 'pdf') {
 
 function sanitizeCsvField(value) {
   if (typeof value !== 'string') return value;
-  const formulaLike = /^(?:[=+\-@\t\r\n]|[ \u00a0\ufeff]+[=+\-@])/u.test(value);
-  return formulaLike ? `'${value}` : value;
+  const cleaned = value.replace(/\0/g, '');
+  const formulaLike = /^(?:[=+\-@\t\r\n]|[\u0001-\u0020\u00a0\ufeff]+[=+\-@])/u.test(cleaned);
+  return formulaLike ? `'${cleaned}` : cleaned;
 }
 
 function quoteCsvField(value) {

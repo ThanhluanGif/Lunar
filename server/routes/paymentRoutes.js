@@ -246,18 +246,18 @@ router.post('/webhook', async (req, res) => {
     const payment = paymentResult.rows[0];
     if (!payment) {
       await client.query(
-        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
-         VALUES ($1, $2, $3, 'ORDER_NOT_FOUND')`,
-        [eventId, orderCode, payloadHash]
+        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status, correlation_id)
+         VALUES ($1, $2, $3, 'ORDER_NOT_FOUND', $4)`,
+        [eventId, orderCode, payloadHash, req.correlationId]
       );
       await client.query('COMMIT');
       return res.status(404).json({ success: false, error: 'Đơn hàng không tồn tại.' });
     }
     if (Number(payment.amount) !== amount) {
       await client.query(
-        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
-         VALUES ($1, $2, $3, 'AMOUNT_MISMATCH')`,
-        [eventId, orderCode, payloadHash]
+        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status, correlation_id)
+         VALUES ($1, $2, $3, 'AMOUNT_MISMATCH', $4)`,
+        [eventId, orderCode, payloadHash, req.correlationId]
       );
       await client.query('COMMIT');
       return res.status(409).json({ success: false, error: 'Số tiền xác nhận không khớp đơn hàng.' });
@@ -265,9 +265,9 @@ router.post('/webhook', async (req, res) => {
 
     if (payment.status === 'SUCCESS') {
       await client.query(
-        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
-         VALUES ($1, $2, $3, 'SUCCESS')`,
-        [eventId, orderCode, payloadHash]
+        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status, correlation_id)
+         VALUES ($1, $2, $3, 'SUCCESS', $4)`,
+        [eventId, orderCode, payloadHash, req.correlationId]
       );
       await client.query('COMMIT');
       return res.json({
@@ -302,9 +302,9 @@ router.post('/webhook', async (req, res) => {
       );
     }
     await client.query(
-      `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
-       VALUES ($1, $2, $3, $4)`,
-      [eventId, orderCode, payloadHash, status]
+      `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status, correlation_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [eventId, orderCode, payloadHash, status, req.correlationId]
     );
     await client.query('COMMIT');
     paymentsMemory.set(orderCode, {

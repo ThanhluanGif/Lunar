@@ -31,7 +31,7 @@ export default function Navbar({
   };
 
   return (
-    <header style={{
+    <header className="app-navbar" style={{
       position: 'sticky',
       top: 0,
       zIndex: 50,
@@ -40,7 +40,7 @@ export default function Navbar({
       borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
       padding: '12px 24px'
     }}>
-      <div style={{
+      <div className="app-navbar-inner" style={{
         maxWidth: '1280px',
         margin: '0 auto',
         display: 'flex',
@@ -50,9 +50,12 @@ export default function Navbar({
       }}>
         
         {/* Left: Crescent Moon Brand Logo matching Figma site */}
-        <div 
+        <button
+          type="button"
+          className="app-navbar-brand"
+          aria-label="Về trang landing"
           onClick={() => setActiveTab('explore')}
-          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', border: 0, padding: 0, background: 'transparent' }}
         >
           <div style={{
             position: 'relative',
@@ -87,7 +90,7 @@ export default function Navbar({
             }}>
               lunar<span style={{ color: '#6c8eef' }}>.dev</span>
             </span>
-            <span style={{
+            <span className="app-navbar-product-badge" style={{
               fontSize: '0.68rem',
               fontWeight: '700',
               padding: '2px 8px',
@@ -99,10 +102,10 @@ export default function Navbar({
               PRO ACTIVE
             </span>
           </div>
-        </div>
+        </button>
 
         {/* Center navigation links */}
-        <nav style={{
+        <nav className="app-navbar-navigation" aria-label="Điều hướng chính" style={{
           display: 'flex',
           alignItems: 'center',
           gap: '6px',
@@ -170,10 +173,11 @@ export default function Navbar({
         </nav>
 
         {/* Right Action Toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="app-navbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           
           {/* Button Quét Code */}
           <button
+            className="app-navbar-scan-action"
             onClick={onOpenSubmit}
             style={{
               display: 'inline-flex',
@@ -195,6 +199,7 @@ export default function Navbar({
           {/* Button Up Pro nếu đang ở gói FREE */}
           {currentTier === 'FREE' && (
             <button
+              className="app-navbar-upgrade-action"
               onClick={onOpenPricing}
               style={{
                 display: 'inline-flex',
@@ -305,6 +310,7 @@ export default function Navbar({
             </div>
           ) : (
             <button
+              className="app-navbar-auth-action"
               onClick={onOpenAuth}
               style={{
                 display: 'inline-flex',

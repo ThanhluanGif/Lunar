@@ -97,9 +97,9 @@ graph TD
 
 | Thành Phần | Công Nghệ / Thư Viện | Mô Tả |
 | :--- | :--- | :--- |
-| **Frontend** | React 18, Vite 5, JavaScript (ESNext) | Giao diện SPA hiệu năng cao |
+| **Frontend** | React 18, Vite 8, JavaScript (ESNext) | Giao diện SPA hiệu năng cao |
 | **Styling & Design** | Modern CSS Tokens, Modern Typography | Chuẩn WCAG AAA, giao diện tối ưu UX |
-| **Backend** | Node.js 20, Express 5 | RESTful API server |
+| **Backend** | Node.js 22, Express 5 | RESTful API server |
 | **Database** | PostgreSQL 16 | Hệ quản trị cơ sở dữ liệu quan hệ |
 | **Xác thực** | JWT (HttpOnly Cookie) + bcryptjs | Bảo mật danh tính & mã hóa mật khẩu |
 | **Security SAST** | Custom AST Parser (`@babel/parser`), CVSS v3.1 Engine | Phân tích mã nguồn tĩnh & định lượng rủi ro |
@@ -113,9 +113,14 @@ graph TD
 CodeReviewCommunity/
 ├── dist/                       # Production build artifacts (git-ignored)
 ├── docs/                       # Tài liệu hướng dẫn & status dự án
+│   ├── ACCESSIBILITY_MANUAL_CHECKLIST.md
+│   ├── LOGGING_AND_RETENTION_POLICY.md
+│   ├── PROVIDER_PRODUCTION_RUNBOOK.md
 │   ├── PROJECT_STATUS.md       # Trạng thái dự án & backlog
 │   └── QA_RELEASE_CHECKLIST.md # Checklist kiểm thử trước khi release
+├── deploy/                     # Mẫu reverse proxy và log rotation
 ├── scripts/                    # Scripts kiểm thử SAST & regression
+│   ├── accessibility-regression.cjs
 │   ├── qa-smoke.cjs
 │   ├── sast-regression.cjs
 │   ├── sast-self-audit.cjs
@@ -209,9 +214,13 @@ Dự án Lunar tuân thủ nghiêm ngặt các tiêu chuẩn an toàn bảo mậ
 | `NODE_ENV` | Môi trường ứng dụng | `development` / `production` |
 | `JWT_SECRET` | Khóa bí mật ký mã JWT (bắt buộc đổi ở prod) | *Chuỗi mã hóa ngẫu nhiên* |
 | `DATABASE_URL` | Chuỗi kết nối PostgreSQL | `postgres://lunar:lunar_pass@localhost:5433/lunar_db` |
+| `LOG_LEVEL` | Mức log JSON của backend | `INFO` ở production |
+| `TRUST_PROXY` | CIDR/địa chỉ reverse proxy được tin cậy | Không để trống sau proxy production |
 | `LUNAR_GITHUB_CLIENT_ID` | OAuth App Client ID từ GitHub | *GitHub Client ID* |
 | `LUNAR_GITHUB_CLIENT_SECRET` | OAuth App Client Secret từ GitHub | *GitHub Client Secret* |
 | `LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY` | Khóa mã hóa token GitHub (AES-256) | *Chuỗi ngẫu nhiên 32+ ký tự* |
+| `LUNAR_AUTH_EMAIL_BASE_URL` | Origin HTTPS dùng trong email tài khoản | `https://<production-domain>` |
+| `LUNAR_AUTH_EMAIL_ALLOW_INSECURE_BASE_URL` | Chỉ cho QA dry-run dùng URL HTTP | Luôn `false` ở production |
 
 ---
 
@@ -223,6 +232,9 @@ Chạy các bộ test tự động để đảm bảo chất lượng hệ thố
 # Chạy toàn bộ kiểm thử SAST Engine & Security Regression
 npm run qa:security
 
+# Chạy axe WCAG AA, dialog/focus trap và zoom 200%
+npm run qa:a11y
+
 # Chạy tự kiểm thử SAST Rules
 npm run qa:sast
 
@@ -231,7 +243,18 @@ npm run qa:docker
 
 # Chạy kiểm thử giao diện tự động (macOS Chrome Headless)
 npm run qa:ui:mac
+
+# Kiểm tra dependency production và toàn bộ dependency
+npm audit --omit=dev --audit-level=high
+npm audit --audit-level=high
 ```
+
+Tài liệu vận hành trước production:
+
+- [`docs/ACCESSIBILITY_MANUAL_CHECKLIST.md`](docs/ACCESSIBILITY_MANUAL_CHECKLIST.md)
+- [`docs/LOGGING_AND_RETENTION_POLICY.md`](docs/LOGGING_AND_RETENTION_POLICY.md)
+- [`docs/PROVIDER_PRODUCTION_RUNBOOK.md`](docs/PROVIDER_PRODUCTION_RUNBOOK.md)
+- [`PRODUCTION_READINESS_REPORT.md`](PRODUCTION_READINESS_REPORT.md)
 
 ---
 

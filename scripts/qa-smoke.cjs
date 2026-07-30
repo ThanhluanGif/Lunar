@@ -12,6 +12,7 @@ const child = spawn(process.execPath, ['server/index.js'], {
     NODE_ENV: 'production',
     JWT_SECRET: 'qa-secret-at-least-32-characters-long',
     PAYMENT_WEBHOOK_SECRET: 'qa-payment-webhook-secret',
+    GITHUB_WEBHOOK_SECRET: 'qa-github-webhook-secret-at-least-32-characters',
     PAYMENT_BANK_ID: 'QA',
     PAYMENT_ACCOUNT_NO: '0000000000',
     PAYMENT_ACCOUNT_NAME: 'LUNAR QA',
@@ -22,7 +23,9 @@ const child = spawn(process.execPath, ['server/index.js'], {
     AI_GATEWAY_API_KEY: '',
     VERCEL_OIDC_TOKEN: '',
     AUTH_EMAIL_DRY_RUN: 'true',
-    AUTH_EMAIL_BASE_URL: baseUrl
+    AUTH_EMAIL_ALLOW_INSECURE_BASE_URL: 'true',
+    AUTH_EMAIL_BASE_URL: baseUrl,
+    TRUST_PROXY: 'loopback'
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -113,6 +116,7 @@ async function verifyAssistantGatewayContract() {
         stats: { total: 4, criticalCount: 1, highCount: 2, maxCvss: 9.1 }
       }),
       userId: 'qa-assistant-user',
+      correlationId: '0123456789abcdef0123456789abcdef',
       generateTextImpl: async (options) => {
         capturedOptions = options;
         return {
@@ -127,6 +131,9 @@ async function verifyAssistantGatewayContract() {
       generated.mode !== 'gateway'
       || capturedOptions.model !== 'google/gemini-3.6-flash'
       || capturedOptions.maxOutputTokens !== 900
+      || capturedOptions.maxRetries !== 1
+      || capturedOptions.timeout !== 25000
+      || capturedOptions.headers['X-Correlation-ID'] !== '0123456789abcdef0123456789abcdef'
       || capturedOptions.providerOptions.gateway.user !== 'qa-assistant-user'
       || capturedOptions.providerOptions.gateway.models.length !== 2
       || !capturedOptions.instructions.includes('Không tiết lộ')
@@ -636,7 +643,8 @@ eval(userInput);`,
       headers: {
         'content-type': 'application/json',
         cookie: admin.cookie,
-        'x-correlation-id': adminCorrelationId
+        'x-correlation-id': adminCorrelationId,
+        'x-forwarded-for': '203.0.113.20'
       },
       body: JSON.stringify({ tier: 'PRO', reason: 'QA validates audited tier management' })
     });
@@ -689,11 +697,14 @@ eval(userInput);`,
       .createHmac('sha256', 'qa-payment-webhook-secret')
       .update(paymentEventPayload)
       .digest('hex');
+    const paymentCorrelationId = crypto.randomBytes(16).toString('hex');
     const webhookConfirmation = await request('/api/v1/payment/webhook', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-lunar-signature': `sha256=${paymentSignature}`
+        'x-lunar-signature': `sha256=${paymentSignature}`,
+        'x-correlation-id': paymentCorrelationId,
+        'x-forwarded-for': '203.0.113.20'
       },
       body: paymentEventPayload
     });
@@ -701,7 +712,9 @@ eval(userInput);`,
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-lunar-signature': `sha256=${paymentSignature}`
+        'x-lunar-signature': `sha256=${paymentSignature}`,
+        'x-correlation-id': paymentCorrelationId,
+        'x-forwarded-for': '203.0.113.20'
       },
       body: paymentEventPayload
     });
@@ -713,6 +726,49 @@ eval(userInput);`,
     });
     if (paymentStatus.body.status !== 'SUCCESS') {
       throw new Error('The payment smoke flow did not reach SUCCESS.');
+    }
+    const persistedPaymentEvent = await qaPool.query(
+      'SELECT correlation_id FROM payment_webhook_events WHERE event_id = $1',
+      [`qa-event-${uniqueId}`]
+    );
+    if (persistedPaymentEvent.rows[0]?.correlation_id !== paymentCorrelationId) {
+      throw new Error('Payment webhook did not persist the trusted correlation ID.');
+    }
+
+    const githubDeliveryId = `qa-github-delivery-${uniqueId}`;
+    const githubPayload = JSON.stringify({ zen: 'Keep it logically awesome.' });
+    const githubSignature = crypto
+      .createHmac('sha256', 'qa-github-webhook-secret-at-least-32-characters')
+      .update(githubPayload)
+      .digest('hex');
+    const githubCorrelationId = crypto.randomBytes(16).toString('hex');
+    const githubWebhookHeaders = {
+      'content-type': 'application/json',
+      'x-github-event': 'ping',
+      'x-github-delivery': githubDeliveryId,
+      'x-hub-signature-256': `sha256=${githubSignature}`,
+      'x-correlation-id': githubCorrelationId,
+      'x-forwarded-for': '203.0.113.20'
+    };
+    await request('/api/v1/github/webhook', {
+      method: 'POST',
+      headers: githubWebhookHeaders,
+      body: githubPayload
+    });
+    const githubWebhookRetry = await request('/api/v1/github/webhook', {
+      method: 'POST',
+      headers: githubWebhookHeaders,
+      body: githubPayload
+    });
+    const persistedGithubDelivery = await qaPool.query(
+      'SELECT correlation_id FROM github_webhook_deliveries WHERE delivery_id = $1',
+      [githubDeliveryId]
+    );
+    if (
+      !githubWebhookRetry.body.idempotent
+      || persistedGithubDelivery.rows[0]?.correlation_id !== githubCorrelationId
+    ) {
+      throw new Error('GitHub webhook idempotency or correlation persistence failed.');
     }
 
     console.log(JSON.stringify({
@@ -737,7 +793,8 @@ eval(userInput);`,
       sastRuleSignatures: scannerModule.SECURITY_RULE_SIGNATURE_COUNT,
       adminRbac: 'PASS',
       auditedAdminActions: auditLog.body.logs.length,
-      signedPaymentWebhook: paymentStatus.body.status
+      signedPaymentWebhook: paymentStatus.body.status,
+      correlatedSignedWebhooks: 'PASS'
     }, null, 2));
   } finally {
     await qaPool?.end();

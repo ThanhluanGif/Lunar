@@ -64,5 +64,8 @@ jobs:
       - name: Run security regression gates
         run: npm run qa:security
 
+      - name: Run accessibility browser gate
+        run: npm run qa:a11y
+
       - name: Validate production container
-        run: docker build -t lunar:qa .
+        run: docker build -t lunar:readiness-qa-${{ github.sha }} .

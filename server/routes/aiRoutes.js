@@ -3,6 +3,7 @@ const { verifyToken } = require('../middleware/auth');
 const { aiRateLimiter } = require('../middleware/rateLimiter');
 const { getPool } = require('../db/connection');
 const { isScannable, scanFile } = require('../services/sastEngine');
+const { providerFetch } = require('../services/providerHttp');
 
 const router = express.Router();
 const MAX_CODE_CHARACTERS = Number.parseInt(process.env.AI_MAX_CODE_CHARACTERS, 10) || 120000;
@@ -231,11 +232,17 @@ function buildProjectPrompt({ projectFiles, repositoryName }) {
   ].join('\n');
 }
 
-async function callGemini(prompt, schema = REVIEW_SCHEMA) {
+function providerResponseError(provider, status, message) {
+  const error = new Error(message || `${provider} request failed (${status}).`);
+  error.status = status === 429 ? 429 : [401, 403, 408, 425, 500, 502, 503, 504].includes(status) ? 503 : 502;
+  return error;
+}
+
+async function callGemini(prompt, schema = REVIEW_SCHEMA, schemaName, requestContext = {}) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw Object.assign(new Error('Gemini is not configured.'), { status: 503 });
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const response = await fetch(
+  const response = await providerFetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: 'POST',
@@ -248,19 +255,31 @@ async function callGemini(prompt, schema = REVIEW_SCHEMA) {
           maxOutputTokens: 8192
         }
       })
+    },
+    {
+      correlationId: requestContext.correlationId,
+      timeoutMs: 25000,
+      maxRetries: 0
     }
   );
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error?.message || `Gemini request failed (${response.status}).`);
+  if (!response.ok) {
+    throw providerResponseError('Gemini', response.status, payload.error?.message);
+  }
   const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('');
   return { model, result: extractJson(text) };
 }
 
-async function callOpenAI(prompt, schema = REVIEW_SCHEMA, schemaName = 'lunar_security_review') {
+async function callOpenAI(
+  prompt,
+  schema = REVIEW_SCHEMA,
+  schemaName = 'lunar_security_review',
+  requestContext = {}
+) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw Object.assign(new Error('OpenAI is not configured.'), { status: 503 });
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await providerFetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
@@ -271,17 +290,23 @@ async function callOpenAI(prompt, schema = REVIEW_SCHEMA, schemaName = 'lunar_se
         json_schema: { name: schemaName, strict: true, schema }
       }
     })
+  }, {
+    correlationId: requestContext.correlationId,
+    timeoutMs: 25000,
+    maxRetries: 0
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error?.message || `OpenAI request failed (${response.status}).`);
+  if (!response.ok) {
+    throw providerResponseError('OpenAI', response.status, payload.error?.message);
+  }
   return { model, result: extractJson(payload.choices?.[0]?.message?.content) };
 }
 
-async function callAnthropic(prompt, schema = REVIEW_SCHEMA) {
+async function callAnthropic(prompt, schema = REVIEW_SCHEMA, schemaName, requestContext = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw Object.assign(new Error('Anthropic is not configured.'), { status: 503 });
   const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await providerFetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -294,9 +319,15 @@ async function callAnthropic(prompt, schema = REVIEW_SCHEMA) {
       system: 'Return only valid JSON matching the schema described by the user.',
       messages: [{ role: 'user', content: `${prompt}\nJSON Schema:\n${JSON.stringify(schema)}` }]
     })
+  }, {
+    correlationId: requestContext.correlationId,
+    timeoutMs: 25000,
+    maxRetries: 0
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error?.message || `Anthropic request failed (${response.status}).`);
+  if (!response.ok) {
+    throw providerResponseError('Anthropic', response.status, payload.error?.message);
+  }
   const text = payload.content?.filter((part) => part.type === 'text').map((part) => part.text).join('');
   return { model, result: extractJson(text) };
 }
@@ -510,7 +541,12 @@ async function handleReview(req, res) {
       customPolicies: safePolicies
     });
     const startedAt = Date.now();
-    const output = await providers[provider](prompt, REVIEW_SCHEMA, 'lunar_security_review');
+    const output = await providers[provider](
+      prompt,
+      REVIEW_SCHEMA,
+      'lunar_security_review',
+      { correlationId: req.correlationId }
+    );
     await pool.query(
       `INSERT INTO ai_usage_logs (user_id, provider, model, operation, input_characters)
        VALUES ($1, $2, $3, $4, $5)`,
@@ -578,7 +614,8 @@ async function handleProjectAttackSimulation(req, res) {
       : await providers[selectedProvider](
           buildProjectPrompt({ projectFiles: files, repositoryName: safeRepositoryName }),
           PROJECT_ATTACK_SIMULATION_SCHEMA,
-          'lunar_project_attack_simulation'
+          'lunar_project_attack_simulation',
+          { correlationId: req.correlationId }
         );
     assertProjectSimulation(output.result);
     const inputCharacters = files.reduce((total, file) => total + file.content.length, 0);

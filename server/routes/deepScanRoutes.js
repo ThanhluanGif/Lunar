@@ -10,6 +10,7 @@ const {
   supportedLanguages,
   ruleCount
 } = require('../services/sastEngine');
+const { providerFetch } = require('../services/providerHttp');
 
 const router = express.Router();
 const MAX_FILES = Number.parseInt(process.env.DEEP_SCAN_MAX_FILES, 10) || 250;
@@ -41,13 +42,17 @@ function decryptToken(value) {
   ]).toString('utf8');
 }
 
-async function githubRequest(path, token) {
-  const response = await fetch(`https://api.github.com${path}`, {
+async function githubRequest(path, token, correlationId) {
+  const response = await providerFetch(`https://api.github.com${path}`, {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
       'User-Agent': 'Lunar-Deep-Scanner'
     }
+  }, {
+    correlationId,
+    timeoutMs: 15000,
+    maxRetries: 1
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -218,11 +223,12 @@ router.post('/repository', verifyToken, deepScanRateLimiter, async (req, res) =>
       return res.status(429).json({ success: false, error: 'FREE daily scan quota reached.' });
     }
     quotaReserved = quotaReservation.reserved;
-    const repo = await githubRequest(`/repos/${repository}`, token);
+    const repo = await githubRequest(`/repos/${repository}`, token, req.correlationId);
     const branch = String(req.body?.branch || repo.default_branch || 'main').slice(0, 255);
     const tree = await githubRequest(
       `/repos/${repository}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
-      token
+      token,
+      req.correlationId
     );
     if (tree.truncated) {
       if (quotaReserved) await releaseScanQuota(pool, req.user.id);
@@ -248,7 +254,11 @@ router.post('/repository', verifyToken, deepScanRateLimiter, async (req, res) =>
 
     const fileResults = await mapConcurrent(bounded, async (item) => {
       try {
-        const blob = await githubRequest(`/repos/${repository}/git/blobs/${item.sha}`, token);
+        const blob = await githubRequest(
+          `/repos/${repository}/git/blobs/${item.sha}`,
+          token,
+          req.correlationId
+        );
         if (blob.encoding !== 'base64') throw new Error('Unsupported GitHub blob encoding.');
         const content = Buffer.from(String(blob.content).replace(/\s/g, ''), 'base64').toString('utf8');
         const findings = scanFile(item.path, content);

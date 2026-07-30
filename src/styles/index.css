@@ -938,6 +938,30 @@ table {
     overflow-x: hidden;
   }
 
+  .app-navbar {
+    padding: 10px 14px !important;
+  }
+
+  .app-navbar-inner {
+    flex-wrap: wrap;
+    gap: 10px !important;
+  }
+
+  .app-navbar-product-badge {
+    display: none !important;
+  }
+
+  .app-navbar-navigation {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .app-navbar-actions {
+    margin-left: auto;
+  }
+
   .quick-scan-workspace {
     padding: 18px;
   }
@@ -1010,6 +1034,29 @@ table {
   pre,
   code {
     overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-navbar-brand span {
+    font-size: 1.05rem !important;
+  }
+
+  .app-navbar-brand > div:first-child {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .app-navbar-scan-action {
+    display: none !important;
+  }
+
+  .app-navbar-actions {
+    gap: 6px !important;
+  }
+
+  .app-navbar-actions button {
+    padding-inline: 10px !important;
   }
 }
 

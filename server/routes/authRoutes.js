@@ -111,7 +111,8 @@ router.post('/register', authRateLimiter, async (req, res) => {
           await sendEmailVerification({
             email: newUser.email,
             name: newUser.name,
-            token: verificationToken
+            token: verificationToken,
+            correlationId: req.correlationId
           });
           verificationEmailSent = true;
         } catch (emailError) {
