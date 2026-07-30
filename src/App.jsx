@@ -3,7 +3,6 @@ import Navbar from './components/Navbar';
 import FigmaLunarLanding from './components/FigmaLunarLanding';
 import SecurityDashboard from './components/SecurityDashboard';
 import VulnerabilityPatcher from './components/VulnerabilityPatcher';
-import SecurityCommunity from './components/SecurityCommunity';
 import CodeViewer from './components/CodeViewer';
 import CodeRepairWorkbench from './components/CodeRepairWorkbench';
 import PaywallGate from './components/PaywallGate';
@@ -13,7 +12,6 @@ import PricingModal from './components/PricingModal';
 import GitBotConfigModal from './components/GitBotConfigModal';
 import AuditReportExportModal from './components/AuditReportExportModal';
 import QuotaDepletedModal from './components/QuotaDepletedModal';
-import GmailSettingsModal from './components/GmailSettingsModal';
 import AccountSettingsModal from './components/AccountSettingsModal';
 import LunarAiAssistant from './components/LunarAiAssistant';
 import NotFoundPage from './components/NotFoundPage';
@@ -22,15 +20,14 @@ import LunarDashboard from './components/LunarDashboard';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
 import { lunarApi } from './services/lunarApi';
-import { Moon, ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
+import { Moon, ShieldCheck, Wrench, Users, Bot, Package, ArrowRight, Star, GitFork, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
 
 import UserGitHubWorkspace from './components/UserGitHubWorkspace';
-import GitHubRepoSelector from './components/GitHubRepoSelector';
 import RealTimeStatsBanner from './components/RealTimeStatsBanner';
 
 export default function App() {
   const [projects, setProjects] = useState(SECURITY_PROJECTS_MOCK);
-  const [activeTab, setActiveTab] = useState('explore'); // 'explore' | 'community' | 'detail'
+  const [activeTab, setActiveTab] = useState('explore'); // 'explore' | 'dashboard' | 'detail' | 'admin'
   const [selectedProject, setSelectedProject] = useState(SECURITY_PROJECTS_MOCK[0]);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -48,14 +45,7 @@ export default function App() {
   const [isGitBotOpen, setIsGitBotOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
-  const [isGmailSettingsOpen, setIsGmailSettingsOpen] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
-
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('gmail_auth')) {
-      setIsGmailSettingsOpen(true);
-    }
-  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -216,18 +206,6 @@ export default function App() {
     setActiveTab('detail');
   };
 
-  const handleAddAudit = (newAudit) => {
-    setProjects((current) => current.map(p => {
-      if (p.id === selectedProject?.id) {
-        return {
-          ...p,
-          communityAudits: [newAudit, ...(p.communityAudits || [])]
-        };
-      }
-      return p;
-    }));
-  };
-
   const handleSelectProject = (proj) => {
     setSelectedProject(proj);
     setActiveTab('detail');
@@ -287,7 +265,6 @@ export default function App() {
       name: 'Sarah Chen (Stripe Eng)',
       email: 'sarah.chen@stripe.com',
       tier: newTier,
-      karma_points: 2400,
       avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
       daily_scans_used: 0
     };
@@ -295,34 +272,10 @@ export default function App() {
     localStorage.setItem('lunar_auth_session', JSON.stringify(updated));
   };
 
-  const handleRenewFreeQuota = async () => {
-    if (!currentUser) {
-      setIsAuthOpen(true);
-      return;
-    }
-    try {
-      const result = await lunarApi.renewFreeQuota();
-      const updated = {
-        ...currentUser,
-        daily_scans_used: result.dailyScansUsed,
-        dailyScansUsed: result.dailyScansUsed,
-        karma_points: result.karmaPoints,
-        karmaPoints: result.karmaPoints
-      };
-      setCurrentUser(updated);
-      localStorage.setItem('lunar_auth_session', JSON.stringify(updated));
-      setAccountToast(result.message);
-      window.setTimeout(() => setAccountToast(''), 6000);
-    } catch (error) {
-      setAccountToast(error.message || 'Không thể gia hạn quota.');
-      window.setTimeout(() => setAccountToast(''), 6000);
-    }
-  };
-
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
-      {/* Hide site Navbar when in full Figma Dashboard view */}
+      {/* Hide site Navbar when the full account dashboard is open */}
       {activeTab !== 'dashboard' && (
         <>
           <Navbar
@@ -337,8 +290,6 @@ export default function App() {
             onLogout={handleLogout}
             onOpenPricing={() => setIsPricingOpen(true)}
             onOpenGitBot={() => setIsGitBotOpen(true)}
-            onRenewFreeQuota={handleRenewFreeQuota}
-            onOpenGmailSettings={() => setIsGmailSettingsOpen(true)}
             onOpenAccountSettings={() => setIsAccountSettingsOpen(true)}
           />
 
@@ -388,40 +339,6 @@ export default function App() {
               {accountToast}
             </div>
           )}
-
-          {!currentUser && (
-            <div style={{
-              background: 'rgba(124, 58, 237, 0.12)',
-              borderBottom: '1px solid rgba(124, 58, 237, 0.3)',
-              padding: '8px 24px',
-              textAlign: 'center',
-              fontSize: '0.82rem',
-              color: 'var(--text-secondary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '12px',
-              flexWrap: 'wrap'
-            }}>
-              <span>🌙 Guest Preview Mode. Sign in or connect GitHub to unlock full 1-click Auto-fix PRs & AI Code Repair.</span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={() => setIsPricingOpen(true)}
-                  className="btn btn-primary btn-sm"
-                  style={{ padding: '2px 10px', fontSize: '0.75rem' }}
-                >
-                  <Zap size={14} /> Upgrade Pro
-                </button>
-                <button
-                  onClick={() => setIsAuthOpen(true)}
-                  className="btn btn-emerald btn-sm"
-                  style={{ padding: '2px 10px', fontSize: '0.75rem' }}
-                >
-                  <UserCheck size={14} /> Sign In
-                </button>
-              </div>
-            </div>
-          )}
         </>
       )}
 
@@ -432,28 +349,24 @@ export default function App() {
         {activeTab === 'explore' && (
           <>
             <FigmaLunarLanding
+              currentUser={currentUser}
               onOpenAuth={() => setIsAuthOpen(true)}
               onOpenSubmit={() => setIsSubmitOpen(true)}
               onOpenGitBot={() => setIsGitBotOpen(true)}
               onSelectDemoProject={handleSelectProject}
               onOpenPricing={handleOpenPricing}
+              onOpenDashboard={() => setActiveTab('dashboard')}
+              quickScanSection={(
+                <UserGitHubWorkspace
+                  currentUser={currentUser}
+                  onSelectProject={handleSelectProject}
+                />
+              )}
             />
-            <div style={{ maxWidth: '1240px', margin: '0 auto', paddingTop: '24px' }}>
-              <GitHubRepoSelector
-                currentUser={currentUser}
-                onSelectRepo={handleSelectProject}
-                onOpenAuth={() => setIsAuthOpen(true)}
-              />
-              <UserGitHubWorkspace
-                currentUser={currentUser}
-                onSelectProject={handleSelectProject}
-                onOpenAuth={() => setIsAuthOpen(true)}
-              />
-            </div>
           </>
         )}
 
-        {/* TAB 1.5: EXACT FIGMA DASHBOARD MOCKUP */}
+        {/* Authenticated account dashboard */}
         {activeTab === 'dashboard' && (
           <div style={{ margin: '-0px -24px -60px -24px' }}>
             <LunarDashboard
@@ -461,17 +374,6 @@ export default function App() {
               onSelectProject={handleSelectProject}
               currentUser={currentUser}
               onOpenPricing={handleOpenPricing}
-            />
-          </div>
-        )}
-
-        {/* TAB 2: SECURITY COMMUNITY */}
-        {activeTab === 'community' && (
-          <div style={{ paddingTop: '28px' }}>
-            <SecurityCommunity
-              onAddAudit={handleAddAudit}
-              currentUser={currentUser}
-              onOpenAuth={() => setIsAuthOpen(true)}
             />
           </div>
         )}
@@ -618,15 +520,6 @@ export default function App() {
         onClose={() => setIsReportOpen(false)}
         project={selectedProject}
         scanResult={scanResult}
-        currentUser={currentUser}
-      />
-
-      <GmailSettingsModal
-        isOpen={isGmailSettingsOpen}
-        onClose={() => setIsGmailSettingsOpen(false)}
-        currentUser={currentUser}
-        activeProject={selectedProject}
-        scanResult={scanResult}
       />
 
       <AccountSettingsModal
@@ -637,12 +530,11 @@ export default function App() {
       />
 
       {isQuotaModalOpen && (
-        <QuotaDepletedModal
-          isOpen={isQuotaModalOpen}
-          onClose={() => setIsQuotaModalOpen(false)}
-          onRenewFreeQuota={handleRenewFreeQuota}
-          onOpenPricing={() => setIsPricingOpen(true)}
-          currentUser={currentUser}
+          <QuotaDepletedModal
+            isOpen={isQuotaModalOpen}
+            onClose={() => setIsQuotaModalOpen(false)}
+            onOpenPricing={() => setIsPricingOpen(true)}
+            currentUser={currentUser}
         />
       )}
 

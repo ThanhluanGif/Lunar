@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
 import { Github, Sparkles, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Bot, Code, Cpu, Eye, Activity, RefreshCw, Check, Moon, Layers, Terminal, ChevronRight, Play, Lock, UserCheck, HelpCircle } from 'lucide-react';
+import LiveDashboardPreview from './LiveDashboardPreview';
 
-export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitBot, onSelectDemoProject, onOpenPricing }) {
+export default function FigmaLunarLanding({
+  currentUser,
+  onOpenAuth,
+  onOpenSubmit,
+  onOpenGitBot,
+  onSelectDemoProject,
+  onOpenPricing,
+  onOpenDashboard,
+  quickScanSection
+}) {
   // State for Interactive "Watch Lunar Work" Live Demo Editor
   const [demoState, setDemoState] = useState('before'); // 'before' | 'after'
   const [isAutoFixing, setIsAutoFixing] = useState(false);
@@ -9,9 +19,6 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
 
   // Pricing State
   const [billingCycle, setBillingCycle] = useState('monthly'); // 'monthly' | 'annual'
-
-  // Dashboard Preview active repo state
-  const [activeRepoIdx, setActiveRepoIdx] = useState(0);
 
   // Code Samples for Live Demo
   const beforeCodeLines = [
@@ -107,7 +114,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
         '3 Lượt Quét Mã Nguồn / Ngày',
         'Xem Điểm CVSS v3.1 Tổng Quan',
         'Xem Đếm Số Lượng Lỗi (Critical/High)',
-        'Tham Gia Thảo Luận Cộng Đồng Cyber'
+        'Quét Repository GitHub Public'
       ],
       cta: 'Đang Sử Dụng Gói Này',
       highlight: false
@@ -123,7 +130,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
         'Mở Khóa Chi Tiết Dòng Code & Line AI Warning',
         'Bộ Công Cụ Vá Code Tự Động (AI Code Repair Workbench)',
         'Side-by-Side Diff & Tinh Chỉnh Prompt AI Fix',
-        'Xuất Báo Cáo Audit PDF & Nhận Hóa Đơn Qua Gmail'
+        'Xuất Báo Cáo Audit PDF & Badge Cho GitHub README'
       ],
       cta: 'Nâng Cấp Gói Pro ⚡',
       highlight: true,
@@ -140,7 +147,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
         'GitHub Security Bot Tự Động Tạo Pull Request',
         'Tích Hợp Webhook & CI/CD Action Workflow',
         'Tự Động Vá Lỗi Mã Nguồn Mỗi Khi Push Code',
-        'Hỗ Trợ Ưu Tiên 24/7 Qua Gmail Channel'
+        'Hỗ Trợ Ưu Tiên & GitHub Security Workflow'
       ],
       cta: 'Mua Gói Enterprise Bot 🤖',
       highlight: false
@@ -178,8 +185,6 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
     { name: 'acme-corp/data-pipeline', lang: 'Python', issues: 12, score: 68, status: 'failed' }
   ];
 
-  const selectedRepo = connectedRepos[activeRepoIdx];
-
   return (
     <div style={{ background: '#07080f', color: '#e2e5f0', minHeight: '100vh', overflowX: 'hidden', position: 'relative' }}>
       
@@ -193,7 +198,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
         {/* ---------------------------------------------------- */}
         {/* SECTION 1: HERO */}
         {/* ---------------------------------------------------- */}
-        <section style={{ minHeight: '85vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', paddingTop: '100px', paddingBottom: '80px', position: 'relative' }}>
+        <section id="landing-hero" style={{ minHeight: '85vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', paddingTop: '100px', paddingBottom: '80px', position: 'relative' }}>
           
           {/* Announcement Pill */}
           <div style={{ marginBottom: '24px' }}>
@@ -249,7 +254,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
           {/* Hero CTAs */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'center', alignItems: 'center', marginBottom: '64px' }}>
             <button
-              onClick={onOpenAuth}
+              onClick={() => document.getElementById('github-quick-scan')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -269,7 +274,7 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
               onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1.0)'}
             >
               <Github size={18} />
-              Connect GitHub — it's free
+              GitHub Quick Scan
             </button>
 
             <button
@@ -326,6 +331,11 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
           </div>
         </section>
 
+        {quickScanSection && (
+          <div id="github-quick-scan" style={{ padding: '20px 0 80px', scrollMarginTop: '90px' }}>
+            {quickScanSection}
+          </div>
+        )}
 
         {/* ---------------------------------------------------- */}
         {/* SECTION 2: CAPABILITIES GRID */}
@@ -778,123 +788,11 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
             </h2>
           </div>
 
-          <div style={{
-            background: '#090b18',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '16px',
-            overflow: 'hidden'
-          }}>
-            {/* Top Bar */}
-            <div style={{
-              background: '#0d0f1e',
-              padding: '14px 20px',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }} />
-                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f97316' }} />
-                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e' }} />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#3a3f60', marginLeft: '8px' }}>
-                  lunar.app / dashboard
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)' }} />
-                <span style={{ fontSize: '0.78rem', color: '#4a5070' }}>acme-corp</span>
-              </div>
-            </div>
-
-            {/* Dashboard Content Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', minHeight: '320px' }}>
-              {/* Repos Sidebar */}
-              <div style={{ borderRight: '1px solid rgba(255, 255, 255, 0.05)', padding: '16px 12px' }}>
-                <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '12px', paddingLeft: '8px' }}>
-                  Repositories
-                </div>
-
-                {connectedRepos.map((r, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setActiveRepoIdx(i)}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      textAlign: 'left',
-                      background: activeRepoIdx === i ? 'rgba(108, 142, 239, 0.12)' : 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      marginBottom: '4px'
-                    }}
-                  >
-                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: r.status === 'passing' ? '#22c55e' : r.status === 'reviewing' ? '#6c8eef' : '#ef4444' }} />
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: activeRepoIdx === i ? '#a0b8ef' : '#4a5070', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                      {r.name.split('/')[1]}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Main Panel */}
-              <div style={{ padding: '24px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#e2e5f0' }}>{selectedRepo.name}</h3>
-                    <p style={{ fontSize: '0.78rem', color: '#3a3f60' }}>{selectedRepo.lang}</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '0.78rem', color: '#3a3f60' }}>Score</span>
-                    <span style={{ fontSize: '1.2rem', fontFamily: 'var(--font-mono)', fontWeight: '800', color: '#22d3ee' }}>{selectedRepo.score}</span>
-                  </div>
-                </div>
-
-                {/* 3 Metric cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '24px' }}>
-                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '14px' }}>
-                    <div style={{ fontSize: '1.3rem', fontWeight: '800', color: selectedRepo.issues > 5 ? '#f97316' : '#6c8eef' }}>{selectedRepo.issues}</div>
-                    <div style={{ fontSize: '0.72rem', color: '#3a3f60' }}>Issues detected</div>
-                  </div>
-                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '14px' }}>
-                    <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#6c8eef' }}>24</div>
-                    <div style={{ fontSize: '0.72rem', color: '#3a3f60' }}>PRs reviewed</div>
-                  </div>
-                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '14px' }}>
-                    <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#22d3ee' }}>18</div>
-                    <div style={{ fontSize: '0.72rem', color: '#3a3f60' }}>Auto-fixes merged</div>
-                  </div>
-                </div>
-
-                {/* Recent Reviews Feed */}
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#2a3050', marginBottom: '12px' }}>
-                    Recent Reviews
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {[
-                      { pr: '#142', title: 'feat: add user authentication', time: '2 min ago', status: 'failed', color: '#ef4444' },
-                      { pr: '#141', title: 'fix: resolve memory leak in cache', time: '18 min ago', status: 'passing', color: '#22c55e' },
-                      { pr: '#140', title: 'refactor: modularize API layer', time: '1 hr ago', status: 'reviewing', color: '#6c8eef' }
-                    ].map((item, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)' }}>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#3a3f60' }}>{item.pr}</span>
-                        <span style={{ fontSize: '0.8rem', color: '#8890b0', flex: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{item.title}</span>
-                        <span style={{ fontSize: '0.74rem', color: '#3a3f60' }}>{item.time}</span>
-                        <span style={{ fontSize: '0.74rem', color: item.color }}>● {item.status}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          </div>
+          <LiveDashboardPreview
+            currentUser={currentUser}
+            onOpenAuth={onOpenAuth}
+            onOpenDashboard={onOpenDashboard}
+          />
         </section>
 
 
@@ -1100,72 +998,9 @@ export default function FigmaLunarLanding({ onOpenAuth, onOpenSubmit, onOpenGitB
 
 
         {/* ---------------------------------------------------- */}
-        {/* SECTION 8: BOTTOM CTA BANNER & FOOTER */}
+        {/* SECTION 8: FOOTER */}
         {/* ---------------------------------------------------- */}
-        <section style={{ padding: '100px 0 60px 0', textAlign: 'center', position: 'relative' }}>
-          <div style={{
-            background: 'linear-gradient(145deg, rgba(108, 142, 239, 0.1), rgba(157, 110, 245, 0.05))',
-            border: '1px solid rgba(108, 142, 239, 0.25)',
-            borderRadius: '24px',
-            padding: '64px 32px',
-            maxWidth: '800px',
-            margin: '0 auto 100px auto'
-          }}>
-            <h2 style={{ fontSize: '2.6rem', fontWeight: '900', color: '#e2e5f0', letterSpacing: '-0.03em', marginBottom: '16px' }}>
-              Ship better code,{' '}
-              <span style={{
-                background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent'
-              }}>
-                automatically
-              </span>
-            </h2>
-
-            <p style={{ fontSize: '1.05rem', color: '#7880a0', marginBottom: '32px' }}>
-              Join 12,000+ developers who trust Lunar to catch bugs before production.
-            </p>
-
-            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button
-                onClick={onOpenAuth}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '14px 28px',
-                  borderRadius: '12px',
-                  fontSize: '0.92rem',
-                  fontWeight: '700',
-                  background: 'linear-gradient(135deg, #6c8eef 0%, #9d6ef5 100%)',
-                  color: '#ffffff',
-                  border: 'none',
-                  cursor: 'pointer',
-                  boxShadow: '0 0 40px rgba(108, 142, 239, 0.4)'
-                }}
-              >
-                <Github size={18} />
-                Start free with GitHub
-              </button>
-
-              <button
-                onClick={onOpenPricing}
-                style={{
-                  padding: '14px 28px',
-                  borderRadius: '12px',
-                  fontSize: '0.92rem',
-                  fontWeight: '600',
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  color: '#a0a8c0',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  cursor: 'pointer'
-                }}
-              >
-                View pricing
-              </button>
-            </div>
-          </div>
-
+        <section style={{ padding: '60px 0', textAlign: 'center', position: 'relative' }}>
           {/* Footer */}
           <footer style={{ borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '60px', textAlign: 'left' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '40px', marginBottom: '60px' }}>

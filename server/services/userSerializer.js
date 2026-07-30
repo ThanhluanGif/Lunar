@@ -23,9 +23,7 @@ function serializeUser(user) {
     status: user.status || 'ACTIVE',
     avatarUrl,
     avatar_url: avatarUrl,
-    karmaPoints: user.karma_points ?? user.karmaPoints ?? 0,
     dailyScansUsed: user.daily_scans_used ?? user.dailyScansUsed ?? 0,
-    karma_points: user.karma_points ?? user.karmaPoints ?? 0,
     daily_scans_used: user.daily_scans_used ?? user.dailyScansUsed ?? 0
   };
 }

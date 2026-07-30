@@ -1,36 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { X, ShieldCheck, Copy, Check, Download, Mail } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, ShieldCheck, Copy, Check, Download } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
 
-export default function AuditReportExportModal({ isOpen, onClose, project, scanResult, currentUser }) {
+export default function AuditReportExportModal({ isOpen, onClose, project, scanResult }) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [sendingGmail, setSendingGmail] = useState(false);
-  const [gmailSentSuccess, setGmailSentSuccess] = useState(false);
-  const [gmailConfigured, setGmailConfigured] = useState(false);
-  const [gmailMessage, setGmailMessage] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!isOpen) return () => { cancelled = true; };
-    setGmailConfigured(false);
-    setGmailMessage('');
-    if (!currentUser) return () => { cancelled = true; };
-    lunarApi.getGmailNotificationStatus()
-      .then((status) => {
-        if (cancelled) return;
-        setGmailConfigured(status.canSend);
-        if (!status.canSend) {
-          setGmailMessage(status.oauthConfigured
-            ? 'Hãy mở Gmail Alert và kết nối Gmail cá nhân trước khi gửi báo cáo.'
-            : 'Quản trị viên chưa cấu hình Google OAuth Client cho Gmail.');
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) setGmailMessage(error.message || 'Không thể kiểm tra cấu hình Gmail.');
-      });
-    return () => { cancelled = true; };
-  }, [currentUser, isOpen]);
+  const [downloadMessage, setDownloadMessage] = useState('');
 
   if (!isOpen || !project) return null;
 
@@ -47,29 +22,9 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSendGmail = async () => {
-    setSendingGmail(true);
-    setGmailMessage('');
-    try {
-      const result = await lunarApi.sendAuditReportEmail({
-        scanId: project.deepScan?.scanId || project.scanId
-      });
-      setGmailSentSuccess(true);
-      setGmailMessage(result.mode === 'dry-run'
-        ? `Dry-run Gmail thành công cho ${result.recipient}.`
-        : `Đã gửi báo cáo tới ${result.recipient}.`);
-      setTimeout(() => setGmailSentSuccess(false), 4000);
-    } catch (error) {
-      setGmailSentSuccess(false);
-      setGmailMessage(error.message || 'Không thể gửi báo cáo qua Gmail.');
-    } finally {
-      setSendingGmail(false);
-    }
-  };
-
   const handleDownloadPdf = async () => {
     setDownloading(true);
-    setGmailMessage('');
+    setDownloadMessage('');
     try {
       const scanId = project.deepScan?.scanId || project.scanId;
       if (!scanId) {
@@ -87,7 +42,7 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
       link.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setGmailMessage(error.message || 'Không thể tạo file báo cáo.');
+      setDownloadMessage(error.message || 'Không thể tạo file báo cáo.');
     } finally {
       setDownloading(false);
     }
@@ -139,7 +94,7 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
               Báo Cáo Kiểm Định An Ninh (Security Audit Report)
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              Xuất chứng chỉ an ninh và gửi bản tổng hợp tới Gmail
+              Xuất chứng chỉ an ninh cho repository GitHub
             </p>
           </div>
         </div>
@@ -181,30 +136,9 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
           </div>
         </div>
 
-        {gmailSentSuccess && (
-          <div style={{
-            background: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid #10b981',
-            color: '#34d399',
-            padding: '10px',
-            borderRadius: '8px',
-            fontSize: '0.85rem',
-            marginBottom: '14px',
-            textAlign: 'center'
-          }}>
-            📧 {gmailMessage}
-          </div>
-        )}
-
-        {!gmailSentSuccess && gmailMessage && (
+        {downloadMessage && (
           <div role="alert" style={{ color: '#fda4af', fontSize: '0.84rem', marginBottom: '14px' }}>
-            {gmailMessage}
-          </div>
-        )}
-
-        {!gmailConfigured && currentUser && !gmailMessage && (
-          <div style={{ color: '#fcd34d', fontSize: '0.82rem', marginBottom: '14px' }}>
-            Hãy kết nối Gmail cá nhân trước khi gửi báo cáo.
+            {downloadMessage}
           </div>
         )}
 
@@ -212,16 +146,6 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
           <button onClick={handleDownloadPdf} disabled={downloading} className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
             <Download size={18} />
             {downloading ? 'Đang Khởi Tạo Báo Cáo...' : 'Tải Báo Cáo Executive Security Audit (PDF)'}
-          </button>
-
-          <button
-            onClick={handleSendGmail}
-            disabled={sendingGmail || !gmailConfigured || !currentUser}
-            className="btn btn-secondary"
-            style={{ width: '100%', padding: '11px', borderColor: '#ea4335', color: '#fca5a5', gap: '8px' }}
-          >
-            <Mail size={18} color="#ea4335" />
-            {sendingGmail ? 'Đang Gửi Về Gmail...' : 'Gửi Báo Cáo Audit Trực Tiếp Về Gmail'}
           </button>
         </div>
 

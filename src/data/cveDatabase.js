@@ -37,8 +37,7 @@ export const SECURITY_PROJECTS_MOCK = [
       name: 'Nguyễn Thanh Nam',
       username: 'nam-security-dev',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-      badge: 'AppSec Specialist',
-      karma: 2850
+      badge: 'AppSec Specialist'
     },
     language: 'TypeScript',
     stars: 340,
@@ -76,18 +75,6 @@ export async function processPayment(req: Request, res: Response) {
   });
 }`
       }
-    ],
-    communityAudits: [
-      {
-        id: 'aud-1',
-        author: 'Lê Hoàng Dương',
-        role: 'Senior Pentester @ CyStack',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-        severityFlag: 'CRITICAL',
-        comment: 'Phát hiện câu lệnh SQL Injection cực kỳ nguy hiểm ở dòng 15. Kẻ tấn công có thể chèn `' + "' UNION SELECT username, password FROM users --`" + ' để rút toàn bộ dữ liệu người dùng!',
-        createdAt: '15 phút trước',
-        likes: 38
-      }
     ]
   },
   {
@@ -98,8 +85,7 @@ export async function processPayment(req: Request, res: Response) {
       name: 'Vũ Quốc Khánh',
       username: 'vkhanh-health',
       avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80',
-      badge: 'Fullstack Engineer',
-      karma: 1120
+      badge: 'Fullstack Engineer'
     },
     language: 'Python',
     stars: 195,
@@ -130,18 +116,6 @@ def verify_token(credentials = Depends(security)):
         return payload
     except Exception:
         raise HTTPException(status_code=401, detail="Token không hợp lệ hoặc đã hết hạn")`
-      }
-    ],
-    communityAudits: [
-      {
-        id: 'aud-2',
-        author: 'Đặng Tuấn Kiệt',
-        role: 'Security Researcher',
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80',
-        severityFlag: 'PASSED',
-        comment: 'Code đã chuyển hoàn toàn sang đọc biến môi trường và verify chữ ký JWT chuẩn mực. Đạt chuẩn HIPAA Compliance!',
-        createdAt: '1 giờ trước',
-        likes: 29
       }
     ]
   }

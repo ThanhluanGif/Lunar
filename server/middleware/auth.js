@@ -42,7 +42,7 @@ async function resolveUserFromDatabase(decoded) {
 
   const result = await pool.query(
     `SELECT id, email, nickname, name, tier, role, status, auth_version,
-            karma_points, daily_scans_used
+            daily_scans_used
      FROM users
      WHERE id = $1`,
     [decoded.id]
@@ -62,7 +62,6 @@ async function resolveUserFromDatabase(decoded) {
     role: user.role,
     status: user.status,
     authVersion: user.auth_version,
-    karmaPoints: user.karma_points,
     dailyScansUsed: user.daily_scans_used
   };
 }

@@ -21,8 +21,7 @@ const usersDb = [
     passwordHash: '$2a$12$e8wV5Cj8D7F.X0N5k1J5uOaX4H.1N7.1uO2.1uO2.1uO2.1uO2',
     tier: 'PRO',
     role: 'USER',
-    status: 'ACTIVE',
-    karmaPoints: 2400
+    status: 'ACTIVE'
   }
 ];
 
@@ -69,7 +68,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
         `INSERT INTO users (nickname, name, email, password_hash, tier, role)
          VALUES ($1, $2, $3, $4, 'FREE', $5)
          RETURNING id, nickname, name, email, email_verified_at, auth_version,
-                   tier, role, status, karma_points, daily_scans_used`,
+                   tier, role, status, daily_scans_used`,
         [cleanNickname, name || cleanNickname.replace('@', ''), cleanEmail, passwordHash, 'USER']
       );
 
@@ -128,7 +127,6 @@ router.post('/register', authRateLimiter, async (req, res) => {
       tier: 'FREE',
       role: 'USER',
       status: 'ACTIVE',
-      karmaPoints: 100,
       dailyScansUsed: 0,
       createdAt: new Date().toISOString()
     };
@@ -282,7 +280,7 @@ router.post('/bootstrap-admin', verifyToken, async (req, res) => {
        SET role = 'ADMIN', updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
        RETURNING id, nickname, name, email, auth_version, tier, role, status,
-                 karma_points, daily_scans_used`,
+                 daily_scans_used`,
       [req.user.id]
     );
     const adminUser = updated.rows[0];
@@ -327,7 +325,7 @@ router.get('/me', verifyToken, async (req, res) => {
   if (getIsPgConnected()) {
     const result = await queryDb(
       `SELECT u.id, u.nickname, u.name, u.email, u.email_verified_at,
-              u.tier, u.role, u.status, u.karma_points, u.daily_scans_used,
+              u.tier, u.role, u.status, u.daily_scans_used,
               gc.avatar_url
        FROM users u
        LEFT JOIN github_connections gc ON gc.user_id = u.id

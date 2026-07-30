@@ -224,7 +224,7 @@ router.patch('/account', verifyToken, async (req, res) => {
      SET name = $2, updated_at = CURRENT_TIMESTAMP
      WHERE u.id = $1
      RETURNING u.id, u.nickname, u.name, u.email, u.email_verified_at,
-               u.tier, u.role, u.status, u.karma_points, u.daily_scans_used,
+               u.tier, u.role, u.status, u.daily_scans_used,
                (SELECT avatar_url FROM github_connections WHERE user_id = u.id) AS avatar_url`,
     [req.user.id, name]
   );

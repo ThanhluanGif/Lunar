@@ -3,7 +3,6 @@ const crypto = require('crypto');
 const { verifyToken } = require('../middleware/auth');
 const { getPool } = require('../db/connection');
 const { isScannable, scanFile, supportedLanguages, ruleCount } = require('../services/sastEngine');
-const { dispatchCriticalAlert } = require('./notificationRoutes');
 
 const router = express.Router();
 const MAX_FILES = Number.parseInt(process.env.DEEP_SCAN_MAX_FILES, 10) || 250;
@@ -217,21 +216,6 @@ router.post('/repository', verifyToken, async (req, res) => {
         [req.user.id]
       );
       await client.query('COMMIT');
-
-      const criticalCount = findings.filter((item) => item.severity === 'critical').length;
-      if (criticalCount > 0) {
-        dispatchCriticalAlert({
-          userId: req.user.id,
-          projectTitle: repo.full_name,
-          summary: {
-            maxCvss: 9.2,
-            criticalCount,
-            highCount: findings.filter((item) => item.severity === 'high').length,
-            mediumCount: findings.filter((item) => item.severity === 'medium').length,
-            total: findings.length
-          }
-        }).catch((error) => console.warn('Deep scan Gmail notification skipped:', error.message));
-      }
 
       return res.json({
         success: true,

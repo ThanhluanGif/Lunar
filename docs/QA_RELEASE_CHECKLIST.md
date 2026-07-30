@@ -1,4 +1,7 @@
-# Checklist kiểm thử lại sau sửa
+# Checklist QA và phát hành
+
+Checklist này chỉ chứa các kiểm tra còn dùng cho mỗi lần merge/release. Trạng
+thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md).
 
 ## 1. Điều kiện trước test
 
@@ -14,7 +17,8 @@
 - [ ] `npm ci` thành công.
 - [ ] `npm run build` thành công.
 - [ ] `npm audit --omit=dev` không có High/Critical chưa xử lý.
-- [ ] Server fail-fast khi production thiếu JWT/payment/encryption secrets.
+- [ ] Server fail-fast khi production thiếu JWT/encryption secret bắt buộc.
+- [ ] Thiếu payment beneficiary/webhook secret không làm app ngừng chạy; API payment tương ứng trả `503`.
 - [ ] `/health` trả 200 khi process sống.
 - [ ] `/ready` trả 503 khi DB mất và 200 sau reconnect/restart theo thiết kế.
 - [ ] Static app và 404 route hoạt động.
@@ -31,13 +35,13 @@
 - [ ] Forgot-password luôn trả response trung tính.
 - [ ] Reset/verify token hết hạn, sai, đã dùng, gửi lặp bị từ chối.
 - [ ] Đổi password vô hiệu hóa session cũ trên các thiết bị theo policy.
-- [ ] GitHub OAuth/Gmail OAuth kiểm tra state, callback error và replay.
+- [ ] GitHub OAuth kiểm tra state, callback error và replay.
 
 ## 4. Authorization/IDOR
 
-- [ ] Guest không gọi scan verified, admin, notification, deep scan.
+- [ ] Guest không gọi scan verified, admin hoặc deep scan.
 - [ ] USER không gọi mọi admin endpoint.
-- [ ] User A không xem payment/project/scan/report/GitHub/Gmail của user B.
+- [ ] User A không xem payment/project/scan/report/GitHub của user B.
 - [ ] Suspended user không tiếp tục dùng JWT cũ.
 - [ ] Policy CRUD tuân owner/org/role sau khi triển khai.
 - [ ] Report export chỉ đọc scan server-authoritative thuộc user.
@@ -53,6 +57,8 @@
 - [ ] AI provider unavailable trả 503, không fabricated fallback.
 - [ ] AI malformed/timeout/rate-limit xử lý an toàn và không trừ quota sai.
 - [ ] Prompt injection trong source được coi là data.
+- [ ] Guest assistant không gọi AI ngoài hoặc lưu history phía server.
+- [ ] Assistant history tách theo user; prompt injection không làm lộ secret.
 - [ ] Deep scan vượt file/byte/total/concurrency limit bị chặn.
 - [ ] Repo private/public, branch rỗng, binary, symlink/submodule và file lỗi encoding.
 
@@ -84,25 +90,16 @@
 - [ ] DB mất giữa webhook rollback toàn bộ.
 - [ ] Order expired không thể được UI xác nhận sai.
 
-## 8. Community/admin/dashboard
+## 8. Admin/dashboard
 
-- [ ] Community create validation: rỗng, quá dài, invalid severity/repo.
-- [ ] Upvote gửi lặp và concurrent chỉ tính một.
-- [ ] Edit/delete/comment/moderation kiểm tra ownership/RBAC.
-- [ ] Leaderboard pagination/sort ổn định khi dữ liệu rỗng/lớn.
 - [ ] Admin search/filter/sort/pagination với 0, 1 và >100 users/payments.
 - [ ] Admin không đổi role/status chính mình trái policy.
 - [ ] Mọi admin mutation bắt buộc reason và ghi before/after audit.
 - [ ] Dashboard loading/empty/error không dùng fake data.
 - [ ] Realtime/polling reconnect, duplicate event và multi-tab.
 
-## 9. Notification/report/export
+## 9. Report/export
 
-- [ ] Gmail refresh token mã hóa, không xuất hiện API/log/UI.
-- [ ] Chỉ scope `gmail.send` theo thiết kế.
-- [ ] Recipient bị khóa theo account/policy, không nhận email tùy ý.
-- [ ] Gmail timeout/revoked grant cập nhật status và cho reconnect.
-- [ ] Email history pagination và redaction.
 - [ ] PDF dùng dữ liệu server-authoritative, UTF-8 tiếng Việt đúng.
 - [ ] Project/finding chứa `<script>`, HTML, control char không thực thi.
 - [ ] CSV chống formula injection (`=`, `+`, `-`, `@`) và encoding đúng.
@@ -133,12 +130,19 @@
 - [ ] Screen reader đọc chart/KPI bằng text alternative.
 - [ ] `prefers-reduced-motion` được tôn trọng.
 
-## 12. Regression command gate đề xuất
+## 12. Regression command gate
+
+- [ ] `npm run build`
+- [ ] `npm run qa:docker`
+- [ ] `npm run qa:security`
+- [ ] `npm run qa:ui:mac`
+- [ ] `npm audit --omit=dev`
+- [ ] `docker compose up -d --build` và cả app/db đều healthy.
 
 - [ ] Unit: scanner, token, crypto, validation, serializers.
-- [ ] API integration: auth, RBAC, payment, scan, admin, community, report.
-- [ ] Contract: GitHub/Gmail/AI provider.
+- [ ] API integration: auth, RBAC, payment, scan, admin, report.
+- [ ] Contract: GitHub/AI provider.
 - [ ] E2E: register → verify → scan → report; payment sandbox; GitHub PR sandbox.
 - [ ] Security: webhook spoof/replay, IDOR matrix, XSS payload, rate limit.
 - [ ] Visual/accessibility: responsive screenshots + axe.
-- [ ] CI không merge nếu P0/P1 regression fail.
+- [ ] GitHub Actions `QA Gate` thành công trước production deployment.

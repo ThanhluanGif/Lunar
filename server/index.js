@@ -16,7 +16,6 @@ const githubAuthRoutes = require('./routes/githubAuthRoutes');
 const scanRoutes = require('./routes/scanRoutes');
 const githubRoutes = require('./routes/githubRoutes');
 const reportRoutes = require('./routes/reportRoutes');
-const communityRoutes = require('./routes/communityRoutes');
 const policyRoutes = require('./routes/policyRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const { router: securityAuditRoutes } = require('./routes/securityAuditRoutes');
@@ -25,7 +24,6 @@ const adminRoutes = require('./routes/adminRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const assistantRoutes = require('./routes/assistantRoutes');
 const deepScanRoutes = require('./routes/deepScanRoutes');
-const { router: notificationRoutes } = require('./routes/notificationRoutes');
 
 const { initPgDatabase, getIsPgConnected } = require('./db/connection');
 
@@ -79,7 +77,6 @@ app.use('/api/v1/auth/github', githubAuthRoutes);
 app.use('/api/v1/scans', scanRoutes);
 app.use('/api/v1/github', githubRoutes);
 app.use('/api/v1/reports', reportRoutes);
-app.use('/api/v1/community', communityRoutes);
 app.use('/api/v1/policies', policyRoutes);
 app.use('/api/v1/payment', paymentRoutes);
 app.use('/api/v1/security', securityAuditRoutes);
@@ -88,7 +85,6 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/assistant', assistantRoutes);
 app.use('/api/v1/deep-scans', deepScanRoutes);
-app.use('/api/v1/notifications', notificationRoutes);
 
 // Health check endpoint
 app.get('/api/v1/health', (req, res) => {
@@ -106,6 +102,13 @@ app.get('/api/v1/ready', (req, res) => {
     status: databaseConnected ? 'READY' : 'NOT_READY',
     database: databaseConnected ? 'CONNECTED' : 'UNAVAILABLE',
     timestamp: new Date().toISOString()
+  });
+});
+
+app.use('/api', (req, res) => {
+  return res.status(404).json({
+    success: false,
+    error: 'API endpoint not found.'
   });
 });
 

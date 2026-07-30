@@ -63,6 +63,15 @@ export default function LunarDashboard({
     color: item.severity === 'critical' ? '#ef4444' : item.severity === 'high' ? '#f97316' : item.severity === 'medium' ? '#3b82f6' : '#a855f7'
   }));
   const displayedIssueTypes = dashboard ? liveIssueTypes : [];
+  const issueTotal = displayedIssueTypes.reduce((total, item) => total + Number(item.count || 0), 0);
+  let issueOffset = 0;
+  const issueGradient = issueTotal
+    ? `conic-gradient(${displayedIssueTypes.map((item) => {
+        const start = issueOffset;
+        issueOffset += (Number(item.count || 0) / issueTotal) * 100;
+        return `${item.color} ${start}% ${issueOffset}%`;
+      }).join(', ')})`
+    : 'rgba(255,255,255,0.05)';
   const liveRecentReviews = (dashboard?.recentScans || []).map((scan) => ({
     id: scan.id,
     prNumber: `#${String(scan.id).slice(0, 6)}`,
@@ -76,6 +85,14 @@ export default function LunarDashboard({
     status: Number(scan.score) >= 80 ? 'passing' : 'failed'
   }));
   const displayedRecentReviews = dashboard ? liveRecentReviews : [];
+  const displayName = currentUser?.name || currentUser?.nickname || currentUser?.email || 'Lunar user';
+  const userInitials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'LU';
 
   const filteredRepos = repos.filter(r => {
     const matchesQuery = r.name.toLowerCase().includes(searchQuery.toLowerCase()) || r.lang.toLowerCase().includes(searchQuery.toLowerCase());
@@ -162,14 +179,14 @@ export default function LunarDashboard({
                 fontSize: '0.8rem',
                 color: '#fff'
               }}>
-                A
+                {userInitials}
               </div>
               <div>
                 <div style={{ fontWeight: '700', fontSize: '0.88rem', color: '#f1f5f9', lineHeight: '1.2' }}>
-                  acme-corp
+                  {currentUser ? displayName : 'Guest'}
                 </div>
                 <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                  Pro plan
+                  {currentUser ? `${dashboard?.identity?.tier || currentUser.tier || 'FREE'} plan` : 'Sign in required'}
                 </div>
               </div>
             </div>
@@ -180,9 +197,9 @@ export default function LunarDashboard({
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {[
               { name: 'Overview', icon: Layers, badge: null },
-              { name: 'Reviews', icon: GitPullRequest, badge: '3', badgeBg: 'rgba(239, 68, 68, 0.2)', badgeColor: '#f87171' },
-              { name: 'Repositories', icon: FolderGit2, badge: null },
-              { name: 'Security', icon: Shield, badge: '4', badgeBg: 'rgba(239, 68, 68, 0.2)', badgeColor: '#f87171' },
+              { name: 'Reviews', icon: GitPullRequest, badge: dashboard ? String(dashboard.summary?.scansInRange || 0) : null, badgeBg: 'rgba(59, 130, 246, 0.2)', badgeColor: '#93c5fd' },
+              { name: 'Repositories', icon: FolderGit2, badge: dashboard ? String(dashboard.summary?.repositories || 0) : null, badgeBg: 'rgba(34, 197, 94, 0.16)', badgeColor: '#86efac' },
+              { name: 'Security', icon: Shield, badge: dashboard ? String(dashboard.summary?.openFindings || 0) : null, badgeBg: 'rgba(239, 68, 68, 0.2)', badgeColor: '#f87171' },
               { name: 'Auto-Fix', icon: Sparkles, badge: null },
               { name: 'Analytics', icon: BarChart3, badge: null },
               { name: 'Settings', icon: Settings, badge: null },
@@ -238,25 +255,16 @@ export default function LunarDashboard({
           </nav>
         </div>
 
-        {/* Bottom Storage Bar */}
+        {/* Verified data source */}
         <div style={{ paddingTop: '20px', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '6px' }}>
-            <span style={{ color: '#64748b' }}>Storage</span>
-            <span style={{ color: '#94a3b8', fontWeight: '600' }}>6.2 GB / 10 GB</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+            <Database size={14} color="#22d3ee" />
+            <span style={{ color: '#cbd5e1', fontSize: '0.75rem', fontWeight: '700' }}>PostgreSQL verified</span>
           </div>
-          <div style={{
-            width: '100%',
-            height: '5px',
-            backgroundColor: 'rgba(255, 255, 255, 0.1)',
-            borderRadius: '999px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              width: '62%',
-              height: '100%',
-              background: 'linear-gradient(90deg, #7c3aed 0%, #ec4899 100%)',
-              borderRadius: '999px'
-            }} />
+          <div style={{ color: '#64748b', fontSize: '0.7rem', lineHeight: 1.45 }}>
+            {dashboard?.generatedAt
+              ? `Synced ${new Date(dashboard.generatedAt).toLocaleString()}`
+              : 'Waiting for account data'}
           </div>
         </div>
       </aside>
@@ -382,7 +390,7 @@ export default function LunarDashboard({
               color: '#fff',
               cursor: 'pointer'
             }}>
-              {currentUser?.nickname?.[1]?.toUpperCase() || 'L'}
+              {userInitials}
             </div>
           </div>
         </header>
@@ -526,7 +534,7 @@ export default function LunarDashboard({
                   {dashboard?.summary?.patchedFindings ?? 0}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                  This month
+                  Last 28 days
                 </div>
               </div>
             </div>
@@ -651,20 +659,28 @@ export default function LunarDashboard({
                   gap: '24px',
                   flex: 1
                 }}>
-                  {/* SVG Donut Chart */}
-                  <div style={{ position: 'relative', width: '110px', height: '110px', flexShrink: 0 }}>
-                    <svg viewBox="0 0 36 36" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-                      {/* Donut segments with exact proportions */}
-                      <circle cx="18" cy="18" r="14" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="4" />
-                      {/* Security 16% */}
-                      <circle cx="18" cy="18" r="14" fill="transparent" stroke="#ef4444" strokeWidth="4.5" strokeDasharray="14 88" strokeDashoffset="0" />
-                      {/* Bug 36% */}
-                      <circle cx="18" cy="18" r="14" fill="transparent" stroke="#f97316" strokeWidth="4.5" strokeDasharray="32 88" strokeDashoffset="-15" />
-                      {/* Style 24% */}
-                      <circle cx="18" cy="18" r="14" fill="transparent" stroke="#3b82f6" strokeWidth="4.5" strokeDasharray="21 88" strokeDashoffset="-48" />
-                      {/* Perf 24% */}
-                      <circle cx="18" cy="18" r="14" fill="transparent" stroke="#a855f7" strokeWidth="4.5" strokeDasharray="21 88" strokeDashoffset="-70" />
-                    </svg>
+                  {/* Donut chart calculated from the live severity counts. */}
+                  <div style={{
+                    position: 'relative',
+                    width: '110px',
+                    height: '110px',
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                    background: issueGradient
+                  }}>
+                    <div style={{
+                      position: 'absolute',
+                      inset: '18px',
+                      borderRadius: '50%',
+                      background: '#0c0d18',
+                      display: 'grid',
+                      placeItems: 'center',
+                      color: '#e2e8f0',
+                      fontSize: '0.82rem',
+                      fontWeight: '800'
+                    }}>
+                      {issueTotal}
+                    </div>
                   </div>
 
                   {/* Legend List */}
@@ -688,6 +704,11 @@ export default function LunarDashboard({
                         <span style={{ color: '#ffffff', fontWeight: '700' }}>{item.count}</span>
                       </div>
                     ))}
+                    {!displayedIssueTypes.length && (
+                      <div style={{ color: '#64748b', fontSize: '0.78rem', lineHeight: 1.5 }}>
+                        No findings in this range.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -811,6 +832,11 @@ export default function LunarDashboard({
                     </div>
                   </div>
                 ))}
+                {!filteredRepos.length && (
+                  <div style={{ padding: '18px', borderRadius: '8px', background: 'rgba(255,255,255,.02)', color: '#64748b', fontSize: '0.82rem' }}>
+                    {dashboard ? 'No repositories have been scanned for this account.' : 'Sign in to load your repositories.'}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -907,6 +933,11 @@ export default function LunarDashboard({
                     </div>
                   </div>
                 ))}
+                {!displayedRecentReviews.length && (
+                  <div style={{ padding: '18px', borderRadius: '8px', background: 'rgba(255,255,255,.02)', color: '#64748b', fontSize: '0.82rem' }}>
+                    {dashboard ? 'No security scans have been recorded yet.' : 'Sign in to load your scan history.'}
+                  </div>
+                )}
               </div>
             </div>
 

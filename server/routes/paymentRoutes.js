@@ -450,7 +450,7 @@ router.get('/subscription', verifyToken, async (req, res) => {
       userId,
       quotaInfo: {
         scansLimit: currentTier === 'FREE' ? 5 : 'UNLIMITED',
-        supportChannel: currentTier === 'FREE' ? 'Community Forum' : (currentTier === 'PRO' ? 'Email & Zalo VIP' : '24/7 Dedicated Architect')
+        supportChannel: currentTier === 'FREE' ? 'Help Center' : (currentTier === 'PRO' ? 'Email & Zalo VIP' : '24/7 Dedicated Architect')
       }
     });
   } catch (error) {

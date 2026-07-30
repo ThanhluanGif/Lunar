@@ -1,8 +1,12 @@
 const express = require('express');
 const { verifyToken } = require('../middleware/auth');
 const { getPool } = require('../db/connection');
-const { createAuditReportPdf } = require('../services/gmailService');
-const { UUID_PATTERN, loadOwnedScanSummary, safeFilename } = require('../services/reportService');
+const {
+  UUID_PATTERN,
+  createAuditReportPdf,
+  loadOwnedScanSummary,
+  safeFilename
+} = require('../services/reportService');
 
 const router = express.Router();
 

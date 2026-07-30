@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS users (
     tier VARCHAR(20) DEFAULT 'FREE' CHECK (tier IN ('FREE', 'PRO', 'ENTERPRISE')),
     role VARCHAR(20) DEFAULT 'USER' CHECK (role IN ('USER', 'ADMIN')),
     status VARCHAR(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'SUSPENDED')),
-    karma_points INT DEFAULT 100,
     daily_scans_used INT DEFAULT 0,
     last_scan_reset_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     last_login_at TIMESTAMP WITH TIME ZONE,
@@ -93,7 +92,7 @@ CREATE TABLE IF NOT EXISTS vulnerabilities (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Quota Audit Logs Table
+-- 5. Quota audit logs for administrative resets
 CREATE TABLE IF NOT EXISTS quota_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -102,45 +101,7 @@ CREATE TABLE IF NOT EXISTS quota_logs (
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE quota_logs ADD COLUMN IF NOT EXISTS action_date DATE NOT NULL DEFAULT CURRENT_DATE;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quota_logs_daily_renewal
-    ON quota_logs(user_id, action_type, action_date)
-    WHERE action_type = 'KARMA_RENEWAL';
-
--- 6. Community Audits & Discussions Table
-CREATE TABLE IF NOT EXISTS community_audits (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    author_nickname VARCHAR(50) NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    target_repo VARCHAR(255),
-    vulnerability_type VARCHAR(100),
-    severity VARCHAR(20) DEFAULT 'critical',
-    content TEXT NOT NULL,
-    upvotes INT DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 7. Community Audit Comments Table
-CREATE TABLE IF NOT EXISTS audit_comments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    audit_id UUID REFERENCES community_audits(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    author_nickname VARCHAR(50) NOT NULL,
-    comment TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 8. Karma Transactions Table
-CREATE TABLE IF NOT EXISTS karma_transactions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    points INT NOT NULL,
-    reason VARCHAR(255) NOT NULL,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 9. Payments Table (Standard Payment System - VietQR & International Card)
+-- 6. Payments Table (Standard Payment System - VietQR & International Card)
 CREATE TABLE IF NOT EXISTS payments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -159,7 +120,7 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_payments_order_code ON payments(order_code);
 
--- 10. Subscriptions Table
+-- 7. Subscriptions Table
 CREATE TABLE IF NOT EXISTS subscriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -172,7 +133,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 
--- 11. Immutable Admin Action Audit Log
+-- 8. Immutable Admin Action Audit Log
 CREATE TABLE IF NOT EXISTS admin_action_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -192,7 +153,7 @@ ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS file_path TEXT;
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_created_at ON admin_action_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_actor ON admin_action_logs(actor_user_id);
 
--- 12. Encrypted GitHub OAuth connections
+-- 9. Encrypted GitHub OAuth connections
 CREATE TABLE IF NOT EXISTS github_connections (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     github_id BIGINT UNIQUE NOT NULL,
@@ -208,7 +169,7 @@ CREATE TABLE IF NOT EXISTS github_connections (
 
 CREATE INDEX IF NOT EXISTS idx_github_connections_login ON github_connections(github_login);
 
--- 13. AI usage accounting for server-enforced daily quotas
+-- 10. AI usage accounting for server-enforced daily quotas
 CREATE TABLE IF NOT EXISTS ai_usage_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -222,51 +183,7 @@ CREATE TABLE IF NOT EXISTS ai_usage_logs (
 CREATE INDEX IF NOT EXISTS idx_ai_usage_user_created
     ON ai_usage_logs(user_id, created_at DESC);
 
--- 14. Personal notification preferences and auditable email delivery history
-CREATE TABLE IF NOT EXISTS notification_preferences (
-    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    recipient_email VARCHAR(255) NOT NULL,
-    instant_critical BOOLEAN NOT NULL DEFAULT TRUE,
-    weekly_digest BOOLEAN NOT NULL DEFAULT TRUE,
-    pro_receipt BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS notification_email_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    recipient_email VARCHAR(255) NOT NULL,
-    subject VARCHAR(500) NOT NULL,
-    email_type VARCHAR(50) NOT NULL,
-    delivery_status VARCHAR(30) NOT NULL,
-    provider_message_id TEXT,
-    error_message TEXT,
-    metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_notification_email_logs_user_created
-    ON notification_email_logs(user_id, created_at DESC);
-
--- 15. Per-user Google OAuth grant for least-privilege Gmail sending
-CREATE TABLE IF NOT EXISTS gmail_connections (
-    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    google_id VARCHAR(255) NOT NULL,
-    gmail_email VARCHAR(255) UNIQUE NOT NULL,
-    refresh_token_encrypted TEXT NOT NULL,
-    scopes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
-    token_status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE',
-    last_error TEXT,
-    last_used_at TIMESTAMP WITH TIME ZONE,
-    connected_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_gmail_connections_email
-    ON gmail_connections(gmail_email);
-
--- 16. One-time account security tokens (only SHA-256 hashes are persisted)
+-- 11. One-time account security tokens (only SHA-256 hashes are persisted)
 CREATE TABLE IF NOT EXISTS account_action_tokens (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -281,15 +198,7 @@ CREATE INDEX IF NOT EXISTS idx_account_action_tokens_lookup
     ON account_action_tokens(token_hash, purpose, expires_at)
     WHERE used_at IS NULL;
 
--- 17. Idempotent community upvotes
-CREATE TABLE IF NOT EXISTS community_audit_upvotes (
-    audit_id UUID NOT NULL REFERENCES community_audits(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (audit_id, user_id)
-);
-
--- 18. Auditable payment-gateway confirmation metadata
+-- 12. Auditable payment-gateway confirmation metadata
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider_reference VARCHAR(255);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS webhook_payload_hash CHAR(64);
@@ -307,7 +216,7 @@ CREATE TABLE IF NOT EXISTS payment_webhook_events (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 19. Durable GitHub webhook replay protection and processing receipts
+-- 13. Durable GitHub webhook replay protection and processing receipts
 CREATE TABLE IF NOT EXISTS github_webhook_deliveries (
     delivery_id VARCHAR(255) PRIMARY KEY,
     event_type VARCHAR(80) NOT NULL,
@@ -322,7 +231,7 @@ CREATE TABLE IF NOT EXISTS github_webhook_deliveries (
 CREATE INDEX IF NOT EXISTS idx_github_webhook_deliveries_created
     ON github_webhook_deliveries(created_at DESC);
 
--- 20. Per-user Lunar AI assistant conversation history
+-- 14. Per-user Lunar AI assistant conversation history
 CREATE TABLE IF NOT EXISTS assistant_conversations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

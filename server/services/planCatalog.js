@@ -11,7 +11,7 @@ const PLAN_CATALOG = Object.freeze({
       '5 lượt quét mã nguồn mỗi ngày',
       '3 lượt AI review mỗi ngày',
       'Xem điểm CVSS và tổng quan rủi ro',
-      'Tham gia cộng đồng bảo mật'
+      'Quét repository GitHub public'
     ])
   }),
   PRO: Object.freeze({
@@ -27,7 +27,7 @@ const PLAN_CATALOG = Object.freeze({
       'Không giới hạn lượt quét mã nguồn',
       '50 lượt AI review mỗi ngày',
       'Chi tiết finding và AI Code Repair Workbench',
-      'Xuất báo cáo PDF và gửi qua Gmail'
+      'Xuất báo cáo PDF và badge cho GitHub README'
     ])
   }),
   ENTERPRISE: Object.freeze({

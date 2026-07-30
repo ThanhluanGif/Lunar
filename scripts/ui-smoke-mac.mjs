@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const baseUrl = process.env.LUNAR_UI_URL || 'http://127.0.0.1:5050';
-const gmailOnly = process.argv.includes('--gmail-only');
 const chromeCandidates = [
   process.env.CHROME_PATH,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -191,77 +190,57 @@ try {
     'Lunar landing page'
   );
 
-  if (gmailOnly) {
-    const gmailUnique = Date.now();
-    const gmailTestEmail = `gmail-browser-${gmailUnique}@example.com`;
-    const registration = await evaluate(`fetch('/api/v1/auth/register', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Gmail Browser QA',
-        nickname: 'gmailqa${gmailUnique}',
-        email: ${JSON.stringify(gmailTestEmail)},
-        password: 'StrongPass123!'
-      })
-    }).then(async (response) => ({ status: response.status, body: await response.json() }))`);
-    if (registration.status !== 201) {
-      throw new Error(`Gmail browser QA registration failed: ${JSON.stringify(registration)}`);
-    }
-    await client.send('Page.reload', { ignoreCache: true });
-    await waitFor(
-      `fetch('/api/v1/auth/me', { credentials: 'include' })
-        .then((response) => response.status === 200)`,
-      'authenticated Gmail browser session'
-    );
-    await clickButton('Gmail Alert');
-    await waitFor(
-      `document.body.innerText.includes('Gmail Cá Nhân & Cảnh Báo An Ninh')
-        && document.body.innerText.includes('Quản trị viên chưa cấu hình Google OAuth Client cho Lunar')`,
-      'per-user Gmail OAuth modal'
-    );
-    const gmailStatus = await evaluate(`fetch('/api/v1/notifications/gmail/status', {
-      credentials: 'include'
-    }).then((response) => response.json())`);
-    const gmailUi = await evaluate(`(() => {
-      const sendButton = [...document.querySelectorAll('button')]
-        .find((button) => button.textContent.includes('Gửi thử Audit PDF'));
-      const recipient = document.querySelector('input[aria-label="Email tài khoản Lunar nhận cảnh báo"]');
-      return {
-        heading: document.body.innerText.includes('Gmail Cá Nhân & Cảnh Báo An Ninh'),
-        leastPrivilegeCopy: document.body.innerText.includes('không lưu mật khẩu Gmail'),
-        recipientEmail: recipient?.value || null,
-        sendDisabled: Boolean(sendButton?.disabled)
-      };
-    })()`);
-    if (
-      gmailStatus.configured
-      || gmailStatus.connected
-      || !gmailUi.heading
-      || !gmailUi.leastPrivilegeCopy
-      || gmailUi.recipientEmail !== gmailTestEmail
-      || !gmailUi.sendDisabled
-      || runtimeErrors.length
-      || consoleErrors.length
-    ) {
-      throw new Error(`Per-user Gmail browser contract failed: ${JSON.stringify({
-        gmailStatus,
-        gmailUi,
-        runtimeErrors,
-        consoleErrors
-      })}`);
-    }
-    console.log(JSON.stringify({
-      status: 'PASS',
-      baseUrl,
-      gmailPerUserOAuthUi: gmailUi
-    }, null, 2));
-  } else {
   results.page = {
     title: await evaluate('document.title'),
     rootRendered: await evaluate(`Boolean(document.querySelector('#root')?.children.length)`),
-    workspaceRendered: await evaluate(`document.body.innerText.includes('Đồng Bộ GitHub Repositories Cá Nhân')`)
+    workspaceRendered: await evaluate(`document.body.innerText.includes('Quét repository trong một luồng')`),
+    quickScanNearHero: await evaluate(`(() => {
+      const hero = document.querySelector('#landing-hero');
+      const quickScan = document.querySelector('#github-quick-scan');
+      return Boolean(hero && quickScan && hero.nextElementSibling === quickScan);
+    })()`),
+    quickScanModes: await evaluate(`document.querySelectorAll('.quick-scan-mode').length === 3`),
+    duplicateQuickScanRemoved: await evaluate(`document.querySelectorAll('[data-testid="github-quick-scan"]').length === 1
+      && !document.body.innerText.includes('Đồng Bộ GitHub Repositories Cá Nhân')`),
+    guestBannerRemoved: await evaluate(`!document.body.innerText.includes('Guest Preview Mode')`),
+    bottomCtaRemoved: await evaluate(`!document.body.innerText.includes('Ship better code, automatically')
+      && !document.body.innerText.includes('Join 12,000+ developers')
+      && !document.body.innerText.includes('Start free with GitHub')`),
+    liveDashboardGuestState: await evaluate(`Boolean(document.querySelector('[data-testid="dashboard-preview-guest"]'))`),
+    dashboardMockRemoved: await evaluate(`(() => {
+      const previewText = document.querySelector('[data-testid="live-dashboard-preview"]')?.innerText || '';
+      return previewText.includes('Khu vực này không hiển thị số liệu mẫu')
+        && !previewText.includes('acme-corp/frontend')
+        && !previewText.includes('PRs reviewed')
+        && !previewText.includes('Auto-fixes merged');
+    })()`)
   };
+
+  await clickButton('GitHub Quick Scan');
+  await sleep(600);
+  results.page.heroQuickScanCta = await evaluate(`Math.abs(
+    document.querySelector('#github-quick-scan').getBoundingClientRect().top
+    - Number.parseFloat(getComputedStyle(document.querySelector('#github-quick-scan')).scrollMarginTop || 0)
+  ) < 40`);
+
+  const openedLocalMode = await evaluate(`(() => {
+    const button = [...document.querySelectorAll('.quick-scan-mode')]
+      .find((item) => item.textContent.includes('Thư mục local'));
+    button?.click();
+    return Boolean(button);
+  })()`);
+  if (!openedLocalMode) throw new Error('Local quick scan mode was not available.');
+  await waitFor(
+    `document.body.innerText.includes('Drop a local project folder here or choose a folder.')`,
+    'local folder quick scan mode'
+  );
+  results.page.localQuickScanMode = true;
+  await evaluate(`([...document.querySelectorAll('.quick-scan-mode')]
+    .find((item) => item.textContent.includes('Repo công khai')))?.click()`);
+  await waitFor(
+    `Boolean(document.querySelector('input[placeholder="Username hoặc URL GitHub..."]'))`,
+    'public repository quick scan mode'
+  );
 
   await clickButton('Lunar AI');
   await waitFor(
@@ -316,18 +295,29 @@ try {
   await clickButton('← Back to Overview');
   await waitFor(`document.body.innerText.includes('Code review that')`, 'landing page after guest preview');
 
-  await clickButton('Sign In');
+  await clickButton('Đăng nhập');
   await waitFor(`Boolean(document.querySelector('#auth-modal'))`, 'authentication modal');
+  results.githubAuthDefault = await evaluate(`document.querySelector('#auth-modal-title')?.textContent.includes('Đăng nhập bằng GitHub')
+    && Boolean(document.querySelector('[data-testid="github-oauth-continue"]'))`);
   results.authTabs = await evaluate(`([...document.querySelectorAll('#auth-modal button')]
     .map((button) => button.textContent.replace(/\\s+/g, ' ').trim())
     .filter(Boolean))`);
 
-  await clickButton('GitHub');
+  results.githubAuthSimplified = await evaluate(`(() => ({
+    singleAction: Boolean(document.querySelector('[data-testid="github-oauth-continue"]'))
+      && document.querySelector('[data-testid="github-oauth-continue"]')?.textContent.includes('Tiếp Tục Với GitHub'),
+    redundantInputRemoved: ![...document.querySelectorAll('#auth-modal input')]
+      .some((input) => input.value === 'GitHub OAuth'),
+    explainsSingleStep: document.querySelector('#auth-modal')?.innerText.includes('chỉ trong một bước'),
+    methodTabsRemoved: ![...document.querySelectorAll('#auth-modal button')]
+      .some((button) => ['Email', 'GitHub'].includes(button.textContent.trim()))
+  }))()`);
   const githubConfiguration = await evaluate(`fetch('/api/v1/auth/github/config')
     .then((response) => response.json())`);
   results.githubOAuthConfigured = Boolean(githubConfiguration.configured);
+  results.githubOAuthRedirectMode = githubConfiguration.redirectMode;
   if (!githubConfiguration.configured) {
-    await clickButton('Kết Nối & Nạp GitHub Repositories');
+    await clickButton('Tiếp Tục Với GitHub');
     await waitFor(
       `document.body.innerText.includes('GitHub OAuth chưa được cấu hình')`,
       'GitHub configuration warning'
@@ -338,9 +328,9 @@ try {
   await evaluate(`document.querySelector('#auth-modal button[aria-label="Đóng hộp đăng nhập"]')?.click()`);
   await waitFor(`!document.querySelector('#auth-modal')`, 'modal close');
 
-  await clickButton('Sign In');
+  await clickButton('Đăng nhập');
   await waitFor(`Boolean(document.querySelector('#auth-modal'))`, 'authentication modal');
-  await clickButton('Email');
+  await clickButton('Đăng nhập bằng email');
   await clickButton('Đăng ký ngay');
 
   const unique = Date.now();
@@ -377,19 +367,31 @@ try {
   results.cookieSession = await evaluate(`fetch('/api/v1/auth/me', { credentials: 'include' })
     .then(async (response) => ({ status: response.status, body: await response.json() }))`);
   await waitFor(
+    `Boolean(document.querySelector('[data-testid="dashboard-preview-live"]'))
+      && document.querySelector('[data-testid="live-dashboard-preview"]')?.innerText.includes('PostgreSQL · dữ liệu tài khoản thật')`,
+    'authenticated live dashboard preview'
+  );
+  results.liveDashboardAuthenticated = await evaluate(`(() => ({
+    rendered: Boolean(document.querySelector('[data-testid="dashboard-preview-live"]')),
+    verifiedSource: document.querySelector('[data-testid="live-dashboard-preview"]')?.innerText.includes('PostgreSQL · dữ liệu tài khoản thật'),
+    mockAccountAbsent: !document.querySelector('[data-testid="live-dashboard-preview"]')?.innerText.includes('acme-corp')
+  }))()`);
+  await waitFor(
     `Boolean(document.querySelector('section[aria-label="GitHub repository quick scan"]'))`,
-    'GitHub quick scan combobox'
+    'GitHub quick scan workspace'
   );
   results.githubComboboxRendered = true;
 
-  await fill(`input[placeholder="Nhập GitHub Username của bạn..."]`, 'ThanhluanGif');
+  await fill(`input[placeholder="Username hoặc URL GitHub..."]`, 'https://github.com/ThanhluanGif/');
   await clickButton('Tải Repos');
   await waitFor(
-    `document.body.innerText.includes('dự án GitHub thật') && document.body.innerText.includes('Lunar')`,
+    `Boolean(document.querySelector('.quick-scan-repository-list'))
+      && document.querySelector('[data-testid="github-quick-scan"]')?.innerText.includes('ThanhluanGif/Lunar')`,
     'public GitHub repository sync',
     15000
   );
   results.publicGitHubSync = true;
+  results.publicGitHubProfileUrlAccepted = true;
 
   if (githubConfiguration.configured) {
     results.workspaceGitHubConfigured = true;
@@ -461,35 +463,15 @@ try {
 
   await clickButton('Audit Report & Badge');
   await waitFor(
-    `document.body.innerText.includes('Quản trị viên chưa cấu hình Google OAuth Client cho Gmail')`,
-    'audit report Gmail configuration state'
+    `document.body.innerText.includes('Tải Báo Cáo Executive Security Audit (PDF)')`,
+    'audit report PDF action'
   );
-  results.auditGmailFailClosed = await evaluate(`(() => {
+  results.auditReportAvailable = await evaluate(`(() => {
     const button = [...document.querySelectorAll('button')]
-      .find((item) => item.textContent.includes('Gửi Báo Cáo Audit Trực Tiếp Về Gmail'));
-    return Boolean(button?.disabled);
+      .find((item) => item.textContent.includes('Tải Báo Cáo Executive Security Audit'));
+    return Boolean(button && !button.disabled);
   })()`);
   await evaluate(`document.querySelector('button[aria-label="Đóng báo cáo audit"]')?.click()`);
-
-  await clickButton('Gmail Alert');
-  await waitFor(
-    `document.body.innerText.includes('Quản trị viên chưa cấu hình Google OAuth Client cho Lunar')`,
-    'Gmail settings configuration state'
-  );
-  results.gmailSettingsFailClosed = await evaluate(`(() => {
-    const button = [...document.querySelectorAll('button')]
-      .find((item) => item.textContent.includes('Gửi thử Audit PDF'));
-    return Boolean(button?.disabled);
-  })()`);
-  await evaluate(`document.querySelector('button[aria-label="Đóng cấu hình Gmail"]')?.click()`);
-
-  await clickButton('Cộng Đồng Security');
-  await waitFor(
-    `document.body.innerText.includes('Cộng Đồng An Ninh Mạng')
-      && document.body.innerText.includes('Top 3 White-Hat Hackers')`,
-    'PostgreSQL community screen'
-  );
-  results.communityRendered = true;
 
   await client.send('Page.navigate', { url: `${baseUrl}/definitely-not-a-lunar-page` });
   await waitFor(
@@ -507,7 +489,19 @@ try {
     unexpectedHttpErrors: httpErrors.filter((item) => !expectedGuestAuthProbe(item))
   };
 
-  if (!results.page.rootRendered || !results.page.workspaceRendered) {
+  if (
+    !results.page.rootRendered
+    || !results.page.workspaceRendered
+    || !results.page.quickScanNearHero
+    || !results.page.quickScanModes
+    || !results.page.duplicateQuickScanRemoved
+    || !results.page.heroQuickScanCta
+    || !results.page.localQuickScanMode
+    || !results.page.guestBannerRemoved
+    || !results.page.bottomCtaRemoved
+    || !results.page.liveDashboardGuestState
+    || !results.page.dashboardMockRemoved
+  ) {
     throw new Error('The React application did not render the expected workspace.');
   }
   if (results.cookieSession?.status !== 200 || !results.cookieSession?.body?.user?.email) {
@@ -518,17 +512,25 @@ try {
     || !results.guestPreview?.detailsLocked
     || !results.guestPreview?.autoFixLocked
     || !results.githubComboboxRendered
+    || !results.publicGitHubProfileUrlAccepted
+    || (results.githubOAuthConfigured && results.githubOAuthRedirectMode !== 'registered')
+    || !results.githubAuthDefault
+    || !results.githubAuthSimplified?.singleAction
+    || !results.githubAuthSimplified?.redundantInputRemoved
+    || !results.githubAuthSimplified?.explainsSingleStep
+    || !results.githubAuthSimplified?.methodTabsRemoved
     || !results.virtualAssistant?.panelRendered
     || !results.virtualAssistant?.nativeMode
     || !results.virtualAssistant?.secretWarning
     || results.virtualAssistant?.assistantMessages < 2
-    || !results.auditGmailFailClosed
-    || !results.gmailSettingsFailClosed
+    || !results.auditReportAvailable
     || !results.accountSettings?.rendered
-    || !results.communityRendered
+    || !results.liveDashboardAuthenticated?.rendered
+    || !results.liveDashboardAuthenticated?.verifiedSource
+    || !results.liveDashboardAuthenticated?.mockAccountAbsent
     || !results.notFoundRendered
   ) {
-    throw new Error(`Guest/GitHub/Gmail/account/community/404 browser contract failed: ${JSON.stringify(results)}`);
+    throw new Error(`Guest/GitHub/account/report/404 browser contract failed: ${JSON.stringify(results)}`);
   }
   if (
     !results.projectSimulation?.workbenchRendered
@@ -545,7 +547,6 @@ try {
   }
 
   console.log(JSON.stringify({ status: 'PASS', baseUrl, ...results }, null, 2));
-  }
 } finally {
   client?.close();
   if (chrome.exitCode === null) {

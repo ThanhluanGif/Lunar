@@ -25,13 +25,19 @@ function getOAuthConfig() {
   const clientSecret = process.env.GITHUB_CLIENT_SECRET;
   const callbackUrl = process.env.GITHUB_OAUTH_CALLBACK_URL;
   const encryptionSecret = process.env.GITHUB_TOKEN_ENCRYPTION_KEY;
+  const redirectMode = String(process.env.GITHUB_OAUTH_REDIRECT_MODE || 'registered').toLowerCase();
   if (!clientId || !clientSecret || !callbackUrl || !encryptionSecret || encryptionSecret.length < 32) {
+    return null;
+  }
+  if (!['registered', 'explicit'].includes(redirectMode)) {
+    console.error('GITHUB_OAUTH_REDIRECT_MODE must be "registered" or "explicit".');
     return null;
   }
   return {
     clientId,
     clientSecret,
     callbackUrl,
+    redirectMode,
     encryptionKey: crypto.createHash('sha256').update(encryptionSecret).digest(),
     scopes: (process.env.GITHUB_OAUTH_SCOPES || 'read:user user:email')
       .split(/[\s,]+/)
@@ -136,7 +142,8 @@ router.get('/config', (req, res) => {
   return res.json({
     success: true,
     configured: Boolean(config),
-    callbackUrl: config ? config.callbackUrl : null
+    callbackUrl: config ? config.callbackUrl : null,
+    redirectMode: config ? config.redirectMode : null
   });
 });
 
@@ -159,11 +166,13 @@ router.get('/start', (req, res) => {
 
   const params = new URLSearchParams({
     client_id: config.clientId,
-    redirect_uri: config.callbackUrl,
     scope: config.scopes.join(' '),
     state,
     allow_signup: 'true'
   });
+  if (config.redirectMode === 'explicit') {
+    params.set('redirect_uri', config.callbackUrl);
+  }
   return res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 });
 
@@ -201,7 +210,7 @@ router.get('/callback', optionalToken, async (req, res) => {
         client_id: config.clientId,
         client_secret: config.clientSecret,
         code: req.query.code,
-        redirect_uri: config.callbackUrl
+        ...(config.redirectMode === 'explicit' ? { redirect_uri: config.callbackUrl } : {})
       })
     });
     const tokenPayload = await tokenResponse.json();
@@ -291,7 +300,7 @@ router.get('/callback', optionalToken, async (req, res) => {
 
     const userResult = await client.query(
       `SELECT u.id, u.email, u.nickname, u.name, u.email_verified_at, u.auth_version,
-              u.tier, u.role, u.status, u.karma_points, u.daily_scans_used,
+              u.tier, u.role, u.status, u.daily_scans_used,
               gc.avatar_url
        FROM users u
        LEFT JOIN github_connections gc ON gc.user_id = u.id

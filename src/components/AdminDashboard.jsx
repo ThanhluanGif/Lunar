@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ShieldCheck, Users, CreditCard, Mail, DollarSign, TrendingUp, Sparkles, 
+import {
+  ShieldCheck, Users, CreditCard, DollarSign, TrendingUp, Sparkles,
   Search, Filter, CheckCircle2, Clock, XCircle, RefreshCw, Send, Lock, 
   Crown, ArrowUpRight, Zap, AlertTriangle, Eye, UserCheck, ShieldAlert, Inbox, PlusCircle
 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
 
 export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
-  const [activeSubTab, setActiveSubTab] = useState('transactions'); // 'transactions' | 'users' | 'emails' | 'sast'
+  const [activeSubTab, setActiveSubTab] = useState('transactions'); // 'transactions' | 'users' | 'audit' | 'sast'
   const [transactions, setTransactions] = useState([]);
-  const [emailLogs, setEmailLogs] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [users, setUsers] = useState([]);
   const [overview, setOverview] = useState(null);
   const [loadError, setLoadError] = useState('');
@@ -33,7 +33,6 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
       setUsers(usersData.users.map((user) => ({
         ...user,
         github: user.nickname?.replace(/^@/, '') || '',
-        karma: user.karmaPoints,
         dailyScans: user.dailyScansUsed,
         joined: new Date(user.createdAt).toLocaleDateString()
       })));
@@ -46,7 +45,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
         method: payment.paymentMethod || 'VietQR',
         status: payment.status
       })));
-      setEmailLogs(auditData.logs.map((log) => ({
+      setAuditLogs(auditData.logs.map((log) => ({
         id: log.id,
         to: log.actorEmail || 'system',
         subject: `${log.actionType}: ${log.targetType}`,
@@ -215,9 +214,9 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
         <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid #ea4335' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '8px' }}>
             <span>Hành Động Admin Gần Đây</span>
-            <Mail size={18} color="#ea4335" />
+            <ShieldAlert size={18} color="#ea4335" />
           </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>{emailLogs.length}</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>{auditLogs.length}</div>
           <div style={{ fontSize: '0.78rem', color: '#fca5a5', marginTop: '4px' }}>
             Được ghi trong audit log PostgreSQL
           </div>
@@ -276,13 +275,13 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
         </button>
 
         <button
-          onClick={() => setActiveSubTab('emails')}
+          onClick={() => setActiveSubTab('audit')}
           style={{
             padding: '12px 20px',
             background: 'transparent',
             border: 'none',
-            borderBottom: activeSubTab === 'emails' ? '3px solid #ea4335' : '3px solid transparent',
-            color: activeSubTab === 'emails' ? '#ffffff' : 'var(--text-secondary)',
+            borderBottom: activeSubTab === 'audit' ? '3px solid #ea4335' : '3px solid transparent',
+            color: activeSubTab === 'audit' ? '#ffffff' : 'var(--text-secondary)',
             fontWeight: '700',
             fontSize: '0.95rem',
             cursor: 'pointer',
@@ -291,7 +290,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
             gap: '8px'
           }}
         >
-          <ShieldAlert size={18} color="#ea4335" /> Nhật Ký Quản Trị ({emailLogs.length})
+          <ShieldAlert size={18} color="#ea4335" /> Nhật Ký Quản Trị ({auditLogs.length})
         </button>
       </div>
 
@@ -300,7 +299,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
         <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
           <input
             type="text"
-            placeholder="Tìm kiếm theo tên, Gmail hoặc mã đơn..."
+            placeholder="Tìm kiếm theo tên, email hoặc mã đơn..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -352,7 +351,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
               <thead>
                 <tr style={{ background: 'rgba(30, 41, 59, 0.8)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>
                   <th style={{ padding: '14px 18px' }}>Mã Đơn Hàng</th>
-                  <th style={{ padding: '14px 18px' }}>Khách Hàng (Gmail)</th>
+                  <th style={{ padding: '14px 18px' }}>Khách Hàng (Email)</th>
                   <th style={{ padding: '14px 18px' }}>Gói Đăng Ký</th>
                   <th style={{ padding: '14px 18px' }}>Số Tiền</th>
                   <th style={{ padding: '14px 18px' }}>Phương Thức</th>
@@ -410,9 +409,8 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
             <thead>
               <tr style={{ background: 'rgba(30, 41, 59, 0.8)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>
                 <th style={{ padding: '14px 18px' }}>Người Dùng</th>
-                <th style={{ padding: '14px 18px' }}>Gmail / Auth</th>
+                <th style={{ padding: '14px 18px' }}>Email / Auth</th>
                 <th style={{ padding: '14px 18px' }}>Cấp Độ (Tier)</th>
-                <th style={{ padding: '14px 18px' }}>Karma Points</th>
                 <th style={{ padding: '14px 18px' }}>Lượt Quét Dùng Hôn Nay</th>
                 <th style={{ padding: '14px 18px', textAlign: 'right' }}>Quản Lý Cấp Bậc & Quota</th>
               </tr>
@@ -430,7 +428,6 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                     {u.tier === 'PRO' && <span className="badge badge-purple">PRO</span>}
                     {u.tier === 'FREE' && <span className="badge badge-yellow">FREE</span>}
                   </td>
-                  <td style={{ padding: '14px 18px', fontWeight: '700', color: '#fbbf24' }}>{u.karma} pts</td>
                   <td style={{ padding: '14px 18px' }}>{u.dailyScans} / {u.tier === 'FREE' ? '5' : '∞'}</td>
                   <td style={{ padding: '14px 18px', textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
@@ -456,20 +453,20 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
         </div>
       )}
 
-      {/* TAB 3: GMAIL LOGS */}
-      {activeSubTab === 'emails' && (
+      {/* TAB 3: ADMIN AUDIT LOGS */}
+      {activeSubTab === 'audit' && (
         <div className="glass-panel" style={{ padding: '24px', border: '1px solid var(--border-color)' }}>
           <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.1rem', fontWeight: '800', marginBottom: '16px', color: '#ea4335', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ShieldAlert size={20} /> Nhật Ký Hành Động Quản Trị
           </h3>
 
-          {emailLogs.length === 0 ? (
+          {auditLogs.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
               Chưa có hành động quản trị nào được ghi nhận.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {emailLogs.map((log) => (
+              {auditLogs.map((log) => (
                 <div key={log.id} style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '16px', borderRadius: '8px', borderLeft: '4px solid #ea4335', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                     <span style={{ fontWeight: '700', color: '#ffffff', fontSize: '0.95rem' }}>{log.subject}</span>

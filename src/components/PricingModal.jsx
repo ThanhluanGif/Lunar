@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, ShieldCheck, Sparkles, Zap, Bot, CreditCard, QrCode, ArrowRight, Loader2, Award, Mail } from 'lucide-react';
+import { X, Check, ShieldCheck, Sparkles, Zap, Bot, CreditCard, QrCode, ArrowRight, Loader2, Award } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
 
 export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', currentUser, onUpgradeSuccess, initialPlan = 'PRO' }) {
@@ -374,23 +374,6 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
             <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', maxWidth: '420px', margin: '0 auto 16px auto', lineHeight: '1.6' }}>
               Tài khoản của bạn đã được nâng cấp thành công lên hạng <strong>Lunar {selectedPlan}</strong>. Bạn đã mở khóa không giới hạn lượt quét và trọn bộ công cụ AI Code Repair Workbench.
             </p>
-
-            <div style={{
-              background: 'rgba(234, 67, 53, 0.12)',
-              border: '1px solid rgba(234, 67, 53, 0.3)',
-              borderRadius: '8px',
-              padding: '12px 16px',
-              marginBottom: '24px',
-              fontSize: '0.85rem',
-              color: '#fca5a5',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px'
-            }}>
-              <Mail size={16} color="#ea4335" />
-              <span>Hóa đơn giao dịch đã được tự động gửi tới Gmail: <strong>{currentUser?.email || 'developer@gmail.com'}</strong></span>
-            </div>
 
             <button onClick={onClose} className="btn btn-primary" style={{ padding: '12px 28px' }}>
               Bắt Đầu Sử Dụng Tính Năng Pro <ArrowRight size={16} />

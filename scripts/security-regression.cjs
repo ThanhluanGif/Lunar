@@ -12,7 +12,12 @@ const child = spawn(process.execPath, ['server/index.js'], {
     PAYMENT_WEBHOOK_SECRET: 'regression-payment-secret-at-least-32-characters',
     GITHUB_WEBHOOK_SECRET: 'regression-github-secret-at-least-32-characters',
     DATABASE_URL: 'postgresql://127.0.0.1:1/unavailable',
-    ENABLE_PAYMENT_MOCK: 'true'
+    ENABLE_PAYMENT_MOCK: 'true',
+    GITHUB_CLIENT_ID: 'regression-client-id',
+    GITHUB_CLIENT_SECRET: 'regression-client-secret',
+    GITHUB_OAUTH_CALLBACK_URL: `${baseUrl}/api/v1/auth/github/callback`,
+    GITHUB_OAUTH_REDIRECT_MODE: 'registered',
+    GITHUB_TOKEN_ENCRYPTION_KEY: 'regression-github-encryption-key-at-least-32-characters'
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -73,9 +78,24 @@ async function run() {
       body: JSON.stringify({ scanId: '00000000-0000-0000-0000-000000000000' })
     }, 401);
 
+    const oauthStart = await fetch(`${baseUrl}/api/v1/auth/github/start`, {
+      redirect: 'manual'
+    });
+    const oauthLocation = new URL(oauthStart.headers.get('location'));
+    if (
+      oauthStart.status !== 302
+      || oauthLocation.origin !== 'https://github.com'
+      || oauthLocation.pathname !== '/login/oauth/authorize'
+      || oauthLocation.searchParams.has('redirect_uri')
+      || !oauthLocation.searchParams.get('state')
+    ) {
+      throw new Error('GitHub registered-callback OAuth mode emitted an unsafe or mismatched authorization URL.');
+    }
+
     console.log(JSON.stringify({
       productionMockPaymentRoute: 'PASS',
       serverAuthoritativePlanCatalog: 'PASS',
+      githubOAuthRegisteredCallbackMode: 'PASS',
       githubWebhookSignatureGuard: 'PASS',
       reportAuthenticationGuard: 'PASS'
     }, null, 2));

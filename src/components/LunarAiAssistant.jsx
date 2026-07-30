@@ -23,7 +23,7 @@ const QUICK_PROMPTS = [
   'Tóm tắt rủi ro dự án đang mở',
   'Hướng dẫn quét code',
   'Cách kết nối GitHub',
-  'Cách bật cảnh báo Gmail'
+  'Cách quét repository GitHub'
 ];
 
 function messageId(role) {

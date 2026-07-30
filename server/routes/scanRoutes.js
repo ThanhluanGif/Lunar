@@ -2,7 +2,6 @@ const express = require('express');
 const { verifyToken } = require('../middleware/auth');
 const { getPool } = require('../db/connection');
 const { scanQuotaLimiter } = require('../middleware/rateLimiter');
-const { dispatchCriticalAlert } = require('./notificationRoutes');
 
 const router = express.Router();
 
@@ -208,20 +207,6 @@ router.post('/run', verifyToken, async (req, res) => {
     );
     await client.query('COMMIT');
 
-    const criticalFindings = analysis.findings.filter((finding) => finding.severity === 'critical');
-    if (criticalFindings.length > 0) {
-      dispatchCriticalAlert({
-        userId: req.user.id,
-        projectTitle: String(projectName || filename).slice(0, 255),
-        summary: {
-          maxCvss: 9.2,
-          criticalCount: criticalFindings.length,
-          highCount: analysis.findings.filter((finding) => finding.severity === 'warning').length,
-          total: analysis.findings.length
-        }
-      }).catch((error) => console.warn('Critical Gmail notification skipped:', error.message));
-    }
-
     return res.status(201).json({
       success: true,
       source: 'postgresql',
@@ -242,59 +227,6 @@ router.post('/run', verifyToken, async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Verified scan failed:', error);
     return res.status(500).json({ success: false, error: 'Unable to persist verified scan.' });
-  } finally {
-    client.release();
-  }
-});
-
-router.post('/renew-quota', verifyToken, async (req, res) => {
-  if (req.user.tier !== 'FREE') {
-    return res.status(409).json({ success: false, error: 'Only FREE accounts use a daily scan quota.' });
-  }
-  const pool = getPool();
-  if (!pool) {
-    return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const renewal = await client.query(
-      `INSERT INTO quota_logs (user_id, action_type, scans_added, action_date)
-       VALUES ($1, 'KARMA_RENEWAL', 3, CURRENT_DATE)
-       ON CONFLICT (user_id, action_type, action_date)
-         WHERE action_type = 'KARMA_RENEWAL'
-       DO NOTHING
-       RETURNING id`,
-      [req.user.id]
-    );
-    if (renewal.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        success: false,
-        error: 'Daily quota renewal has already been used today.'
-      });
-    }
-    const result = await client.query(
-      `UPDATE users
-       SET daily_scans_used = GREATEST(0, daily_scans_used - 3),
-           karma_points = karma_points + 50,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1
-       RETURNING daily_scans_used, karma_points`,
-      [req.user.id]
-    );
-    await client.query('COMMIT');
-    return res.json({
-      success: true,
-      message: 'Daily quota renewed with 3 scans.',
-      dailyScansUsed: result.rows[0].daily_scans_used,
-      karmaPoints: result.rows[0].karma_points
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Quota renewal failed:', error.message);
-    return res.status(500).json({ success: false, error: 'Unable to renew daily quota.' });
   } finally {
     client.release();
   }

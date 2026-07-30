@@ -3,7 +3,7 @@ import { X, Github, Mail, ShieldCheck, Sparkles, AlertCircle, Loader2, KeyRound 
 import { lunarApi } from '../services/lunarApi';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialResetToken = '' }) {
-  const [activeTab, setActiveTab] = useState('email');
+  const [activeTab, setActiveTab] = useState('github');
   const [authMode, setAuthMode] = useState(initialResetToken ? 'reset' : 'login');
   
   // Form states
@@ -156,39 +156,16 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
               ? 'Khôi phục tài khoản'
               : authMode === 'reset'
                 ? 'Đặt lại mật khẩu'
-                : 'Đăng Nhập Lunar.dev'}
+                : activeTab === 'github'
+                  ? 'Đăng nhập bằng GitHub'
+                  : 'Đăng Nhập Lunar.dev'}
           </h2>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Dùng email và mật khẩu hoặc kết nối an toàn qua GitHub OAuth
+            {activeTab === 'github' && authMode !== 'forgot' && authMode !== 'reset'
+              ? 'Đăng nhập Lunar và đồng bộ repository chỉ trong một bước.'
+              : 'Dùng email và mật khẩu để truy cập tài khoản Lunar.'}
           </p>
         </div>
-
-        {/* Auth Method Tabs */}
-        {authMode !== 'forgot' && authMode !== 'reset' && <div style={{
-          display: 'flex',
-          gap: '4px',
-          margin: '16px 0 20px 0',
-          background: '#0f172a',
-          padding: '4px',
-          borderRadius: 'var(--radius-md)'
-        }}>
-          <button
-            type="button"
-            onClick={() => { setActiveTab('email'); setErrorMsg(''); }}
-            className={`btn btn-sm ${activeTab === 'email' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ flex: 1, fontSize: '0.78rem' }}
-          >
-            <Mail size={14} /> Email
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveTab('github'); setErrorMsg(''); }}
-            className={`btn btn-sm ${activeTab === 'github' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ flex: 1, fontSize: '0.78rem' }}
-          >
-            <Github size={14} /> GitHub
-          </button>
-        </div>}
 
         {errorMsg && (
           <div style={{
@@ -224,33 +201,65 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
         {/* TAB 1: Direct GitHub Sync */}
         {activeTab === 'github' && (
           <form onSubmit={handleConnectGitHub}>
-            <div className="input-group">
-              <label className="input-label">Đăng nhập GitHub an toàn</label>
-              <div style={{ position: 'relative' }}>
-                <Github size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                <input
-                  type="text"
-                  placeholder="GitHub sẽ xác minh tài khoản của bạn"
-                  className="input-control"
-                  style={{ paddingLeft: '38px' }}
-                  value="GitHub OAuth"
-                  disabled={loading}
-                  readOnly
-                />
+            <div style={{
+              padding: '18px',
+              borderRadius: '12px',
+              border: '1px solid rgba(96, 165, 250, 0.22)',
+              background: 'rgba(37, 99, 235, 0.08)',
+              textAlign: 'center',
+              marginBottom: '14px'
+            }}>
+              <div style={{
+                width: '42px',
+                height: '42px',
+                display: 'grid',
+                placeItems: 'center',
+                margin: '0 auto 10px',
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,.08)'
+              }}>
+                <Github size={22} color="#e2e8f0" />
               </div>
-              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                Lunar lấy email đã xác minh và tự đồng bộ repository mà bạn cấp quyền.
-              </span>
+              <strong style={{ display: 'block', color: '#f8fafc', fontSize: '0.9rem', marginBottom: '5px' }}>
+                Một lần xác thực GitHub
+              </strong>
+              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.76rem', lineHeight: 1.55 }}>
+                GitHub xác minh tài khoản; Lunar tạo phiên đăng nhập và đồng bộ repository bạn cấp quyền.
+              </p>
             </div>
 
             <button
               type="submit"
+              data-testid="github-oauth-continue"
               disabled={loading}
               className="btn btn-primary"
               style={{ width: '100%', padding: '11px', gap: '8px', marginTop: '8px' }}
             >
               {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Github size={16} />}
-              Kết Nối & Nạp GitHub Repositories
+              Tiếp Tục Với GitHub
+            </button>
+            <div style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '0.7rem', textAlign: 'center' }}>
+              Bạn sẽ được chuyển tới github.com để xác nhận quyền truy cập.
+            </div>
+            <button
+              type="button"
+              onClick={() => { setActiveTab('email'); setErrorMsg(''); setNoticeMsg(''); }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                width: '100%',
+                marginTop: '14px',
+                padding: '7px',
+                border: 0,
+                background: 'transparent',
+                color: '#94a3b8',
+                fontSize: '0.74rem',
+                cursor: 'pointer'
+              }}
+            >
+              <Mail size={13} /> Đăng nhập bằng email
             </button>
           </form>
         )}
@@ -348,6 +357,17 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
               )}
               {(authMode === 'forgot' || authMode === 'reset') && (
                 <button type="button" onClick={() => { setAuthMode('login'); setNoticeMsg(''); setErrorMsg(''); }} style={{ background: 'none', border: 'none', color: '#60a5fa', fontWeight: '600', cursor: 'pointer' }}>← Quay lại đăng nhập</button>
+              )}
+              {(authMode === 'login' || authMode === 'register') && (
+                <span style={{ display: 'block', marginTop: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('github'); setAuthMode('login'); setNoticeMsg(''); setErrorMsg(''); }}
+                    style={{ background: 'none', border: 'none', color: '#94a3b8', fontWeight: '600', cursor: 'pointer' }}
+                  >
+                    ← Quay lại GitHub
+                  </button>
+                </span>
               )}
             </div>
           </form>

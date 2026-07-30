@@ -37,7 +37,6 @@ function sanitizeUser(row) {
     tier: row.tier,
     role: row.role,
     status: row.status,
-    karmaPoints: row.karma_points,
     dailyScansUsed: row.daily_scans_used,
     lastScanResetAt: row.last_scan_reset_at,
     lastLoginAt: row.last_login_at,
@@ -198,7 +197,7 @@ router.get('/users', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT
-         id, nickname, name, email, tier, role, status, karma_points,
+         id, nickname, name, email, tier, role, status,
          daily_scans_used, last_scan_reset_at, last_login_at, created_at, updated_at,
          COUNT(*) OVER()::int AS total_count
        FROM users
@@ -249,14 +248,6 @@ router.patch('/users/:userId', async (req, res) => {
     }
     changes.status = req.body.status;
   }
-  if (req.body.karmaPoints !== undefined) {
-    const karma = Number.parseInt(req.body.karmaPoints, 10);
-    if (!Number.isInteger(karma) || karma < 0 || karma > 10000000) {
-      return res.status(400).json({ success: false, error: 'Invalid karmaPoints value.' });
-    }
-    changes.karma_points = karma;
-  }
-
   if (Object.keys(changes).length === 0) {
     return res.status(400).json({ success: false, error: 'No supported changes supplied.' });
   }

@@ -61,8 +61,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser
             name: 'Bạn (Local Developer)',
             username: 'local-dev',
             avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-            badge: 'Local Workspace',
-            karma: 150
+            badge: 'Local Workspace'
           },
           files: [
             {
@@ -90,8 +89,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser
             name: 'Bạn (Developer)',
             username: 'dev-user',
             avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-            badge: 'Community Dev',
-            karma: 100
+            badge: 'Snippet Workspace'
           },
           files: [
             {
@@ -138,7 +136,6 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser
         ...rawProjectData,
         id: `proj-${Date.now()}`,
         submittedAt: 'Vừa xong',
-        communityReviews: [],
         files: projectScan.files,
         projectAttackSimulation: projectScan.projectAttackSimulation,
         overallScore: Math.max(0, Math.round(100 - maxCvss * 10)),

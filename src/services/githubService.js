@@ -17,13 +17,42 @@ export function parseGitHubUrl(urlStr) {
   return null;
 }
 
-// Fetch all Repositories owned by any GitHub User
+export function normalizeGitHubUsername(value) {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '';
+
+  let username = rawValue;
+  const looksLikeUrl = /^https?:\/\//i.test(rawValue) || /^(?:www\.)?github\.com\//i.test(rawValue);
+  if (looksLikeUrl) {
+    const candidateUrl = /^https?:\/\//i.test(rawValue) ? rawValue : `https://${rawValue}`;
+    let parsed;
+    try {
+      parsed = new URL(candidateUrl);
+    } catch {
+      throw new Error('URL GitHub không hợp lệ.');
+    }
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    if (hostname !== 'github.com') {
+      throw new Error('Chỉ chấp nhận username hoặc URL profile từ github.com.');
+    }
+    username = parsed.pathname.split('/').filter(Boolean)[0] || '';
+  } else {
+    username = rawValue.replace(/^@/, '').replace(/^\/+|\/+$/g, '');
+  }
+
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(username)) {
+    throw new Error('GitHub username không hợp lệ. Hãy nhập username hoặc URL dạng https://github.com/username.');
+  }
+  return username;
+}
+
+// Fetch all public repositories owned by a GitHub user.
 export async function fetchUserGitHubRepos(username) {
-  if (!username) return [];
-  const cleanUsername = username.replace(/^@/, '').trim();
+  const cleanUsername = normalizeGitHubUsername(username);
+  if (!cleanUsername) return [];
   
   try {
-    const res = await fetch(`https://api.github.com/users/${cleanUsername}/repos?sort=updated&per_page=20`);
+    const res = await fetch(`https://api.github.com/users/${encodeURIComponent(cleanUsername)}/repos?sort=updated&per_page=20`);
     if (!res.ok) {
       if (res.status === 404) {
         throw new Error(`Không tìm thấy người dùng GitHub "${cleanUsername}".`);
@@ -116,7 +145,6 @@ export async function fetchGitHubRepoDetails(urlStr) {
         username: repoData.owner.login,
         avatar: repoData.owner.avatar_url,
         badge: 'GitHub Developer',
-        karma: Math.floor(repoData.stargazers_count * 5 + 100)
       },
       files: sampledFiles.length > 0 ? sampledFiles : [
         {

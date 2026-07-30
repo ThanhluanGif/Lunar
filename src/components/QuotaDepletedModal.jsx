@@ -1,7 +1,7 @@
 import React from 'react';
-import { X, Zap, RefreshCw, Sparkles, Shield, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { X, Zap, Shield } from 'lucide-react';
 
-export default function QuotaDepletedModal({ isOpen, onClose, onRenewFreeQuota, onOpenPricing, currentUser }) {
+export default function QuotaDepletedModal({ isOpen, onClose, onOpenPricing, currentUser }) {
   if (!isOpen) return null;
 
   const userNickname = currentUser?.nickname || '@dev';
@@ -69,38 +69,7 @@ export default function QuotaDepletedModal({ isOpen, onClose, onRenewFreeQuota, 
         {/* Options Box */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '24px' }}>
           
-          {/* Option 1: Free Renewal via Community Contribution */}
-          <div style={{
-            background: 'rgba(52, 211, 153, 0.1)',
-            border: '1px solid rgba(52, 211, 153, 0.35)',
-            borderRadius: 'var(--radius-md)',
-            padding: '16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px'
-          }}>
-            <div>
-              <div style={{ fontWeight: '700', fontSize: '0.94rem', color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <RefreshCw size={16} /> Gia Hạn Miễn Phí (+3 Lượt)
-              </div>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                Gửi bài review hoặc chia sẻ kết quả audit để nhận ngay 3 lượt scan & +50 Karma.
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                onRenewFreeQuota();
-                onClose();
-              }}
-              className="btn btn-emerald btn-sm"
-              style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}
-            >
-              Gia Hạn Ngay
-            </button>
-          </div>
-
-          {/* Option 2: Upgrade to Pro (Unlimited) */}
+          {/* Upgrade to Pro (Unlimited) */}
           <div style={{
             background: 'rgba(124, 58, 237, 0.12)',
             border: '1px solid rgba(167, 139, 250, 0.35)',

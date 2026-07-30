@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ShieldCheck, Sparkles, LogOut, Plus, Layers, Mail, Zap, Crown, User, Settings, ChevronDown } from 'lucide-react';
+import { Sparkles, LogOut, Plus, Layers, Zap, Crown, User, Settings, ChevronDown } from 'lucide-react';
 
 export default function Navbar({ 
   activeTab, 
@@ -10,7 +10,6 @@ export default function Navbar({
   onOpenAuth, 
   onLogout, 
   onOpenPricing, 
-  onOpenGmailSettings,
   onOpenAccountSettings
 }) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -102,7 +101,7 @@ export default function Navbar({
           </div>
         </div>
 
-        {/* Center: Figma Style Navigation Links */}
+        {/* Center navigation links */}
         <nav style={{
           display: 'flex',
           alignItems: 'center',
@@ -147,26 +146,7 @@ export default function Navbar({
               gap: '6px'
             }}
           >
-            <Sparkles size={14} color="#a78bfa" /> Figma Dashboard ✦
-          </button>
-
-          <button
-            onClick={() => setActiveTab('community')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '8px',
-              fontSize: '0.82rem',
-              fontWeight: '600',
-              background: activeTab === 'community' ? 'rgba(108, 142, 239, 0.2)' : 'transparent',
-              color: activeTab === 'community' ? '#6c8eef' : '#7880a0',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <ShieldCheck size={14} /> Cộng Đồng Security
+            <Sparkles size={14} color="#a78bfa" /> Dashboard
           </button>
 
           {currentUser?.role === 'ADMIN' && <button
@@ -210,27 +190,6 @@ export default function Navbar({
             }}
           >
             <Plus size={14} /> Quét Code
-          </button>
-
-          {/* Button Gmail Alert */}
-          <button
-            onClick={onOpenGmailSettings}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '7px 14px',
-              borderRadius: '8px',
-              fontSize: '0.8rem',
-              fontWeight: '600',
-              background: 'rgba(234, 67, 53, 0.15)',
-              color: '#fca5a5',
-              border: '1px solid rgba(234, 67, 53, 0.3)',
-              cursor: 'pointer'
-            }}
-            title="Cấu hình thông báo Gmail"
-          >
-            <Mail size={14} color="#ea4335" /> Gmail Alert
           </button>
 
           {/* Button Up Pro nếu đang ở gói FREE */}
@@ -335,17 +294,6 @@ export default function Navbar({
                     role="menuitem"
                     onClick={() => {
                       setAccountMenuOpen(false);
-                      onOpenGmailSettings();
-                    }}
-                    style={menuButtonStyle}
-                  >
-                    <Mail size={15} /> Gmail Notifications
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setAccountMenuOpen(false);
                       onLogout();
                     }}
                     style={{ ...menuButtonStyle, color: '#fca5a5' }}
@@ -366,13 +314,13 @@ export default function Navbar({
                 borderRadius: '8px',
                 fontSize: '0.8rem',
                 fontWeight: '700',
-                background: 'linear-gradient(135deg, #ea4335 0%, #4285f4 100%)',
+                background: 'linear-gradient(135deg, #24292f 0%, #6c8eef 100%)',
                 color: '#ffffff',
                 border: 'none',
                 cursor: 'pointer'
               }}
             >
-              <Mail size={14} /> Đăng Nhập Google
+              <User size={14} /> Đăng nhập
             </button>
           )}
 

@@ -1,5 +1,20 @@
 const API_ROOT = '/api/v1';
 
+async function readJsonResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    const error = new Error(
+      'Không kết nối được Lunar API. Hãy chạy backend Docker ở cổng 5050 '
+      + 'hoặc cấu hình VITE_API_PROXY_TARGET.'
+    );
+    error.status = 502;
+    error.payload = { error: error.message };
+    throw error;
+  }
+
+  return response.json().catch(() => ({}));
+}
+
 async function request(path, options = {}) {
   const response = await fetch(`${API_ROOT}${path}`, {
     credentials: 'include',
@@ -10,7 +25,7 @@ async function request(path, options = {}) {
     }
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const payload = await readJsonResponse(response);
   if (!response.ok) {
     const error = new Error(payload.error || payload.message || `HTTP ${response.status}`);
     error.status = response.status;
@@ -78,15 +93,6 @@ export const lunarApi = {
     method: 'POST',
     body: JSON.stringify(payload)
   }),
-  getCommunityAudits: () => request('/community/audits'),
-  createCommunityAudit: (payload) => request('/community/audits', {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  }),
-  upvoteCommunityAudit: (auditId) => request(`/community/audits/${encodeURIComponent(auditId)}/upvote`, {
-    method: 'POST'
-  }),
-  getCommunityLeaderboard: () => request('/community/leaderboard'),
   getDashboardAccess: () => request('/dashboard/access'),
   getDashboardOverview: (days = 28) => request(`/dashboard/overview?days=${days}`),
   getAdminOverview: () => request('/admin/overview'),
@@ -139,20 +145,6 @@ export const lunarApi = {
     body: JSON.stringify({ status, reason })
   }),
   runGuestPreviewScan: (payload) => request('/scans/guest-preview', {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  }),
-  renewFreeQuota: () => request('/scans/renew-quota', { method: 'POST' }),
-  getGmailNotificationStatus: () => request('/notifications/gmail/status'),
-  updateGmailNotificationPreferences: (payload) => request('/notifications/gmail/preferences', {
-    method: 'PUT',
-    body: JSON.stringify(payload)
-  }),
-  disconnectGmail: () => request('/notifications/gmail/disconnect', {
-    method: 'POST'
-  }),
-  getGmailNotificationHistory: () => request('/notifications/gmail/history'),
-  sendAuditReportEmail: (payload) => request('/notifications/gmail/audit-report', {
     method: 'POST',
     body: JSON.stringify(payload)
   })

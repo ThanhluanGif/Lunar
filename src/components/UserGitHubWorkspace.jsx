@@ -1,20 +1,110 @@
-import React, { useState, useEffect } from 'react';
-import { Github, RefreshCw, FolderGit2, ArrowRight, ShieldCheck, Loader2, Search, UserCheck, KeyRound } from 'lucide-react';
-import { fetchUserGitHubRepos } from '../services/githubService';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowRight,
+  CheckCircle2,
+  FolderGit2,
+  Github,
+  KeyRound,
+  Loader2,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  UploadCloud,
+  UserCheck
+} from 'lucide-react';
+import { fetchUserGitHubRepos, normalizeGitHubUsername } from '../services/githubService';
 import { lunarApi } from '../services/lunarApi';
 import { scanLocalFiles } from '../services/repoScanner';
 import DeepScanProgress from './DeepScanProgress';
 import RepoTreeView from './RepoTreeView';
 import FolderDropZone from './FolderDropZone';
 
-export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOpenAuth }) {
+const SCAN_MODES = [
+  {
+    id: 'connected',
+    label: 'GitHub của tôi',
+    description: 'Public & private',
+    icon: KeyRound
+  },
+  {
+    id: 'public',
+    label: 'Repo công khai',
+    description: 'Tìm theo username',
+    icon: Github
+  },
+  {
+    id: 'local',
+    label: 'Thư mục local',
+    description: 'Không cần upload',
+    icon: UploadCloud
+  }
+];
+
+function normalizeConnectedRepository(repository) {
+  return {
+    id: repository.id,
+    name: repository.name || repository.fullName?.split('/').pop() || 'repository',
+    fullName: repository.fullName,
+    htmlUrl: repository.repoUrl,
+    description: repository.isPrivate
+      ? 'Private repository được cấp quyền qua GitHub OAuth.'
+      : 'Repository được đồng bộ qua GitHub OAuth.',
+    stars: null,
+    forks: null,
+    language: repository.language || 'Unknown',
+    updatedAt: repository.updatedAt
+      ? new Date(repository.updatedAt).toLocaleDateString('vi-VN')
+      : 'chưa xác định',
+    isPrivate: Boolean(repository.isPrivate)
+  };
+}
+
+function projectFromDeepScan(result, repository) {
+  return {
+    id: result.projectId,
+    title: result.repository,
+    description: `Deep scan of ${result.filesScanned} files on ${result.branch}.`,
+    githubUrl: repository.htmlUrl,
+    language: repository.language,
+    overallScore: result.score,
+    cvssScore: result.severity?.critical ? 9.1 : result.severity?.high ? 7.5 : 0,
+    deepScan: result,
+    projectAttackSimulation: result.projectAttackSimulation || null,
+    files: (result.files || []).map((file) => ({
+      path: file.path,
+      githubBlobSha: file.sha,
+      language: file.language || 'plaintext',
+      content: file.content || '',
+      securityFindings: file.findings || [],
+      annotations: (file.findings || []).map((finding) => ({
+        line: finding.line,
+        type: finding.severity,
+        title: finding.title,
+        message: finding.recommendation,
+        cwe: finding.cwe
+      }))
+    }))
+  };
+}
+
+export default function UserGitHubWorkspace({ currentUser, onSelectProject }) {
+  const [scanMode, setScanMode] = useState('public');
   const [inputUsername, setInputUsername] = useState('');
   const [activeUsername, setActiveUsername] = useState('');
-  const [userRepos, setUserRepos] = useState([]);
+  const [connectedRepositories, setConnectedRepositories] = useState([]);
+  const [publicRepositories, setPublicRepositories] = useState([]);
+  const [connectedRepositoriesLoaded, setConnectedRepositoriesLoaded] = useState(false);
+  const [publicRepositoriesLoaded, setPublicRepositoriesLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [scanningRepoId, setScanningRepoId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [hasSynced, setHasSynced] = useState(false);
+  const [githubConnection, setGitHubConnection] = useState({
+    loading: false,
+    connected: false,
+    login: '',
+    lastSyncedAt: null
+  });
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStage, setScanStage] = useState('');
   const [scanError, setScanError] = useState('');
@@ -22,39 +112,131 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
 
   useEffect(() => {
     let cancelled = false;
-    if (!currentUser) return () => { cancelled = true; };
+    setScanError('');
 
+    if (!currentUser?.id) {
+      setGitHubConnection({ loading: false, connected: false, login: '', lastSyncedAt: null });
+      setScanMode('public');
+      return () => { cancelled = true; };
+    }
+
+    setGitHubConnection((current) => ({ ...current, loading: true }));
     lunarApi.getGitHubStatus()
-      .then((status) => {
-        const login = status.connected ? status.connection?.login : '';
-        if (cancelled || !login) return;
-        setInputUsername(login);
+      .then(async (status) => {
+        if (cancelled) return;
+        const connected = Boolean(status.connected);
+        const login = status.connection?.login || '';
+        setGitHubConnection({
+          loading: false,
+          connected,
+          login,
+          lastSyncedAt: status.connection?.lastSyncedAt || null
+        });
+
+        if (!connected) {
+          setScanMode('public');
+          return;
+        }
+
+        setScanMode('connected');
         setActiveUsername(login);
-        handleSyncRepos(login);
+        setInputUsername(login);
+        setLoading(true);
+        const response = await lunarApi.getGitHubRepositories();
+        if (cancelled) return;
+        setConnectedRepositories((response.repositories || []).map(normalizeConnectedRepository));
+        setConnectedRepositoriesLoaded(true);
       })
       .catch((error) => {
-        if (!cancelled && error.status !== 401) {
-          console.warn('Unable to restore GitHub connection status:', error.message);
+        if (cancelled) return;
+        setGitHubConnection((current) => ({ ...current, loading: false }));
+        if (error.status !== 401) {
+          setScanError(error.message || 'Không thể kiểm tra kết nối GitHub.');
         }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
 
     return () => { cancelled = true; };
   }, [currentUser?.id]);
 
-  const handleSyncRepos = async (targetUser = null) => {
-    const userToFetch = (targetUser || inputUsername || '').trim();
-    if (!userToFetch) return;
+  const repositories = scanMode === 'connected' ? connectedRepositories : publicRepositories;
+  const hasLoadedRepositories = scanMode === 'connected'
+    ? connectedRepositoriesLoaded
+    : publicRepositoriesLoaded;
+
+  const filteredRepositories = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return repositories;
+    return repositories.filter((repository) => (
+      repository.fullName?.toLowerCase().includes(query)
+      || repository.name?.toLowerCase().includes(query)
+      || repository.description?.toLowerCase().includes(query)
+      || repository.language?.toLowerCase().includes(query)
+    ));
+  }, [repositories, searchQuery]);
+
+  const selectMode = (mode) => {
+    setScanMode(mode);
+    setSearchQuery('');
+    setScanError('');
+    setScanFiles([]);
+    setScanProgress(0);
+    setScanStage('');
+
+    if (mode === 'connected' && githubConnection.connected) {
+      setActiveUsername(githubConnection.login);
+    }
+  };
+
+  const handleLoadPublicRepositories = async (targetUser = null) => {
+    const usernameInput = String(targetUser || inputUsername || '').trim();
+    if (!usernameInput) {
+      setScanError('Hãy nhập GitHub username trước khi tải repository.');
+      return;
+    }
 
     setLoading(true);
+    setScanError('');
+    setSearchQuery('');
     try {
-      const repos = await fetchUserGitHubRepos(userToFetch);
-      setUserRepos(repos);
-      setActiveUsername(userToFetch);
-      setHasSynced(true);
-    } catch (err) {
-      console.warn('Error fetching repos:', err);
+      const username = normalizeGitHubUsername(usernameInput);
+      const result = await fetchUserGitHubRepos(username);
+      setPublicRepositories(result);
+      setActiveUsername(username);
+      setPublicRepositoriesLoaded(true);
+    } catch (error) {
+      setPublicRepositories([]);
+      setPublicRepositoriesLoaded(true);
+      setScanError(error.message || 'Không thể tải repository công khai.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncConnectedRepositories = async () => {
+    if (!currentUser) {
+      await handleConnectGitHub();
+      return;
+    }
+    if (!githubConnection.connected) {
+      setScanError('Hãy kết nối GitHub OAuth trước khi đồng bộ repository cá nhân.');
+      return;
+    }
+
+    setSyncing(true);
+    setScanError('');
+    setSearchQuery('');
+    try {
+      const result = await lunarApi.syncGitHubRepositories();
+      setConnectedRepositories((result.repositories || []).map(normalizeConnectedRepository));
+      setConnectedRepositoriesLoaded(true);
+      setGitHubConnection((current) => ({ ...current, lastSyncedAt: new Date().toISOString() }));
+    } catch (error) {
+      setScanError(error.message || 'Không thể đồng bộ GitHub repositories.');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -71,51 +253,33 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
     }
   };
 
-  const handleAuditUserRepo = async (repo) => {
-    setScanningRepoId(repo.id);
+  const handleAuditRepository = async (repository) => {
     setScanError('');
+    if (!currentUser) {
+      await handleConnectGitHub();
+      return;
+    }
+    if (!githubConnection.connected) {
+      setScanMode('connected');
+      await handleConnectGitHub();
+      return;
+    }
+
+    setScanningRepoId(repository.id);
     setScanProgress(10);
-    setScanStage('Authorizing repository access…');
+    setScanStage('Đang xác thực quyền truy cập repository…');
     try {
-      if (!currentUser) {
-        onOpenAuth?.();
-        throw new Error('Sign in with GitHub before starting a deep scan.');
-      }
       setScanProgress(35);
-      setScanStage('Fetching the bounded GitHub file tree…');
-      const result = await lunarApi.deepScanRepository({ repository: repo.fullName });
+      setScanStage('Đang tải cây thư mục GitHub trong giới hạn an toàn…');
+      const result = await lunarApi.deepScanRepository({ repository: repository.fullName });
       setScanProgress(90);
-      setScanStage('Persisting findings and scan history…');
+      setScanStage('Đang lưu findings và lịch sử quét…');
       setScanFiles(result.files || []);
       setScanProgress(100);
-      setScanStage(`Complete: ${result.findings} findings in ${result.filesScanned} files.`);
-      onSelectProject({
-        id: result.projectId,
-        title: result.repository,
-        description: `Deep scan of ${result.filesScanned} files on ${result.branch}.`,
-        githubUrl: repo.htmlUrl,
-        language: repo.language,
-        overallScore: result.score,
-        cvssScore: result.severity?.critical ? 9.1 : result.severity?.high ? 7.5 : 0,
-        deepScan: result,
-        projectAttackSimulation: result.projectAttackSimulation || null,
-        files: (result.files || []).map((file) => ({
-          path: file.path,
-          githubBlobSha: file.sha,
-          language: file.language || 'plaintext',
-          content: file.content || '',
-          securityFindings: file.findings || [],
-          annotations: (file.findings || []).map((finding) => ({
-            line: finding.line,
-            type: finding.severity,
-            title: finding.title,
-            message: finding.recommendation,
-            cwe: finding.cwe
-          }))
-        }))
-      });
+      setScanStage(`Hoàn tất: ${result.findings} findings trong ${result.filesScanned} files.`);
+      onSelectProject?.(projectFromDeepScan(result, repository));
     } catch (error) {
-      setScanError(error.message);
+      setScanError(error.message || `Không thể quét ${repository.fullName}.`);
     } finally {
       setScanningRepoId(null);
     }
@@ -125,19 +289,20 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
     setScanError('');
     setScanFiles([]);
     setScanProgress(1);
-    setScanStage('Scanning local folder in your browser…');
+    setScanStage('Đang quét thư mục ngay trong trình duyệt…');
     try {
       const result = await scanLocalFiles(files, {
         repositoryName: files[0]?.webkitRelativePath?.split('/')[0] || 'local-project',
         onProgress: ({ percent, completed, total }) => {
           setScanProgress(percent);
-          setScanStage(`Scanned ${completed}/${total} local files…`);
+          setScanStage(`Đã quét ${completed}/${total} files local…`);
         }
       });
       setScanFiles(result.files);
+      setScanProgress(100);
       setScanStage(result.projectAttackSimulation
-        ? `Local scan complete: ${result.findings.length} SAST findings, ${result.projectAttackSimulation.findings.length} attack chains.`
-        : `Local scan complete: ${result.findings.length} findings.`);
+        ? `Hoàn tất: ${result.findings.length} SAST findings, ${result.projectAttackSimulation.findings.length} attack chains.`
+        : `Hoàn tất: ${result.findings.length} findings.`);
       onSelectProject?.({
         id: `local-${Date.now()}`,
         title: files[0]?.webkitRelativePath?.split('/')[0] || 'Local Project',
@@ -149,84 +314,252 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
         files: result.files
       });
     } catch (error) {
-      setScanError(error.message);
+      setScanError(error.message || 'Không thể quét thư mục local.');
     }
   };
 
-  const filteredRepos = userRepos.filter(r =>
-    r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (r.description || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const sourceLabel = scanMode === 'connected'
+    ? githubConnection.login
+    : scanMode === 'public' ? activeUsername : '';
 
   return (
-    <div className="glass-panel" style={{ padding: '28px', marginBottom: '40px', borderColor: 'var(--border-color)' }}>
-      
-      {/* Workspace Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '8px',
-            background: '#2563eb',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 2px 10px rgba(37, 99, 235, 0.3)'
-          }}>
-            <FolderGit2 size={22} color="#fff" />
-          </div>
-          <div>
-            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.3rem', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              Đồng Bộ GitHub Repositories Cá Nhân
-              {activeUsername && (
-                <span className="badge badge-purple" style={{ fontSize: '0.75rem' }}>
-                  <Github size={12} /> @{activeUsername}
-                </span>
-              )}
-            </h2>
-            <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)' }}>
-              Đăng nhập hoặc nhập Username GitHub của bạn để AI đọc trực tiếp danh sách dự án thật của bạn
-            </p>
-          </div>
+    <section
+      aria-label="GitHub repository quick scan"
+      data-testid="github-quick-scan"
+      className="quick-scan-workspace"
+    >
+      <div className="quick-scan-heading">
+        <div style={{
+          width: '48px',
+          height: '48px',
+          borderRadius: '13px',
+          background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
+          display: 'grid',
+          placeItems: 'center',
+          boxShadow: '0 8px 30px rgba(37, 99, 235, 0.28)',
+          flexShrink: 0
+        }}>
+          <ShieldCheck size={25} color="#fff" />
         </div>
+        <div style={{ minWidth: 0 }}>
+          <div className="quick-scan-kicker">QUICK SCAN WORKSPACE</div>
+          <h2>Quét repository trong một luồng</h2>
+          <p>Chọn nguồn mã, chọn repository và chạy SAST + AI review ngay tại đây.</p>
+        </div>
+        <div className={`quick-scan-connection ${githubConnection.connected ? 'connected' : ''}`}>
+          {githubConnection.loading ? (
+            <><Loader2 size={14} className="spin" /> Đang kiểm tra GitHub</>
+          ) : githubConnection.connected ? (
+            <><CheckCircle2 size={14} /> Đã kết nối @{githubConnection.login}</>
+          ) : (
+            <><Github size={14} /> Chưa kết nối GitHub</>
+          )}
+        </div>
+      </div>
 
-        {/* Dynamic Controls for Any User */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <form onSubmit={(e) => { e.preventDefault(); handleSyncRepos(); }} style={{ display: 'flex', gap: '8px' }}>
-            <div style={{ position: 'relative' }}>
-              <Github size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '10px' }} />
+      <div className="quick-scan-modes" role="tablist" aria-label="Chọn nguồn mã để quét">
+        {SCAN_MODES.map((mode) => {
+          const Icon = mode.icon;
+          const active = scanMode === mode.id;
+          return (
+            <button
+              key={mode.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => selectMode(mode.id)}
+              className={`quick-scan-mode ${active ? 'active' : ''}`}
+            >
+              <Icon size={18} />
+              <span>
+                <strong>{mode.label}</strong>
+                <small>{mode.description}</small>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="quick-scan-controls">
+        {scanMode === 'connected' && (
+          githubConnection.connected ? (
+            <>
+              <div className="quick-scan-source">
+                <Github size={17} color="#86efac" />
+                <span>
+                  <strong>@{githubConnection.login}</strong>
+                  <small>
+                    {githubConnection.lastSyncedAt
+                      ? `Đồng bộ ${new Date(githubConnection.lastSyncedAt).toLocaleString('vi-VN')}`
+                      : 'Sẵn sàng đồng bộ repository'}
+                  </small>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleSyncConnectedRepositories}
+                disabled={syncing || Boolean(scanningRepoId)}
+                className="btn btn-primary btn-sm"
+              >
+                <RefreshCw size={14} className={syncing ? 'spin' : ''} />
+                {syncing ? 'Đang đồng bộ…' : 'Đồng bộ repositories'}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="quick-scan-source">
+                <KeyRound size={17} color="#c4b5fd" />
+                <span>
+                  <strong>Kết nối GitHub OAuth</strong>
+                  <small>Cho phép quét repository public/private bằng token mã hóa.</small>
+                </span>
+              </div>
+              <button type="button" onClick={handleConnectGitHub} className="btn btn-emerald btn-sm">
+                <UserCheck size={14} /> {currentUser ? 'Kết Nối GitHub' : 'Đăng Nhập GitHub'}
+              </button>
+            </>
+          )
+        )}
+
+        {scanMode === 'public' && (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleLoadPublicRepositories();
+            }}
+            className="quick-scan-public-form"
+          >
+            <div className="quick-scan-username">
+              <Github size={16} />
               <input
                 type="text"
-                placeholder="Nhập GitHub Username của bạn..."
-                className="input-control"
+                aria-label="GitHub username"
+                placeholder="Username hoặc URL GitHub..."
                 value={inputUsername}
-                onChange={(e) => setInputUsername(e.target.value)}
-                style={{ paddingLeft: '36px', height: '36px', fontSize: '0.82rem', width: '220px' }}
+                onChange={(event) => setInputUsername(event.target.value)}
+                autoComplete="off"
               />
             </div>
             <button
               type="submit"
               disabled={loading || !inputUsername.trim()}
               className="btn btn-primary btn-sm"
-              style={{ gap: '6px' }}
             >
-              <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-              Tải Repos
+              <RefreshCw size={14} className={loading ? 'spin' : ''} />
+              {loading ? 'Đang tải…' : 'Tải Repos'}
             </button>
+            {!githubConnection.connected && (
+              <button type="button" onClick={handleConnectGitHub} className="btn btn-secondary btn-sm">
+                <KeyRound size={14} /> Kết Nối GitHub
+              </button>
+            )}
           </form>
+        )}
 
-          <button
-            onClick={handleConnectGitHub}
-            className="btn btn-emerald btn-sm"
-            style={{ gap: '6px' }}
-          >
-            <UserCheck size={14} /> {currentUser ? 'Kết Nối GitHub' : 'Đăng Nhập GitHub'}
-          </button>
-        </div>
+        {scanMode === 'local' && (
+          <div className="quick-scan-local-note">
+            <UploadCloud size={18} color="#60a5fa" />
+            <span>
+              <strong>Mã nguồn được đọc từ trình duyệt</strong>
+              <small>Chọn thư mục dự án; các thư mục build và dependency sẽ được bỏ qua.</small>
+            </span>
+          </div>
+        )}
       </div>
 
-      <FolderDropZone onFiles={handleLocalFolder} disabled={Boolean(scanningRepoId)} />
+      {scanMode === 'local' ? (
+        <FolderDropZone onFiles={handleLocalFolder} disabled={Boolean(scanningRepoId)} />
+      ) : (
+        <div className="quick-scan-results">
+          <div className="quick-scan-results-toolbar">
+            <div>
+              {loading
+                ? 'Đang tải repository…'
+                : hasLoadedRepositories
+                  ? `${filteredRepositories.length} repository${sourceLabel ? ` · @${sourceLabel}` : ''}`
+                  : scanMode === 'connected'
+                    ? 'Đồng bộ GitHub để chọn repository'
+                    : 'Nhập username để xem repository công khai'}
+            </div>
+            {hasLoadedRepositories && repositories.length > 0 && (
+              <label className="quick-scan-filter">
+                <Search size={14} />
+                <input
+                  type="search"
+                  placeholder="Lọc repository…"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                />
+              </label>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="quick-scan-empty">
+              <Loader2 size={28} className="spin" />
+              <strong>Đang tải danh sách repository…</strong>
+            </div>
+          ) : !hasLoadedRepositories ? (
+            <div className="quick-scan-empty">
+              <FolderGit2 size={30} />
+              <strong>
+                {scanMode === 'connected' ? 'Chưa có repository đã đồng bộ' : 'Sẵn sàng tải repository công khai'}
+              </strong>
+              <span>
+                {scanMode === 'connected'
+                  ? 'Kết nối GitHub rồi đồng bộ để bắt đầu quick scan.'
+                  : 'Bạn có thể xem repository public trước; deep scan cần đăng nhập và GitHub OAuth.'}
+              </span>
+            </div>
+          ) : repositories.length === 0 ? (
+            <div className="quick-scan-empty">
+              <FolderGit2 size={28} />
+              <strong>Không có repository công khai</strong>
+              <span>@{sourceLabel || 'user'} chưa có repository public hoặc GitHub API chưa trả dữ liệu.</span>
+            </div>
+          ) : filteredRepositories.length === 0 ? (
+            <div className="quick-scan-empty">
+              <Search size={28} />
+              <strong>Không tìm thấy repository phù hợp</strong>
+              <span>Thử đổi từ khóa lọc hoặc đồng bộ lại GitHub.</span>
+            </div>
+          ) : (
+            <div className="quick-scan-repository-list">
+              {filteredRepositories.map((repository) => (
+                <article key={repository.id || repository.fullName} className="quick-scan-repository">
+                  <div className="quick-scan-repository-main">
+                    <Github size={18} color="#60a5fa" />
+                    <div>
+                      <strong>{repository.fullName}</strong>
+                      <span>{repository.description}</span>
+                      <small>
+                        {repository.language || 'Unknown'}
+                        {' · '}
+                        {repository.isPrivate ? 'Private' : 'Public'}
+                        {repository.stars !== null ? ` · ⭐ ${repository.stars} · 🍴 ${repository.forks}` : ''}
+                        {repository.updatedAt ? ` · cập nhật ${repository.updatedAt}` : ''}
+                      </small>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleAuditRepository(repository)}
+                    disabled={Boolean(scanningRepoId)}
+                    className="btn btn-primary btn-sm"
+                  >
+                    {scanningRepoId === repository.id ? (
+                      <><Loader2 size={14} className="spin" /> Đang quét…</>
+                    ) : (
+                      <><ShieldCheck size={14} /> Quick Scan <ArrowRight size={14} /></>
+                    )}
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <DeepScanProgress
         active={Boolean(scanningRepoId) || (scanProgress > 0 && scanProgress < 100)}
         progress={scanProgress}
@@ -234,121 +567,6 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
         error={scanError}
       />
       <RepoTreeView files={scanFiles} />
-
-      {/* Main Content State */}
-      {loading ? (
-        <div style={{ padding: '40px', textAlign: 'center', background: '#1e293b', borderRadius: 'var(--radius-md)' }}>
-          <Loader2 size={32} color="#3b82f6" style={{ animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
-          <div style={{ fontSize: '0.92rem', color: 'var(--text-secondary)' }}>
-            Đang kết nối GitHub API & tải danh sách dự án của @{inputUsername}...
-          </div>
-        </div>
-      ) : !hasSynced ? (
-        <div style={{
-          padding: '36px 20px',
-          textAlign: 'center',
-          background: '#0f172a',
-          borderRadius: 'var(--radius-md)',
-          border: '1px dashed var(--border-color)'
-        }}>
-          <Github size={36} color="var(--text-muted)" style={{ marginBottom: '10px' }} />
-          <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: '#fff', marginBottom: '6px' }}>
-            Chưa đồng bộ Repository GitHub
-          </h3>
-          <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', maxWidth: '480px', margin: '0 auto 16px auto' }}>
-            Nhập <strong>GitHub Username</strong> của bạn ở ô trên hoặc bấm <strong>Đăng nhập GitHub</strong> để ứng dụng tự động hiển thị các dự án thật của bạn.
-          </p>
-        </div>
-      ) : filteredRepos.length === 0 ? (
-        <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
-          Không tìm thấy Repository công khai nào của @{activeUsername}.
-        </div>
-      ) : (
-        <>
-          {/* Search Filter for Repos */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              Hiển thị <strong>{filteredRepos.length}</strong> dự án GitHub thật của <strong>@{activeUsername}</strong>:
-            </div>
-            <div style={{ position: 'relative' }}>
-              <Search size={14} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '9px' }} />
-              <input
-                type="text"
-                placeholder="Lọc tên repo..."
-                className="input-control"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ paddingLeft: '32px', height: '32px', fontSize: '0.78rem', width: '180px' }}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
-            {filteredRepos.map((repo) => (
-              <div
-                key={repo.id}
-                className="glass-card"
-                style={{
-                  padding: '20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  border: '1px solid var(--border-color)',
-                  background: '#1e293b'
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Github size={18} color="#60a5fa" />
-                      <h3 style={{ fontSize: '1.02rem', fontWeight: '700', fontFamily: 'var(--font-mono)', color: '#fff' }}>
-                        {repo.name}
-                      </h3>
-                    </div>
-                    <span className="badge badge-cyan" style={{ fontSize: '0.72rem' }}>
-                      {repo.language}
-                    </span>
-                  </div>
-
-                  <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: '1.5', minHeight: '38px' }}>
-                    {repo.description}
-                  </p>
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <span>⭐ {repo.stars} stars</span>
-                      <span>🍴 {repo.forks} forks</span>
-                    </div>
-                    <span>Cập nhật {repo.updatedAt}</span>
-                  </div>
-
-                  <button
-                    onClick={() => handleAuditUserRepo(repo)}
-                    disabled={scanningRepoId === repo.id}
-                    className="btn btn-primary btn-sm"
-                    style={{ width: '100%', gap: '8px' }}
-                  >
-                    {scanningRepoId === repo.id ? (
-                      <>
-                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                        <span>Đang Quét SAST & AI Review...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck size={14} />
-                        <span>Quét Bug & AI Auto-Fix Repo Này</span>
-                        <ArrowRight size={14} />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+    </section>
   );
 }
