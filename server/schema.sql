@@ -102,6 +102,11 @@ CREATE TABLE IF NOT EXISTS quota_logs (
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE quota_logs ADD COLUMN IF NOT EXISTS action_date DATE NOT NULL DEFAULT CURRENT_DATE;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quota_logs_daily_renewal
+    ON quota_logs(user_id, action_type, action_date)
+    WHERE action_type = 'KARMA_RENEWAL';
+
 -- 6. Community Audits & Discussions Table
 CREATE TABLE IF NOT EXISTS community_audits (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -301,3 +306,18 @@ CREATE TABLE IF NOT EXISTS payment_webhook_events (
     status VARCHAR(30) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 19. Durable GitHub webhook replay protection and processing receipts
+CREATE TABLE IF NOT EXISTS github_webhook_deliveries (
+    delivery_id VARCHAR(255) PRIMARY KEY,
+    event_type VARCHAR(80) NOT NULL,
+    action VARCHAR(80),
+    repository VARCHAR(255),
+    payload_hash CHAR(64) NOT NULL,
+    status VARCHAR(30) NOT NULL CHECK (status IN ('RECEIVED', 'PROCESSED', 'IGNORED', 'FAILED')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_github_webhook_deliveries_created
+    ON github_webhook_deliveries(created_at DESC);

@@ -17,6 +17,7 @@ const {
   sendAuditReportEmail,
   sendCriticalSecurityAlert
 } = require('../services/gmailService');
+const { UUID_PATTERN, loadOwnedScanSummary } = require('../services/reportService');
 
 const router = express.Router();
 const cookieSecure = process.env.COOKIE_SECURE !== undefined
@@ -393,14 +394,27 @@ router.get('/gmail/history', verifyToken, async (req, res) => {
 router.post('/gmail/audit-report', verifyToken, async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
-  const projectTitle = String(req.body?.projectTitle || 'Lunar Security Audit').slice(0, 255);
+  const scanId = String(req.body?.scanId || '').trim();
+  let projectTitle;
+  let scanSummary;
+  if (UUID_PATTERN.test(scanId)) {
+    const report = await loadOwnedScanSummary(pool, scanId, req.user.id);
+    if (!report) return res.status(404).json({ success: false, error: 'Scan not found.' });
+    projectTitle = report.projectTitle;
+    scanSummary = report.summary;
+  } else if (process.env.GMAIL_DRY_RUN === 'true') {
+    projectTitle = String(req.body?.projectTitle || 'Lunar Security Audit').slice(0, 255);
+    scanSummary = req.body?.scanSummary;
+  } else {
+    return res.status(400).json({ success: false, error: 'A verified scanId is required.' });
+  }
   try {
     const identity = await resolveDeliveryIdentity(pool, req.user.id);
     const delivery = await sendAuditReportEmail(
       identity,
       identity.recipientEmail,
       projectTitle,
-      req.body?.scanSummary
+      scanSummary
     );
     await recordDelivery(pool, {
       userId: req.user.id,

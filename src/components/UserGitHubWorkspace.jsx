@@ -101,8 +101,9 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
         projectAttackSimulation: result.projectAttackSimulation || null,
         files: (result.files || []).map((file) => ({
           path: file.path,
+          githubBlobSha: file.sha,
           language: file.language || 'plaintext',
-          content: '// Source analyzed securely on the Lunar backend.',
+          content: file.content || '',
           securityFindings: file.findings || [],
           annotations: (file.findings || []).map((finding) => ({
             line: finding.line,

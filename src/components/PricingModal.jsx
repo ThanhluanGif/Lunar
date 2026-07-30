@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, ShieldCheck, Sparkles, Zap, Bot, CreditCard, QrCode, ArrowRight, Loader2, Award, Mail } from 'lucide-react';
-import { sendProInvoiceGmail } from '../services/gmailMailerService';
 import { lunarApi } from '../services/lunarApi';
 
 export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', currentUser, onUpgradeSuccess, initialPlan = 'PRO' }) {
@@ -11,8 +10,10 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
   const [countdown, setCountdown] = useState(600); // 10 minutes timer
   const [paymentOrder, setPaymentOrder] = useState(null);
   const [paymentError, setPaymentError] = useState('');
+  const [plans, setPlans] = useState([]);
 
   useEffect(() => {
+    let cancelled = false;
     if (isOpen) {
       const planToSet = initialPlan && initialPlan !== 'FREE' ? initialPlan : 'PRO';
       setSelectedPlan(planToSet);
@@ -20,14 +21,39 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
       setCountdown(600);
       setPaymentError('');
       setPaymentOrder(null);
-      if (currentUser) {
-        lunarApi.createPaymentOrder(planToSet, 'VIETQR')
-          .then(({ order }) => setPaymentOrder(order))
-          .catch((error) => setPaymentError(error.message));
-      } else {
-        setPaymentError('Sign in before creating a payment order.');
-      }
+      lunarApi.getPaymentPlans()
+        .then(async ({ plans: serverPlans }) => {
+          if (cancelled) return;
+          const decoratedPlans = serverPlans.map((plan) => ({
+            ...plan,
+            price: plan.amount === 0
+              ? '0đ'
+              : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: plan.currency }).format(plan.amount),
+            period: plan.billingPeriod === 'MONTH' ? '/ tháng' : 'mãi mãi',
+            badge: plan.popular ? 'Khuyên dùng' : plan.id,
+            color: plan.id === 'PRO'
+              ? 'var(--accent-purple)'
+              : plan.id === 'ENTERPRISE'
+                ? 'var(--accent-cyan)'
+                : 'var(--text-secondary)',
+            cta: plan.id === 'FREE' ? 'Đang sử dụng' : `Nâng cấp ${plan.id}`
+          }));
+          setPlans(decoratedPlans);
+          if (!decoratedPlans.some((plan) => plan.id === planToSet)) {
+            throw new Error('Gói cước được chọn không còn khả dụng.');
+          }
+          if (!currentUser) {
+            setPaymentError('Sign in before creating a payment order.');
+            return;
+          }
+          const { order } = await lunarApi.createPaymentOrder(planToSet, 'VIETQR');
+          if (!cancelled) setPaymentOrder(order);
+        })
+        .catch((error) => {
+          if (!cancelled) setPaymentError(error.message);
+        });
     }
+    return () => { cancelled = true; };
   }, [isOpen, initialPlan, currentUser]);
 
   useEffect(() => {
@@ -40,61 +66,23 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
 
   if (!isOpen) return null;
 
-  const plans = [
-    {
-      id: 'FREE',
-      name: 'Gói Miễn Phí (Free)',
-      price: '0đ',
-      period: 'mãi mãi',
-      badge: 'Cơ Bản',
-      color: 'var(--text-secondary)',
-      features: [
-        '3 Lượt Quét Mã Nguồn / Ngày',
-        'Xem Điểm CVSS v3.1 Tổng Quan',
-        'Xem Đếm Số Lượng Lỗi (Critical/High)',
-        'Tham Gia Thảo Luận Cộng Đồng Cyber'
-      ],
-      cta: 'Đang Sử Dụng'
-    },
-    {
-      id: 'PRO',
-      name: 'Gói Chuyên Nghiệp (Pro)',
-      price: '290.000đ',
-      period: '/ tháng',
-      badge: 'Khuyên Dùng',
-      popular: true,
-      color: 'var(--accent-purple)',
-      features: [
-        'Không Giới Hạn Lượt Quét Mã Nguồn',
-        'Mở Khóa Chi Tiết Dòng Code & Line AI Warning',
-        'Bộ Công Cụ Vá Code Tự Động (AI Code Repair Workbench)',
-        'Side-by-Side Diff & Tinh Chỉnh Prompt AI Fix',
-        'Xuất Báo Cáo Audit PDF & Nhận Hóa Đơn Qua Gmail'
-      ],
-      cta: 'Nâng Cấp Gói Pro'
-    },
-    {
-      id: 'ENTERPRISE',
-      name: 'Gói Enterprise Git Bot',
-      price: '690.000đ',
-      period: '/ tháng',
-      badge: 'Doanh Nghiệp / Bot',
-      color: 'var(--accent-cyan)',
-      features: [
-        'Tất cả tính năng của gói Pro',
-        'GitHub Security Bot Tự Động Tạo Pull Request',
-        'Tích Hợp Webhook & CI/CD Action Workflow',
-        'Tự Động Vá Lỗi Mã Nguồn Mỗi Khi Push Code',
-        'Hỗ Trợ Ưu Tiên 24/7 Qua Gmail Channel'
-      ],
-      cta: 'Mua Gói Enterprise Bot'
-    }
-  ];
-
-  const handleSelectPlan = (planId) => {
+  const handleSelectPlan = async (planId) => {
     if (planId === 'FREE') return;
     setSelectedPlan(planId);
     setPaymentStep('qr_payment');
+    setPaymentOrder(null);
+    setPaymentError('');
+    setCountdown(600);
+    if (!currentUser) {
+      setPaymentError('Sign in before creating a payment order.');
+      return;
+    }
+    try {
+      const { order } = await lunarApi.createPaymentOrder(planId, 'VIETQR');
+      setPaymentOrder(order);
+    } catch (error) {
+      setPaymentError(error.message);
+    }
   };
 
   const handleConfirmPayment = async () => {
@@ -118,21 +106,6 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
     } finally {
       setIsVerifying(false);
     }
-    return;
-
-    const targetPlan = plans.find(p => p.id === selectedPlan) || plans[1];
-    const transactionId = `INV-LUNAR-${Date.now().toString().slice(-6)}`;
-    const userEmail = currentUser?.email || 'developer@gmail.com';
-    const userName = currentUser?.name || 'Developer';
-
-    setTimeout(async () => {
-      // Send Gmail Invoice Receipt
-      await sendProInvoiceGmail(userEmail, userName, targetPlan, transactionId);
-
-      setIsVerifying(false);
-      setPaymentStep('success');
-      onUpgradeSuccess(selectedPlan);
-    }, 1500);
   };
 
   const formatTime = (seconds) => {
@@ -153,7 +126,12 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
       justifyContent: 'center',
       padding: '20px'
     }}>
-      <div className="glass-panel" style={{
+      <div
+        className="glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pricing-dialog-title"
+        style={{
         maxWidth: paymentStep === 'select' ? '1000px' : '520px',
         width: '100%',
         padding: '32px',
@@ -166,6 +144,7 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
         {/* Close Button */}
         <button
           onClick={onClose}
+          aria-label="Đóng bảng giá"
           style={{
             position: 'absolute',
             top: '20px',
@@ -279,7 +258,7 @@ export default function PricingModal({ isOpen, onClose, currentTier = 'FREE', cu
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <QrCode size={24} color="var(--accent-purple)" />
-                <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.4rem', fontWeight: '800' }}>
+                  <h3 id="pricing-dialog-title" style={{ fontFamily: 'var(--font-heading)', fontSize: '1.4rem', fontWeight: '800' }}>
                   Thanh Toán Nâng Cấp Gói {selectedPlan}
                 </h3>
               </div>

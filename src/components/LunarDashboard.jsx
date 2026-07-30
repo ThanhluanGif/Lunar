@@ -35,125 +35,6 @@ export default function LunarDashboard({
     return () => { mounted = false; };
   }, [currentUser]);
 
-  // Repositories matching exact Figma mockup
-  const initialRepos = [
-    {
-      id: 'repo-1',
-      name: 'frontend',
-      lang: 'TypeScript',
-      prs: 12,
-      score: 94,
-      scoreColor: '#10b981',
-      issues: 3,
-      lastUpdated: '2 min ago',
-      status: 'passing',
-      statusColor: '#10b981'
-    },
-    {
-      id: 'repo-2',
-      name: 'api-server',
-      lang: 'Go',
-      prs: 8,
-      score: 81,
-      scoreColor: '#3b82f6',
-      issues: 7,
-      lastUpdated: '18 min ago',
-      status: 'reviewing',
-      statusColor: '#3b82f6'
-    },
-    {
-      id: 'repo-3',
-      name: 'mobile-app',
-      lang: 'Swift',
-      prs: 5,
-      score: 97,
-      scoreColor: '#10b981',
-      issues: 1,
-      lastUpdated: '1 hr ago',
-      status: 'passing',
-      statusColor: '#10b981'
-    },
-    {
-      id: 'repo-4',
-      name: 'data-pipeline',
-      lang: 'Python',
-      prs: 3,
-      score: 68,
-      scoreColor: '#f97316',
-      issues: 12,
-      lastUpdated: '3 hr ago',
-      status: 'failed',
-      statusColor: '#ef4444'
-    },
-    {
-      id: 'repo-5',
-      name: 'infra',
-      lang: 'HCL',
-      prs: 2,
-      score: 88,
-      scoreColor: '#3b82f6',
-      issues: 2,
-      lastUpdated: '5 hr ago',
-      status: 'passing',
-      statusColor: '#10b981'
-    }
-  ];
-
-  // Recent Reviews matching exact Figma mockup
-  const recentReviews = [
-    {
-      id: 'pr-148',
-      prNumber: '#148',
-      title: 'feat: add OAuth2 login with GitHub',
-      repo: 'frontend',
-      time: '3 min ago',
-      author: 'Sarah Chen',
-      avatar: 'SC',
-      avatarBg: '#7c3aed',
-      autoFixed: true,
-      status: 'failed'
-    },
-    {
-      id: 'pr-147',
-      prNumber: '#147',
-      title: 'fix: resolve race condition in job queue',
-      repo: 'api-server',
-      time: '22 min ago',
-      author: 'Michael Ross',
-      avatar: 'MR',
-      avatarBg: '#3b82f6',
-      autoFixed: false,
-      status: 'passing'
-    },
-    {
-      id: 'pr-146',
-      prNumber: '#146',
-      title: 'refactor: extract auth hooks into separate module',
-      repo: 'mobile-app',
-      time: '1 hr ago',
-      author: 'John Doe',
-      avatar: 'JD',
-      avatarBg: '#059669',
-      autoFixed: true,
-      status: 'passing'
-    }
-  ];
-
-  // Review Activity Bar Chart Heights (28 days data)
-  const barData = [
-    35, 42, 28, 55, 62, 48, 70, 85, 60, 45, 
-    68, 75, 52, 90, 82, 64, 58, 72, 88, 95, 
-    78, 62, 84, 91, 73, 65, 80, 86
-  ];
-
-  // Issue Types Breakdowns
-  const issueTypes = [
-    { label: 'Security', count: 4, color: '#ef4444' },
-    { label: 'Bug', count: 9, color: '#f97316' },
-    { label: 'Style', count: 6, color: '#3b82f6' },
-    { label: 'Perf', count: 6, color: '#a855f7' }
-  ];
-
   const liveRepos = dashboard?.repositories?.map((repo) => {
     const score = Number(repo.securityScore || 0);
     const passing = score >= 80;
@@ -841,7 +722,7 @@ export default function LunarDashboard({
                       title: repo.name,
                       description: `${repo.lang} Repository with ${repo.prs} pull requests monitored by Lunar.`,
                       githubUrl: repo.repoUrl || `https://github.com/${repo.name}`,
-                      files: [{ path: 'src/main.ts', content: `// Repository: ${repo.name}\nfunction handleProcess() {\n  console.log("Audit complete");\n}` }]
+                      files: []
                     })}
                     style={{
                       display: 'flex',

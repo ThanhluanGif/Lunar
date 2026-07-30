@@ -1,35 +1,44 @@
 const express = require('express');
+const { verifyToken } = require('../middleware/auth');
+const { getPool } = require('../db/connection');
+const { createAuditReportPdf } = require('../services/gmailService');
+const { UUID_PATTERN, loadOwnedScanSummary, safeFilename } = require('../services/reportService');
+
 const router = express.Router();
 
-/**
- * POST /api/v1/reports/export
- * Generates structured Executive Security Audit Report JSON / HTML format
- */
-router.post('/export', (req, res) => {
-  const { projectName, cvssScore, vulnerabilities, author } = req.body;
-
-  const reportData = {
-    reportId: `LUNAR-AUDIT-${Date.now()}`,
-    generatedAt: new Date().toISOString(),
-    organization: 'Lunar.dev AI Security Workbench',
-    project: {
-      name: projectName || 'Lunar Security Audit Target',
-      author: author || 'Lead Security Engineer',
-      cvssScore: cvssScore || 9.2,
-      riskLevel: cvssScore >= 9.0 ? 'CRITICAL' : cvssScore >= 7.0 ? 'HIGH' : 'MEDIUM'
-    },
-    executiveSummary: 'AI SAST Scanner executed comprehensive vulnerability assessment based on OWASP Top 10 (2025) and CWE standards.',
-    vulnerabilities: vulnerabilities || [
-      { cve: 'CWE-798', severity: 'CRITICAL', title: 'Hardcoded Secret', line: 12 },
-      { cve: 'CWE-89', severity: 'HIGH', title: 'SQL Injection via String Concat', line: 45 }
-    ],
-    downloadUrl: `/reports/export/pdf/LUNAR-AUDIT-${Date.now()}.pdf`
-  };
-
-  res.json({
+router.post('/export', verifyToken, async (req, res) => {
+  const scanId = String(req.body?.scanId || '').trim();
+  if (!UUID_PATTERN.test(scanId)) {
+    return res.status(400).json({ success: false, error: 'A valid scanId is required.' });
+  }
+  const pool = getPool();
+  if (!pool) return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
+  const report = await loadOwnedScanSummary(pool, scanId, req.user.id);
+  if (!report) return res.status(404).json({ success: false, error: 'Scan not found.' });
+  return res.json({
     success: true,
-    report: reportData
+    report: {
+      scanId: report.scanId,
+      projectName: report.projectTitle,
+      downloadUrl: `/api/v1/reports/export/pdf/${encodeURIComponent(report.scanId)}`
+    }
   });
+});
+
+router.get('/export/pdf/:scanId', verifyToken, async (req, res) => {
+  const scanId = String(req.params.scanId || '').trim();
+  if (!UUID_PATTERN.test(scanId)) {
+    return res.status(400).json({ success: false, error: 'A valid scanId is required.' });
+  }
+  const pool = getPool();
+  if (!pool) return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
+  const report = await loadOwnedScanSummary(pool, scanId, req.user.id);
+  if (!report) return res.status(404).json({ success: false, error: 'Scan not found.' });
+  const pdf = createAuditReportPdf(report.projectTitle, report.summary);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeFilename(report.projectTitle)}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  return res.send(pdf);
 });
 
 module.exports = router;

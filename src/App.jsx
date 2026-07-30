@@ -20,7 +20,6 @@ import AdminDashboard from './components/AdminDashboard';
 import LunarDashboard from './components/LunarDashboard';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
-import { supabaseDb, supabase } from './services/supabaseClient';
 import { lunarApi } from './services/lunarApi';
 import { Moon, ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
 
@@ -97,66 +96,6 @@ export default function App() {
     }
     setIsPricingOpen(true);
   };
-
-  // Initialize Supabase Audits & Restore Auth Session
-  useEffect(() => {
-    // Legacy Supabase identity is intentionally disabled; Lunar API roles are authoritative.
-    return undefined;
-
-    async function loadInitialData() {
-      try {
-        const audits = await supabaseDb.getCodeAudits();
-        if (audits && audits.length > 0) {
-          console.log('Loaded Supabase Audits:', audits.length);
-        }
-
-        // Restore Supabase Auth session if active
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const userHandle = session.user.email?.split('@')[0] || 'developer';
-          const sbUser = {
-            id: session.user.id,
-            nickname: `@${userHandle}`,
-            name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || userHandle,
-            email: session.user.email,
-            tier: 'FREE',
-            karma_points: 1000,
-            avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || `https://lh3.googleusercontent.com/a/default-user=s96-c`
-          };
-          setCurrentUser(sbUser);
-          setCurrentTier(sbUser.tier || 'FREE');
-          localStorage.setItem('lunar_auth_session', JSON.stringify(sbUser));
-        }
-      } catch (e) {
-        console.warn('Initial session restore notice:', e);
-      }
-    }
-    loadInitialData();
-
-    // Listen to Google OAuth redirect auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('⚡ [Supabase Auth] Auth state change event:', event);
-      if (session?.user) {
-        const userHandle = session.user.email?.split('@')[0] || 'developer';
-        const googleUser = {
-          id: session.user.id,
-          nickname: `@${userHandle}`,
-          name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || userHandle,
-          email: session.user.email,
-          tier: 'FREE',
-          karma_points: 1000,
-          avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || `https://lh3.googleusercontent.com/a/default-user=s96-c`
-        };
-        setCurrentUser(googleUser);
-        setCurrentTier('FREE');
-        localStorage.setItem('lunar_auth_session', JSON.stringify(googleUser));
-      }
-    });
-
-    return () => {
-      subscription?.unsubscribe();
-    };
-  }, []);
 
   // TASK-01: Handle GitHub OAuth redirect result (?github_auth=success|failed)
   useEffect(() => {
@@ -329,9 +268,6 @@ export default function App() {
     setCurrentUser(null);
     setCurrentTier('FREE');
     localStorage.removeItem('lunar_auth_session');
-    try {
-      supabase.auth.signOut();
-    } catch (e) {}
     if (activeTab === 'admin') setActiveTab('explore');
   };
 
@@ -351,19 +287,28 @@ export default function App() {
     localStorage.setItem('lunar_auth_session', JSON.stringify(updated));
   };
 
-  const handleRenewFreeQuota = () => {
+  const handleRenewFreeQuota = async () => {
     if (!currentUser) {
       setIsAuthOpen(true);
       return;
     }
-    const updated = {
-      ...currentUser,
-      daily_scans_used: Math.max(0, (currentUser.daily_scans_used || 0) - 3),
-      karma_points: (currentUser.karma_points || 100) + 50
-    };
-    setCurrentUser(updated);
-    localStorage.setItem('lunar_auth_session', JSON.stringify(updated));
-    alert(`🎉 Bạn đã gia hạn thành công! Nhận thêm +3 lượt AI Scan trong ngày và +50 Karma.`);
+    try {
+      const result = await lunarApi.renewFreeQuota();
+      const updated = {
+        ...currentUser,
+        daily_scans_used: result.dailyScansUsed,
+        dailyScansUsed: result.dailyScansUsed,
+        karma_points: result.karmaPoints,
+        karmaPoints: result.karmaPoints
+      };
+      setCurrentUser(updated);
+      localStorage.setItem('lunar_auth_session', JSON.stringify(updated));
+      setAccountToast(result.message);
+      window.setTimeout(() => setAccountToast(''), 6000);
+    } catch (error) {
+      setAccountToast(error.message || 'Không thể gia hạn quota.');
+      window.setTimeout(() => setAccountToast(''), 6000);
+    }
   };
 
   return (

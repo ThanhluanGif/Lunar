@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Lunar.dev-AI_Security_Workbench-2563eb?style=for-the-badge&logo=moon" alt="Lunar Banner" />
   <img src="https://img.shields.io/badge/SAST-OWASP_Top_10-dc2626?style=for-the-badge&logo=shield" alt="OWASP Shield" />
-  <img src="https://img.shields.io/badge/Supabase-Realtime_Cloud_DB-059669?style=for-the-badge&logo=supabase" alt="Supabase Realtime" />
+  <img src="https://img.shields.io/badge/PostgreSQL-Persistent_Data-336791?style=for-the-badge&logo=postgresql" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/Auto--Fix-1--Click_Patch_Diff-0284c7?style=for-the-badge&logo=git" alt="Auto-Fix" />
   <img src="https://img.shields.io/badge/License-MIT-7c3aed?style=for-the-badge" alt="MIT License" />
 </p>
@@ -38,9 +38,10 @@ Nền tảng giúp phát hiện các lỗ hổng mã nguồn nguy hiểm theo ti
 - **Đồng bộ GitHub cá nhân** — Nhập Username GitHub hoặc đăng nhập để tự động nạp toàn bộ danh sách Repositories
 - **Local Drag & Drop Scanner** — Kéo thả hoặc chọn tệp từ máy tính (`.js`, `.jsx`, `.ts`, `.py`, `.sql`, `.json`,...) để quét và vá lỗi trực tiếp
 
-### 4. ⚡ Supabase Realtime Monitoring & Persistent Auth
-- **Supabase Cloud DB & Realtime Channel** — Giám sát thời gian thực số lượng dự án đã quét, tổng lỗ hổng phát hiện và bản vá AI thành công
-- **Cơ chế lưu phiên bền vững** — Lưu giữ trạng thái người dùng qua `localStorage` và Supabase Auth session
+### 4. ⚡ PostgreSQL Dashboard & Persistent Auth
+- **PostgreSQL dashboard** — Tổng hợp dự án, lượt quét, finding và hoạt động gần đây từ dữ liệu backend đã xác thực.
+- **Phiên đăng nhập bền vững** — JWT được lưu trong HttpOnly cookie; role và tier luôn được đọc lại từ database.
+- Supabase client còn là tích hợp tùy chọn/legacy; realtime không được bật trong runtime authoritative hiện tại.
 
 ### 5. 🏆 Community & Gamification
 - **Leaderboard** — Bảng xếp hạng cộng đồng theo Karma Points
@@ -86,10 +87,10 @@ Nền tảng giúp phát hiện các lỗ hổng mã nguồn nguy hiểm theo ti
 | **Frontend** | React 18, Vite 5, JavaScript (ESNext) |
 | **UI / Fonts** | Plus Jakarta Sans, Inter, JetBrains Mono, Fira Code — WCAG AAA |
 | **Backend** | Express 5, Node.js 20 |
-| **Database** | PostgreSQL 16 (via Supabase Cloud) |
-| **Auth** | Supabase Auth + JWT (bcryptjs, jsonwebtoken) |
+| **Database** | PostgreSQL 16 (local Docker hoặc managed PostgreSQL) |
+| **Auth** | JWT HttpOnly cookie + bcryptjs |
 | **Security** | Custom SAST Engine, CVSS v3.1 Evaluator, Rate Limiter |
-| **Realtime** | Supabase Realtime Channel |
+| **Realtime** | Chưa bật; dashboard tải dữ liệu qua REST API |
 | **Diagrams** | Mermaid.js |
 | **Icons** | Lucide React |
 | **Containerization** | Docker, Docker Compose |
@@ -164,7 +165,7 @@ lunar/
 ### Yêu cầu môi trường
 - **Node.js** >= 18.0.0
 - **npm** >= 9.0.0
-- Tài khoản [Supabase](https://supabase.com) (miễn phí)
+- PostgreSQL 16 hoặc Docker
 
 ### 1. Clone repository
 
@@ -332,9 +333,8 @@ Tham khảo file `.env.example` để biết danh sách đầy đủ các biến
 | `NODE_ENV` | Môi trường (`development` / `production`) | ✅ |
 | `JWT_SECRET` | Secret key cho JWT token signing (tự tạo chuỗi ngẫu nhiên) | ✅ |
 | `DATABASE_URL` | PostgreSQL connection string | ✅ |
-| `VITE_SUPABASE_URL` | URL của Supabase project | ✅ |
-| `VITE_SUPABASE_ANON_KEY` | Supabase Anonymous Key (public) | ✅ |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key (server-side only) | ⚠️ |
+| `VITE_SUPABASE_URL` | URL Supabase legacy/tùy chọn | ❌ |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anonymous key legacy/tùy chọn | ❌ |
 | `SUPABASE_POSTGRES_PASSWORD` | Mật khẩu PostgreSQL | ✅ |
 
 > **⚠️ QUAN TRỌNG:** Không bao giờ commit file `.env` lên Git. File này chứa các credentials nhạy cảm và đã được thêm vào `.gitignore`.
@@ -390,7 +390,7 @@ Dự án tuân thủ các nguyên tắc bảo mật:
 
 - **JWT Authentication** — Token-based auth với bcrypt password hashing
 - **Rate Limiting** — Giới hạn số lượng request để chống brute-force và DDoS
-- **Row Level Security (RLS)** — Supabase RLS đảm bảo người dùng chỉ truy cập dữ liệu của mình
+- **Backend ownership checks** — API kiểm tra user id/role trước khi đọc hoặc thay đổi dữ liệu.
 - **Environment Variables** — Không hardcode credentials trong source code
 - **CORS Configuration** — Kiểm soát cross-origin requests
 - **Input Validation** — Kiểm tra đầu vào tại cả frontend và backend

@@ -140,7 +140,9 @@ router.post('/repository', verifyToken, async (req, res) => {
         const findings = scanFile(item.path, content);
         return {
           path: item.path,
+          sha: item.sha,
           size: item.size,
+          content,
           status: findings.some((finding) => finding.severity === 'critical')
             ? 'critical'
             : findings.length ? 'warning' : 'safe',

@@ -54,7 +54,10 @@ app.use(cors({
 app.use(express.json({
   limit: '10mb',
   verify: (req, res, buffer) => {
-    if (req.originalUrl?.startsWith('/api/v1/payment/webhook')) {
+    if (
+      req.originalUrl?.startsWith('/api/v1/payment/webhook')
+      || req.originalUrl?.startsWith('/api/v1/github/webhook')
+    ) {
       req.rawBody = Buffer.from(buffer);
     }
   }

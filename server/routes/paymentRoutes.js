@@ -3,12 +3,21 @@ const crypto = require('crypto');
 const { verifyToken } = require('../middleware/auth');
 const { paymentRateLimiter } = require('../middleware/rateLimiter');
 const { getPool } = require('../db/connection');
+const { getPlan, listPublicPlans } = require('../services/planCatalog');
 
 const router = express.Router();
 
 // In-memory fallback state for dev / testing when DB is offline
 const paymentsMemory = new Map();
 const userSubscriptionsMemory = new Map();
+
+router.get('/plans', (req, res) => {
+  res.json({
+    success: true,
+    source: 'server-plan-catalog',
+    plans: listPublicPlans()
+  });
+});
 
 function signatureMatches(rawBody, suppliedSignature, secret) {
   if (!rawBody || !secret || !suppliedSignature) return false;
@@ -48,22 +57,29 @@ router.post('/create-order', verifyToken, paymentRateLimiter, async (req, res) =
     const userId = req.user ? req.user.id : 'guest-user';
     const userEmail = req.user ? req.user.email : 'user@lunar.dev';
 
-    if (!['PRO', 'ENTERPRISE'].includes(tier)) {
+    const selectedPlan = getPlan(tier);
+    if (!selectedPlan || selectedPlan.id === 'FREE') {
       return res.status(400).json({ success: false, error: 'Gói cước không hợp lệ. Chỉ chấp nhận PRO hoặc ENTERPRISE.' });
     }
 
     const method = paymentMethod === 'CARD' ? 'CARD' : 'VIETQR';
-    const amount = tier === 'PRO' ? 290000 : 1500000;
-    const randomId = Math.floor(100000 + Math.random() * 900000);
-    const orderCode = `LUNAR-${tier}-${randomId}`;
-    const transferContent = `LUNAR ${tier} ${randomId}`;
+    const amount = selectedPlan.amount;
+    const randomId = crypto.randomBytes(6).toString('hex').toUpperCase();
+    const orderCode = `LUNAR-${selectedPlan.id}-${randomId}`;
+    const transferContent = `LUNAR ${selectedPlan.id} ${randomId}`;
+    const bankId = String(process.env.PAYMENT_BANK_ID || '').trim();
+    const accountNo = String(process.env.PAYMENT_ACCOUNT_NO || '').trim();
+    const accountName = String(process.env.PAYMENT_ACCOUNT_NAME || '').trim();
+    if (!bankId || !accountNo || !accountName) {
+      return res.status(503).json({ success: false, error: 'Payment beneficiary is not configured.' });
+    }
 
     const qrUrl = generateVietQRUrl(
-      'MB',
-      '0988888888',
+      bankId,
+      accountNo,
       amount,
       transferContent,
-      'LUNAR SECURITY CORP'
+      accountName
     );
 
     const paymentOrder = {
@@ -73,36 +89,37 @@ router.post('/create-order', verifyToken, paymentRateLimiter, async (req, res) =
       orderCode,
       amount,
       currency: 'VND',
-      tierTarget: tier,
+      tierTarget: selectedPlan.id,
       paymentMethod: method,
       transferContent,
       status: 'PENDING',
       qrUrl,
       bankInfo: {
-        bankName: 'Ngân hàng TMCP Quân Đội (MBBank)',
-        accountNumber: '0988888888',
-        accountName: 'LUNAR SECURITY CORP'
+        bankId,
+        accountNumber: accountNo,
+        accountName
       },
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 phút đếm ngược
     };
 
-    // Save to memory
-    paymentsMemory.set(orderCode, paymentOrder);
-
-    // Save to PostgreSQL if pool available
     const pool = getPool();
+    if (!pool && process.env.NODE_ENV === 'production') {
+      return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
+    }
     if (pool) {
       try {
         await pool.query(
           `INSERT INTO payments (user_id, order_code, amount, tier_target, payment_method, transfer_content, status, qr_url)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [userId, orderCode, amount, tier, method, transferContent, 'PENDING', qrUrl]
+          [userId, orderCode, amount, selectedPlan.id, method, transferContent, 'PENDING', qrUrl]
         );
       } catch (dbErr) {
-        console.warn('⚠️ Postgres insert payment fallback to memory:', dbErr.message);
+        console.error('Unable to persist payment order:', dbErr.message);
+        return res.status(503).json({ success: false, error: 'Unable to persist payment order.' });
       }
     }
+    paymentsMemory.set(orderCode, paymentOrder);
 
     return res.json({
       success: true,
@@ -330,6 +347,7 @@ router.post('/webhook', async (req, res) => {
  * POST /api/v1/payment/mock-webhook
  * Webhook mô phỏng xác nhận thanh toán (Mock Engine cho QA Circuit Breaker & Testing)
  */
+if (process.env.NODE_ENV !== 'production' && process.env.ENABLE_PAYMENT_MOCK === 'true') {
 router.post('/mock-webhook', async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'production') {
@@ -411,6 +429,7 @@ router.post('/mock-webhook', async (req, res) => {
     return res.status(500).json({ success: false, error: 'Lỗi khi xử lý mock webhook.' });
   }
 });
+}
 
 /**
  * GET /api/v1/payment/subscription

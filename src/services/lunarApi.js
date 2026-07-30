@@ -20,6 +20,20 @@ async function request(path, options = {}) {
   return payload;
 }
 
+async function download(path) {
+  const response = await fetch(`${API_ROOT}${path}`, { credentials: 'include' });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error || `HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return {
+    blob: await response.blob(),
+    contentDisposition: response.headers.get('content-disposition') || ''
+  };
+}
+
 export const lunarApi = {
   getMe: () => request('/auth/me'),
   login: (email, password) => request('/auth/login', {
@@ -60,6 +74,10 @@ export const lunarApi = {
   getGitHubRepositories: () => request('/auth/github/repositories'),
   syncGitHubRepositories: () => request('/auth/github/sync', { method: 'POST' }),
   disconnectGitHub: () => request('/auth/github/disconnect', { method: 'POST' }),
+  createGitHubSecurityPR: (payload) => request('/github/pull-requests', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
   getCommunityAudits: () => request('/community/audits'),
   createCommunityAudit: (payload) => request('/community/audits', {
     method: 'POST',
@@ -75,12 +93,14 @@ export const lunarApi = {
   getAdminUsers: () => request('/admin/users?limit=100'),
   getAdminPayments: () => request('/admin/payments?limit=100'),
   getAdminAuditLog: () => request('/admin/audit-log?limit=100'),
+  getPaymentPlans: () => request('/payment/plans'),
   createPaymentOrder: (tier, paymentMethod = 'VIETQR') => request('/payment/create-order', {
     method: 'POST',
     body: JSON.stringify({ tier, paymentMethod })
   }),
   getPaymentStatus: (orderCode) => request(`/payment/status/${encodeURIComponent(orderCode)}`),
   getSubscription: () => request('/payment/subscription'),
+  downloadAuditReportPdf: (scanId) => download(`/reports/export/pdf/${encodeURIComponent(scanId)}`),
   getAiProviders: () => request('/ai/providers'),
   reviewCodeWithAi: (payload) => request('/ai/review', {
     method: 'POST',
@@ -110,6 +130,7 @@ export const lunarApi = {
     method: 'POST',
     body: JSON.stringify(payload)
   }),
+  renewFreeQuota: () => request('/scans/renew-quota', { method: 'POST' }),
   getGmailNotificationStatus: () => request('/notifications/gmail/status'),
   updateGmailNotificationPreferences: (payload) => request('/notifications/gmail/preferences', {
     method: 'PUT',
