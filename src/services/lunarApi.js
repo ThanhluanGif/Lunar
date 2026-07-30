@@ -90,6 +90,18 @@ export const lunarApi = {
     method: 'POST',
     body: JSON.stringify(payload)
   }),
+  getAssistantStatus: () => request('/assistant/status'),
+  sendAssistantMessage: (payload) => request('/assistant/chat', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
+  getAssistantHistory: (conversationId) => request(
+    `/assistant/history${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`
+  ),
+  clearAssistantHistory: (conversationId) => request(
+    `/assistant/history/${encodeURIComponent(conversationId)}`,
+    { method: 'DELETE' }
+  ),
   deepScanRepository: (payload) => request('/deep-scans/repository', {
     method: 'POST',
     body: JSON.stringify(payload)

@@ -301,3 +301,33 @@ CREATE TABLE IF NOT EXISTS payment_webhook_events (
     status VARCHAR(30) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 19. Per-user Lunar AI assistant conversation history
+CREATE TABLE IF NOT EXISTS assistant_conversations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(120) NOT NULL DEFAULT 'Cuộc trò chuyện mới',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_assistant_conversations_user_updated
+    ON assistant_conversations(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS assistant_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sequence_id BIGSERIAL UNIQUE,
+    conversation_id UUID NOT NULL REFERENCES assistant_conversations(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    provider VARCHAR(80),
+    model VARCHAR(160),
+    metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS sequence_id BIGSERIAL;
+
+CREATE INDEX IF NOT EXISTS idx_assistant_messages_conversation_created
+    ON assistant_messages(conversation_id, sequence_id ASC);

@@ -263,6 +263,31 @@ try {
     workspaceRendered: await evaluate(`document.body.innerText.includes('Đồng Bộ GitHub Repositories Cá Nhân')`)
   };
 
+  await clickButton('Lunar AI');
+  await waitFor(
+    `Boolean(document.querySelector('[data-testid="lunar-ai-panel"]'))
+      && document.body.innerText.includes('Trợ lý bảo mật phòng thủ')
+      && document.body.innerText.includes('không gửi dữ liệu sang AI ngoài')`,
+    'guest Lunar AI assistant'
+  );
+  await clickButton('Tóm tắt rủi ro dự án đang mở');
+  await waitFor(
+    `document.querySelectorAll('.lunar-assistant-message-row').length >= 3
+      && !document.querySelector('.lunar-assistant-typing')`,
+    'Lunar AI native assistant reply'
+  );
+  results.virtualAssistant = await evaluate(`(() => ({
+    panelRendered: Boolean(document.querySelector('[data-testid="lunar-ai-panel"]')),
+    nativeMode: Boolean(document.querySelector('[data-testid="lunar-ai-panel"] .lunar-assistant-status.native')),
+    secretWarning: document.querySelector('[data-testid="lunar-ai-panel"]')?.innerText.includes('Không gửi mật khẩu'),
+    assistantMessages: document.querySelectorAll('.lunar-assistant-message-row.assistant').length
+  }))()`);
+  await clickButton('Lunar AI');
+  await waitFor(
+    `!document.querySelector('[data-testid="lunar-ai-panel"]')`,
+    'Lunar AI assistant close'
+  );
+
   await clickButton('Quét Code');
   await waitFor(
     `document.body.innerText.includes('Upload Repo & Chấm Điểm AI')`,
@@ -491,6 +516,10 @@ try {
     || !results.guestPreview?.detailsLocked
     || !results.guestPreview?.autoFixLocked
     || !results.githubComboboxRendered
+    || !results.virtualAssistant?.panelRendered
+    || !results.virtualAssistant?.nativeMode
+    || !results.virtualAssistant?.secretWarning
+    || results.virtualAssistant?.assistantMessages < 2
     || !results.auditGmailFailClosed
     || !results.gmailSettingsFailClosed
     || !results.accountSettings?.rendered

@@ -58,6 +58,17 @@ const publicApiRateLimiter = rateLimit({
   }
 });
 
+const assistantRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Bạn đã gửi quá nhiều tin nhắn. Vui lòng thử lại sau.'
+  }
+});
+
 // 4. Daily Scan Quota Limiter cho tài khoản Free (Max 5 lượt quét / ngày)
 const userScanStore = new Map();
 
@@ -110,6 +121,7 @@ module.exports = {
   accountMutationRateLimiter,
   paymentRateLimiter,
   publicApiRateLimiter,
+  assistantRateLimiter,
   scanQuotaLimiter,
   renewServerQuota
 };

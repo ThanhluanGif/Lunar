@@ -15,6 +15,7 @@ import AuditReportExportModal from './components/AuditReportExportModal';
 import QuotaDepletedModal from './components/QuotaDepletedModal';
 import GmailSettingsModal from './components/GmailSettingsModal';
 import AccountSettingsModal from './components/AccountSettingsModal';
+import LunarAiAssistant from './components/LunarAiAssistant';
 import NotFoundPage from './components/NotFoundPage';
 import AdminDashboard from './components/AdminDashboard';
 import LunarDashboard from './components/LunarDashboard';
@@ -255,6 +256,13 @@ export default function App() {
     };
   }, [selectedProject]);
   const activeVuln = scanResult.vulnerabilities[0] || null;
+  const assistantProjectContext = {
+    title: selectedProject?.title || '',
+    activeView: activeTab,
+    securityScore: selectedProject?.overallScore
+      ?? Math.max(0, Math.round(100 - (Number(scanResult.stats.maxCvss) || 0) * 10)),
+    stats: scanResult.stats
+  };
   const activeFile = selectedProject?.files?.find((file) => file.path === activeVuln?.filePath)
     || selectedProject?.files?.[0]
     || { content: '', path: 'app.ts' };
@@ -692,6 +700,12 @@ export default function App() {
           currentUser={currentUser}
         />
       )}
+
+      <LunarAiAssistant
+        currentUser={currentUser}
+        projectContext={assistantProjectContext}
+        onOpenAuth={() => setIsAuthOpen(true)}
+      />
 
     </div>
   );

@@ -23,6 +23,7 @@ const { router: securityAuditRoutes } = require('./routes/securityAuditRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const aiRoutes = require('./routes/aiRoutes');
+const assistantRoutes = require('./routes/assistantRoutes');
 const deepScanRoutes = require('./routes/deepScanRoutes');
 const { router: notificationRoutes } = require('./routes/notificationRoutes');
 
@@ -82,6 +83,7 @@ app.use('/api/v1/security', securityAuditRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/ai', aiRoutes);
+app.use('/api/v1/assistant', assistantRoutes);
 app.use('/api/v1/deep-scans', deepScanRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 

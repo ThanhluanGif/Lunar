@@ -280,6 +280,24 @@ hình, từng người dùng bấm **Gmail Alert → Kết nối Gmail bằng Go
 Sau khi cập nhật `.env`, build lại app bằng `docker compose up -d --build`.
 Không commit `.env` hoặc bất kỳ Gmail credential nào lên Git.
 
+### Cấu hình trợ lý ảo Lunar AI
+
+Trợ lý nổi chạy được ngay ở chế độ `Lunar Native` cho khách và khi chưa có
+API key. Để tài khoản đăng nhập dùng mô hình AI nâng cao qua Vercel AI Gateway,
+tạo một Gateway API key rồi thêm vào `.env`:
+
+```dotenv
+LUNAR_AI_GATEWAY_API_KEY=...
+LUNAR_AI_GATEWAY_MODEL=google/gemini-3.6-flash
+LUNAR_AI_GATEWAY_FALLBACK_MODELS=openai/gpt-5.6-terra,anthropic/claude-sonnet-5
+```
+
+Sau đó chạy `docker compose up -d --build`. API key chỉ được đọc trong
+container backend, không dùng tiền tố `VITE_` và không được gửi xuống trình
+duyệt. Nếu Gateway lỗi hoặc hết hạn mức, trợ lý tự hạ về chế độ nội bộ. Lịch sử
+chat chỉ lưu cho tài khoản đăng nhập và tách biệt theo `user_id`; khách không có
+lịch sử phía server và không gọi AI ngoài.
+
 ### Email xác minh và đặt lại mật khẩu
 
 Email tài khoản là mail hệ thống của Lunar, tách biệt với Gmail Alert do từng
@@ -336,6 +354,7 @@ Tham khảo file `.env.example` để biết danh sách đầy đủ các biến
 | `VITE_SUPABASE_ANON_KEY` | Supabase Anonymous Key (public) | ✅ |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key (server-side only) | ⚠️ |
 | `SUPABASE_POSTGRES_PASSWORD` | Mật khẩu PostgreSQL | ✅ |
+| `AI_GATEWAY_API_KEY` / `LUNAR_AI_GATEWAY_API_KEY` | Vercel AI Gateway key cho trợ lý nâng cao | Không |
 
 > **⚠️ QUAN TRỌNG:** Không bao giờ commit file `.env` lên Git. File này chứa các credentials nhạy cảm và đã được thêm vào `.gitignore`.
 
