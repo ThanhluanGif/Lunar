@@ -141,10 +141,7 @@ export default function GmailSettingsModal({
     setErrorMessage('');
     try {
       const result = await lunarApi.sendAuditReportEmail({
-        projectTitle: activeProject?.title || 'Lunar AI SAST Scanner',
-        scanSummary: scanResult || {
-          stats: { maxCvss: 8.5, criticalCount: 2, highCount: 1, total: 3 }
-        }
+        scanId: activeProject?.deepScan?.scanId || activeProject?.scanId
       });
       setToastMessage(result.mode === 'dry-run'
         ? `Đã kiểm thử luồng Gmail cho ${result.recipient}.`

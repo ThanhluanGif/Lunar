@@ -15,7 +15,7 @@
 ### 2. Backend REST API (`server/routes/paymentRoutes.js` & `server/index.js`)
 - `POST /api/v1/payment/create-order`: Sinh mã đơn hàng và mã VietQR động chuẩn ngân hàng MBBank.
 - `GET /api/v1/payment/status/:orderCode`: Lấy trạng thái giao dịch thực tế.
-- `POST /api/v1/payment/mock-webhook`: Endpoint webhook mô phỏng cho QA Circuit Breaker để xác nhận giao dịch không cần gọi gateway thật.
+- `POST /api/v1/payment/mock-webhook`: Chỉ được đăng ký ngoài production khi `ENABLE_PAYMENT_MOCK=true`; production luôn trả 404.
 - `GET /api/v1/payment/subscription`: Tra cứu thông tin gói cước và hạn mức sử dụng.
 
 ### 3. Frontend Giao diện Thanh toán (`src/components/PaymentModal.jsx` & `PricingModal.jsx`)
@@ -33,7 +33,7 @@
 | Mở bảng giá chọn gói Pro | Modal hiển thị giá `₫290,000` và chuyển sang Payment Modal | PASS |
 | Khởi tạo VietQR | Mã QR động được render chính xác từ `img.vietqr.io` | PASS |
 | Sao chép nhanh STK & Nội dung | Sao chép thành công vào Clipboard và hiển thị phản hồi "Đã chép" | PASS |
-| Chạy Mock Webhook Test | Backend cập nhật status `SUCCESS` & Nâng cấp user tier lên `PRO` | PASS |
+| Production mock webhook guard | Endpoint không tồn tại trong production | PASS qua `npm run qa:security` |
 
 ---
 

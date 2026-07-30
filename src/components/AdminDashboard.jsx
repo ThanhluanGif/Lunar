@@ -4,8 +4,6 @@ import {
   Search, Filter, CheckCircle2, Clock, XCircle, RefreshCw, Send, Lock, 
   Crown, ArrowUpRight, Zap, AlertTriangle, Eye, UserCheck, ShieldAlert, Inbox, PlusCircle
 } from 'lucide-react';
-import { getEmailLogHistory, sendProInvoiceGmail } from '../services/gmailMailerService';
-import { supabaseDb, subscribeToRealtimeTransactions, subscribeToRealtimeEmails } from '../services/supabaseClient';
 import { lunarApi } from '../services/lunarApi';
 
 export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
@@ -64,71 +62,14 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
     }
   };
 
-  // Load Real Data & Set up Supabase Realtime Subscriptions
   useEffect(() => {
     loadAdminData();
-    return undefined;
-
-    async function loadRealData() {
-      setLoading(true);
-      const dbTxs = await supabaseDb.getTransactions();
-      const dbEmails = await supabaseDb.getEmailLogs();
-      const ramEmails = getEmailLogHistory();
-
-      setTransactions(dbTxs || []);
-      setEmailLogs([...(dbEmails || []), ...ramEmails]);
-      setLoading(false);
-    }
-    loadRealData();
-
-    // Register Supabase Realtime Postgres Channels
-    const txChannel = subscribeToRealtimeTransactions((payload) => {
-      console.log('⚡ [Supabase Realtime] Transaction change detected:', payload);
-      if (payload.eventType === 'INSERT' && payload.new) {
-        setTransactions(prev => [payload.new, ...prev]);
-        showNotice(`⚡ Giao dịch mới chuyển khoản vừa nhận được từ ${payload.new.userEmail}!`);
-      }
-    });
-
-    const emailChannel = subscribeToRealtimeEmails((payload) => {
-      console.log('⚡ [Supabase Realtime] Email log change detected:', payload);
-      if (payload.eventType === 'INSERT' && payload.new) {
-        setEmailLogs(prev => [payload.new, ...prev]);
-      }
-    });
-
-    // Custom window events listener for local fallback real-time updates
-    const handleTxEvent = (e) => {
-      if (e.detail) setTransactions(prev => [e.detail, ...prev]);
-    };
-    const handleEmailEvent = (e) => {
-      if (e.detail) setEmailLogs(prev => [e.detail, ...prev]);
-    };
-
-    window.addEventListener('lunar_tx_saved', handleTxEvent);
-    window.addEventListener('lunar_email_saved', handleEmailEvent);
-
-    return () => {
-      if (txChannel) txChannel.unsubscribe();
-      if (emailChannel) emailChannel.unsubscribe();
-      window.removeEventListener('lunar_tx_saved', handleTxEvent);
-      window.removeEventListener('lunar_email_saved', handleEmailEvent);
-    };
   }, []);
 
   // Helper Toast Notification
   const showNotice = (msg) => {
     setActionNotice(msg);
     setTimeout(() => setActionNotice(''), 3500);
-  };
-
-  // Nút tạo giao dịch thử nghiệm Realtime trực tiếp cho Admin test luồng
-  const handleCreateTestRealtimeTransaction = async () => {
-    const randomUser = `Developer_${Math.floor(Math.random() * 900 + 100)}`;
-    const testEmail = `dev.${Date.now().toString().slice(-4)}@gmail.com`;
-    
-    await sendProInvoiceGmail(testEmail, randomUser, { name: 'Gói Pro (290k/tháng)', price: '290.000đ' }, `INV-LUNAR-${Date.now().toString().slice(-6)}`);
-    showNotice(`🚀 Đã khởi tạo 1 giao dịch Realtime mới từ ${testEmail}!`);
   };
 
   // Duyệt nâng cấp Pro thủ công cho giao dịch đang chờ
@@ -140,16 +81,6 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
     } catch (error) {
       showNotice(`Cannot approve payment: ${error.message}`);
     }
-    return;
-
-    const updatedTxs = transactions.map(t => t.id === tx.id ? { ...t, status: 'COMPLETED' } : t);
-    setTransactions(updatedTxs);
-
-    const updatedUsers = users.map(u => u.email === tx.userEmail ? { ...u, tier: 'PRO' } : u);
-    setUsers(updatedUsers);
-
-    await sendProInvoiceGmail(tx.userEmail, tx.userName, { name: tx.planName, price: tx.amount }, tx.id);
-    showNotice(`✅ Đã phê duyệt giao dịch ${tx.id} và gửi hóa đơn về Gmail: ${tx.userEmail}`);
   };
 
   // Thay đổi Hạng người dùng trực tiếp
@@ -161,11 +92,6 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
     } catch (error) {
       showNotice(`Cannot update user: ${error.message}`);
     }
-    return;
-
-    const updated = users.map(u => u.id === userId ? { ...u, tier: newTier } : u);
-    setUsers(updated);
-    showNotice(`⚡ Đã chuyển người dùng ${userId} sang hạng ${newTier}!`);
   };
 
   // Reset Lượt quét Daily Quota của người dùng
@@ -177,11 +103,6 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
     } catch (error) {
       showNotice(`Cannot reset quota: ${error.message}`);
     }
-    return;
-
-    const updated = users.map(u => u.id === userId ? { ...u, dailyScans: 0 } : u);
-    setUsers(updated);
-    showNotice(`🔄 Đã khôi phục lượt quét theo ngày cho tài khoản ${userId}!`);
   };
 
   // Lọc dữ liệu giao dịch
@@ -227,7 +148,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
               Bảng Quản Trị Hệ Thống Lunar.dev
             </h1>
             <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0 }}>
-              Giám sát doanh thu bản Pro, quản lý người dùng, giao dịch VietQR và nhật ký hệ thống Gmail
+              Giám sát doanh thu, quản lý người dùng, giao dịch VietQR và nhật ký hành động quản trị
             </p>
           </div>
 
@@ -293,12 +214,12 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
 
         <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid #ea4335' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '8px' }}>
-            <span>Email Gmail Đã Gửi</span>
+            <span>Hành Động Admin Gần Đây</span>
             <Mail size={18} color="#ea4335" />
           </div>
           <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>{emailLogs.length}</div>
           <div style={{ fontSize: '0.78rem', color: '#fca5a5', marginTop: '4px' }}>
-            100% Khôi phục & Hóa đơn OK
+            Được ghi trong audit log PostgreSQL
           </div>
         </div>
 
@@ -370,7 +291,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
             gap: '8px'
           }}
         >
-          <Mail size={18} color="#ea4335" /> Nhật Ký Gmail Mailer ({emailLogs.length})
+          <ShieldAlert size={18} color="#ea4335" /> Nhật Ký Quản Trị ({emailLogs.length})
         </button>
       </div>
 
@@ -468,16 +389,10 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                           className="btn btn-emerald btn-sm"
                           style={{ padding: '6px 12px', fontSize: '0.78rem' }}
                         >
-                          <CheckCircle2 size={14} /> Duyệt & Gửi Gmail Hóa Đơn
+                          <CheckCircle2 size={14} /> Duyệt Thanh Toán
                         </button>
                       ) : (
-                        <button
-                          onClick={() => sendProInvoiceGmail(tx.userEmail, tx.userName, { name: tx.planName, price: tx.amount }, tx.id)}
-                          className="btn btn-secondary btn-sm"
-                          style={{ padding: '6px 12px', fontSize: '0.78rem', gap: '4px' }}
-                        >
-                          <Send size={12} /> Gửi Lại Gmail
-                        </button>
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
                       )}
                     </td>
                   </tr>
@@ -516,7 +431,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                     {u.tier === 'FREE' && <span className="badge badge-yellow">FREE</span>}
                   </td>
                   <td style={{ padding: '14px 18px', fontWeight: '700', color: '#fbbf24' }}>{u.karma} pts</td>
-                  <td style={{ padding: '14px 18px' }}>{u.dailyScans} / {u.tier === 'FREE' ? '3' : '∞'}</td>
+                  <td style={{ padding: '14px 18px' }}>{u.dailyScans} / {u.tier === 'FREE' ? '5' : '∞'}</td>
                   <td style={{ padding: '14px 18px', textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                       {u.tier !== 'PRO' && (
@@ -545,12 +460,12 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
       {activeSubTab === 'emails' && (
         <div className="glass-panel" style={{ padding: '24px', border: '1px solid var(--border-color)' }}>
           <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.1rem', fontWeight: '800', marginBottom: '16px', color: '#ea4335', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Mail size={20} /> Lịch Sử Phát Hành Gmail Hệ Thống Realtime
+            <ShieldAlert size={20} /> Nhật Ký Hành Động Quản Trị
           </h3>
 
           {emailLogs.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
-              Chưa có thư mới nào được phát hành trong phiên này. Hãy thực hiện Đăng nhập Gmail hoặc Thanh toán Pro để kiểm tra!
+              Chưa có hành động quản trị nào được ghi nhận.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -558,7 +473,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                 <div key={log.id} style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '16px', borderRadius: '8px', borderLeft: '4px solid #ea4335', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                     <span style={{ fontWeight: '700', color: '#ffffff', fontSize: '0.95rem' }}>{log.subject}</span>
-                    <span className="badge badge-emerald" style={{ fontSize: '0.72rem' }}>DELIVERED VIA GMAIL SMTP ✅</span>
+                    <span className="badge badge-emerald" style={{ fontSize: '0.72rem' }}>AUDITED</span>
                   </div>
                   <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'flex', gap: '20px' }}>
                     <span>Người nhận: <strong style={{ color: '#38bdf8' }}>{log.to}</strong></span>

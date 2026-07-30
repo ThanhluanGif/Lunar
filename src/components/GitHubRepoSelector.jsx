@@ -21,8 +21,9 @@ function projectFromDeepScan(result, repository) {
     deepScan: result,
     files: (result.files || []).map((file) => ({
       path: file.path,
+      githubBlobSha: file.sha,
       language: file.language || repository.language?.toLowerCase() || 'plaintext',
-      content: '// Source analyzed securely on the Lunar backend.',
+      content: file.content || '',
       securityFindings: file.findings || [],
       annotations: (file.findings || []).map((finding) => ({
         line: finding.line,

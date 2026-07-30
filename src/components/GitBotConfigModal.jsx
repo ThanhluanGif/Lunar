@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import { X, Bot, FileCode, Copy, Check, Download, GitPullRequest, ShieldCheck, Terminal, Sparkles } from 'lucide-react';
+import { X, Bot, Copy, Check, Download, Sparkles } from 'lucide-react';
 import { generateLunarGitHubActionYaml } from '../services/githubBotService';
 
 export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
   const [copied, setCopied] = useState(false);
-  const [deployed, setDeployed] = useState(false);
-  const [testResult, setTestResult] = useState(null);
 
   if (!isOpen) return null;
 
@@ -26,16 +24,6 @@ export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
     link.click();
   };
 
-  const handleDeployAction = async () => {
-    setDeployed(true);
-    setTestResult({
-      verdict: 'APPROVED',
-      score: 9.8,
-      message: 'GitHub Action YAML Bot active on main branch. Auto-PR fixes enabled.'
-    });
-  };
-
-
   return (
     <div style={{
       position: 'fixed',
@@ -48,7 +36,12 @@ export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
       justifyContent: 'center',
       padding: '20px'
     }}>
-      <div className="glass-panel" style={{
+      <div
+        className="glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="github-bot-dialog-title"
+        style={{
         maxWidth: '640px',
         width: '100%',
         padding: '32px',
@@ -61,6 +54,7 @@ export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
         {/* Close Button */}
         <button
           onClick={onClose}
+          aria-label="Đóng cấu hình GitHub Bot"
           style={{
             position: 'absolute',
             top: '20px',
@@ -90,7 +84,7 @@ export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
           </div>
 
           <div>
-            <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.4rem', fontWeight: '800' }}>
+            <h3 id="github-bot-dialog-title" style={{ fontFamily: 'var(--font-heading)', fontSize: '1.4rem', fontWeight: '800' }}>
               Cấu Hình GitHub Security Bot & CI/CD Action
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
@@ -144,41 +138,10 @@ export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
           </button>
         </div>
 
-        <button onClick={handleDeployAction} className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
-          <GitPullRequest size={18} />
-          Deploy Lunar Security Action To GitHub Repo
-        </button>
-
-        {deployed && (
-          <div style={{
-            marginTop: '14px',
-            padding: '12px',
-            background: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid rgba(16, 185, 129, 0.4)',
-            borderRadius: 'var(--radius-md)',
-            color: '#34d399',
-            fontSize: '0.85rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Check size={16} />
-              <span>Đã kích hoạt GitHub Action Webhook thành công! Lunar Bot đang chạy tự động.</span>
-            </div>
-            {testResult && (
-              <pre style={{
-                margin: '8px 0 0 0',
-                background: '#0d1117',
-                padding: '10px',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                color: '#e6edf3',
-                whiteSpace: 'pre-wrap'
-              }}>{testResult.commentPayload}</pre>
-            )}
-          </div>
-        )}
+        <p role="note" style={{ marginTop: '14px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+          Lunar chưa tự ghi workflow vào repository. Hãy tải file, review nội dung và commit vào
+          <code> .github/workflows/lunar-security.yml</code>.
+        </p>
 
       </div>
     </div>

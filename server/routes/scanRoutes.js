@@ -256,27 +256,48 @@ router.post('/renew-quota', verifyToken, async (req, res) => {
     return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
   }
 
-  const result = await pool.query(
-    `UPDATE users
-     SET daily_scans_used = GREATEST(0, daily_scans_used - 3),
-         karma_points = karma_points + 50,
-         updated_at = CURRENT_TIMESTAMP
-     WHERE id = $1
-     RETURNING daily_scans_used, karma_points`,
-    [req.user.id]
-  );
-  await pool.query(
-    `INSERT INTO quota_logs (user_id, action_type, scans_added)
-     VALUES ($1, 'KARMA_RENEWAL', 3)`,
-    [req.user.id]
-  );
-
-  return res.json({
-    success: true,
-    message: 'Daily quota renewed with 3 scans.',
-    dailyScansUsed: result.rows[0].daily_scans_used,
-    karmaPoints: result.rows[0].karma_points
-  });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const renewal = await client.query(
+      `INSERT INTO quota_logs (user_id, action_type, scans_added, action_date)
+       VALUES ($1, 'KARMA_RENEWAL', 3, CURRENT_DATE)
+       ON CONFLICT (user_id, action_type, action_date)
+         WHERE action_type = 'KARMA_RENEWAL'
+       DO NOTHING
+       RETURNING id`,
+      [req.user.id]
+    );
+    if (renewal.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        error: 'Daily quota renewal has already been used today.'
+      });
+    }
+    const result = await client.query(
+      `UPDATE users
+       SET daily_scans_used = GREATEST(0, daily_scans_used - 3),
+           karma_points = karma_points + 50,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING daily_scans_used, karma_points`,
+      [req.user.id]
+    );
+    await client.query('COMMIT');
+    return res.json({
+      success: true,
+      message: 'Daily quota renewed with 3 scans.',
+      dailyScansUsed: result.rows[0].daily_scans_used,
+      karmaPoints: result.rows[0].karma_points
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Quota renewal failed:', error.message);
+    return res.status(500).json({ success: false, error: 'Unable to renew daily quota.' });
+  } finally {
+    client.release();
+  }
 });
 
 /**

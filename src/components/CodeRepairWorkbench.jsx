@@ -64,7 +64,7 @@ export default function CodeRepairWorkbench({
 
   const attackVector = liveFinding?.hackerAttackVector || activeVuln?.hackerAttackVector;
   const remediation = liveFinding?.remediation || activeVuln?.remediation;
-  const originalCode = activeVuln?.originalCode || activeFile?.content || '';
+  const originalCode = activeFile?.content || activeVuln?.originalCode || '';
   const generatedPatch = remediation?.patchCode || activeVuln?.patchedCode || '';
   const patchedCode = appliedPatch || generatedPatch || originalCode;
   const threatLevel = attackVector?.threatLevel || activeVuln?.severity || liveFinding?.severity || 'MEDIUM';
@@ -129,7 +129,11 @@ export default function CodeRepairWorkbench({
   const handleCreatePR = async () => {
     setIsCreatingPR(true);
     try {
-      const result = await createGitHubSecurityPR(repoUrl, originalCode, patchedCode, activeVuln || liveFinding);
+      const result = await createGitHubSecurityPR(repoUrl, originalCode, patchedCode, {
+        ...(activeVuln || liveFinding),
+        filePath: activeFile?.path || activeVuln?.filePath,
+        githubBlobSha: activeFile?.githubBlobSha
+      });
       setPrResult(result);
     } catch (error) {
       setSimulationError(error.message || 'Không thể tạo Pull Request.');

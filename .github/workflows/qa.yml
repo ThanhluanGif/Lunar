@@ -52,5 +52,8 @@ jobs:
           DATABASE_URL: postgresql://lunar_admin:qa_postgres_password@localhost:5432/lunar_db
           ADMIN_BOOTSTRAP_TOKEN: qa-one-time-admin-bootstrap-token
 
+      - name: Run security regression gates
+        run: npm run qa:security
+
       - name: Validate production container
         run: docker build -t lunar:qa .

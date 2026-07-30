@@ -603,10 +603,58 @@ body {
   }
 }
 
+img,
+svg {
+  max-width: 100%;
+}
+
+table {
+  max-width: 100%;
+}
+
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .glass-panel,
+  .glass-card {
+    max-width: 100%;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  table {
+    display: block;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  pre,
+  code {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 480px) {
+  .glass-panel {
+    border-radius: 12px;
+  }
+
+  .badge {
+    white-space: normal;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .lunar-assistant-panel,
-  .lunar-assistant-typing i,
-  .lunar-assistant-spin {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

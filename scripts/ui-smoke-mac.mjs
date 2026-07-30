@@ -267,7 +267,9 @@ try {
   await waitFor(
     `Boolean(document.querySelector('[data-testid="lunar-ai-panel"]'))
       && document.body.innerText.includes('Trợ lý bảo mật phòng thủ')
-      && document.body.innerText.includes('không gửi dữ liệu sang AI ngoài')`,
+      && document.body.innerText.includes('không gửi dữ liệu sang AI ngoài')
+      && [...document.querySelectorAll('[data-testid="lunar-ai-panel"] button')]
+        .some((button) => button.textContent.trim() === 'Tóm tắt rủi ro dự án đang mở')`,
     'guest Lunar AI assistant'
   );
   await clickButton('Tóm tắt rủi ro dự án đang mở');
