@@ -1,5 +1,6 @@
 const express = require('express');
 const { verifyToken } = require('../middleware/auth');
+const { aiRateLimiter } = require('../middleware/rateLimiter');
 const { getPool } = require('../db/connection');
 const { isScannable, scanFile } = require('../services/sastEngine');
 
@@ -524,7 +525,13 @@ async function handleReview(req, res) {
     });
   } catch (error) {
     console.error('AI review failed:', error.message);
-    return res.status(error.status || 502).json({ success: false, error: error.message });
+    const status = [400, 429, 503].includes(error.status) ? error.status : 502;
+    return res.status(status).json({
+      success: false,
+      error: status === 503
+        ? 'AI provider is not configured or temporarily unavailable.'
+        : 'AI review could not be completed. Please try again later.'
+    });
   }
 }
 
@@ -542,7 +549,10 @@ async function handleProjectAttackSimulation(req, res) {
   try {
     files = normalizeProjectFiles(projectFiles);
   } catch (error) {
-    return res.status(error.status || 400).json({ success: false, error: error.message });
+    return res.status(error.status || 400).json({
+      success: false,
+      error: 'Project files are invalid or exceed the allowed scan limits.'
+    });
   }
 
   const externalProvider = provider === 'auto'
@@ -586,13 +596,19 @@ async function handleProjectAttackSimulation(req, res) {
     });
   } catch (error) {
     console.error('Project attack simulation failed:', error.message);
-    return res.status(error.status || 502).json({ success: false, error: error.message });
+    const status = [400, 429, 503].includes(error.status) ? error.status : 502;
+    return res.status(status).json({
+      success: false,
+      error: status === 503
+        ? 'AI simulation is temporarily unavailable.'
+        : 'Project attack simulation could not be completed. Please try again later.'
+    });
   }
 }
 
-router.post('/review', verifyToken, handleReview);
-router.post('/audit', verifyToken, handleReview);
-router.post('/project-attack-simulation', verifyToken, handleProjectAttackSimulation);
+router.post('/review', verifyToken, aiRateLimiter, handleReview);
+router.post('/audit', verifyToken, aiRateLimiter, handleReview);
+router.post('/project-attack-simulation', verifyToken, aiRateLimiter, handleProjectAttackSimulation);
 
 router.get('/providers', verifyToken, (req, res) => {
   res.json({

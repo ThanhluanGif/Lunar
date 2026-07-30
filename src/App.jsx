@@ -105,7 +105,6 @@ export default function App() {
         .then(({ user }) => {
           setCurrentUser(user);
           setCurrentTier(user.tier || 'FREE');
-          localStorage.setItem('lunar_auth_session', JSON.stringify(user));
         })
         .catch(() => {
           setGithubAuthToast('failed');
@@ -126,13 +125,11 @@ export default function App() {
         if (!mounted) return;
         setCurrentUser(user);
         setCurrentTier(user.tier || 'FREE');
-        localStorage.setItem('lunar_auth_session', JSON.stringify(user));
       })
       .catch(() => {
         if (!mounted) return;
         setCurrentUser(null);
         setCurrentTier('FREE');
-        localStorage.removeItem('lunar_auth_session');
       });
     return () => { mounted = false; };
   }, []);
@@ -238,7 +235,6 @@ export default function App() {
   const handleLoginSuccess = (user, notice = '') => {
     setCurrentUser(user);
     setCurrentTier(user.tier || 'FREE');
-    localStorage.setItem('lunar_auth_session', JSON.stringify(user));
     if (notice) {
       setAccountToast(notice);
       window.setTimeout(() => setAccountToast(''), 6000);
@@ -253,23 +249,13 @@ export default function App() {
     }
     setCurrentUser(null);
     setCurrentTier('FREE');
-    localStorage.removeItem('lunar_auth_session');
     if (activeTab === 'admin') setActiveTab('explore');
   };
 
   const handleUpgradeSuccess = (newTier) => {
+    if (!currentUser) return;
     setCurrentTier(newTier);
-    const updated = currentUser ? { ...currentUser, tier: newTier } : {
-      id: 'usr-pro-1',
-      nickname: '@sarah_stripe',
-      name: 'Sarah Chen (Stripe Eng)',
-      email: 'sarah.chen@stripe.com',
-      tier: newTier,
-      avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-      daily_scans_used: 0
-    };
-    setCurrentUser(updated);
-    localStorage.setItem('lunar_auth_session', JSON.stringify(updated));
+    setCurrentUser((user) => (user ? { ...user, tier: newTier } : user));
   };
 
   return (
@@ -360,6 +346,7 @@ export default function App() {
                 <UserGitHubWorkspace
                   currentUser={currentUser}
                   onSelectProject={handleSelectProject}
+                  onOpenGitHubAuth={() => setIsAuthOpen(true)}
                 />
               )}
             />

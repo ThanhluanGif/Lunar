@@ -1,19 +1,21 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { getPool } = require('../db/connection');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-if (!JWT_SECRET) {
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
   if (process.env.NODE_ENV === 'production') {
-    console.error('💥 FATAL SECURITY ERROR: JWT_SECRET environment variable is not defined in Production!');
+    console.error('FATAL SECURITY ERROR: JWT_SECRET must be at least 32 characters in production.');
     process.exit(1);
-  } else {
-    console.warn('⚠️ SECURITY NOTICE: Using default development JWT Secret Key. Set JWT_SECRET in .env for production.');
   }
+  console.warn('SECURITY NOTICE: JWT_SECRET is not configured for development; using a random process-local secret.');
 }
 
-const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'lunar-zero-trust-secret-key-2026-secure';
+// Never use a source-controlled fallback. Development sessions intentionally
+// become invalid after a restart when no local secret is configured.
+const EFFECTIVE_JWT_SECRET = JWT_SECRET || crypto.randomBytes(32).toString('hex');
 
 /**
  * Helper to extract JWT token from Cookie or Bearer Header
@@ -38,7 +40,7 @@ function extractToken(req) {
  */
 async function resolveUserFromDatabase(decoded) {
   const pool = getPool();
-  if (!pool) return decoded;
+  if (!pool) return process.env.NODE_ENV === 'production' ? null : decoded;
 
   const result = await pool.query(
     `SELECT id, email, nickname, name, tier, role, status, auth_version,

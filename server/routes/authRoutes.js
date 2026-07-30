@@ -11,19 +11,9 @@ const { serializeUser, tokenPayload } = require('../services/userSerializer');
 
 const router = express.Router();
 
-// Fallback In-Memory DB Store
-const usersDb = [
-  {
-    id: 'usr-1',
-    nickname: '@sarah_stripe',
-    name: 'Sarah Chen',
-    email: 'sarah.chen@stripe.com',
-    passwordHash: '$2a$12$e8wV5Cj8D7F.X0N5k1J5uOaX4H.1N7.1uO2.1uO2.1uO2.1uO2',
-    tier: 'PRO',
-    role: 'USER',
-    status: 'ACTIVE'
-  }
-];
+// Development-only fallback store. It starts empty and is never used in
+// production, where authentication must fail closed if PostgreSQL is down.
+const usersDb = [];
 
 // Cookie security configuration (HttpOnly, Secure, SameSite=Strict)
 const COOKIE_OPTIONS = {
@@ -54,11 +44,15 @@ router.post('/register', authRateLimiter, async (req, res) => {
     const cleanNickname = nickname.startsWith('@') ? nickname : `@${nickname}`;
     const cleanEmail = email.toLowerCase().trim();
 
+    if (process.env.NODE_ENV === 'production' && !getIsPgConnected()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
+    }
+
     // 1. PostgreSQL DB Query
     if (getIsPgConnected()) {
       const existingUser = await queryDb('SELECT id FROM users WHERE email = $1 OR nickname = $2', [cleanEmail, cleanNickname]);
       if (existingUser && existingUser.rows.length > 0) {
-        return res.status(400).json({ success: false, error: 'Email hoặc Nickname đã được đăng ký.' });
+        return res.status(400).json({ success: false, error: 'Không thể tạo tài khoản với thông tin đã cung cấp.' });
       }
 
       const salt = await bcrypt.genSalt(12);
@@ -104,15 +98,14 @@ router.post('/register', authRateLimiter, async (req, res) => {
       return res.status(201).json({
         success: true,
         message: 'Đăng ký tài khoản thành công.',
-        token,
         verificationEmailSent,
         user: serializeUser(newUser)
       });
     }
 
     // 2. In-memory Fallback
-    if (usersDb.some(u => u.email.toLowerCase() === cleanEmail)) {
-      return res.status(400).json({ success: false, error: 'Email đã được đăng ký.' });
+    if (usersDb.some(u => u.email.toLowerCase() === cleanEmail || u.nickname === cleanNickname)) {
+      return res.status(400).json({ success: false, error: 'Không thể tạo tài khoản với thông tin đã cung cấp.' });
     }
 
     const salt = await bcrypt.genSalt(12);
@@ -144,7 +137,6 @@ router.post('/register', authRateLimiter, async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Đăng ký tài khoản thành công.',
-      token,
       user: serializeUser(newUser)
     });
   } catch (err) {
@@ -165,6 +157,10 @@ router.post('/login', authRateLimiter, async (req, res) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
+
+    if (process.env.NODE_ENV === 'production' && !getIsPgConnected()) {
+      return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
+    }
 
     if (getIsPgConnected()) {
       const result = await queryDb(
@@ -193,7 +189,6 @@ router.post('/login', authRateLimiter, async (req, res) => {
           return res.json({
             success: true,
             message: 'Đăng nhập thành công.',
-            token,
             user: serializeUser(dbUser)
           });
         }
@@ -222,7 +217,6 @@ router.post('/login', authRateLimiter, async (req, res) => {
     res.json({
       success: true,
       message: 'Đăng nhập thành công.',
-      token,
       user: serializeUser(user)
     });
   } catch (err) {
@@ -305,7 +299,6 @@ router.post('/bootstrap-admin', verifyToken, async (req, res) => {
     return res.json({
       success: true,
       message: 'Initial administrator provisioned. Remove ADMIN_BOOTSTRAP_TOKEN now.',
-      token,
       user: serializeUser(adminUser)
     });
   } catch (error) {

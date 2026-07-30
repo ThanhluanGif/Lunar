@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const { verifyToken } = require('../middleware/auth');
 const router = express.Router();
 
@@ -43,10 +44,15 @@ router.get('/', (req, res) => {
  * Create a new custom security policy
  */
 router.post('/', verifyToken, (req, res) => {
-  const { name, category, description } = req.body;
+  const name = String(req.body?.name || '').trim();
+  const category = String(req.body?.category || 'custom').trim();
+  const description = String(req.body?.description || '').trim();
+  if (name.length < 2 || name.length > 120 || category.length > 40 || description.length > 500) {
+    return res.status(400).json({ success: false, error: 'Policy fields exceed the allowed length.' });
+  }
 
   const newPolicy = {
-    id: `pol-${Date.now()}`,
+    id: `pol-${crypto.randomUUID()}`,
     name: name || 'Custom Security Rule',
     enabled: true,
     category: category || 'custom',

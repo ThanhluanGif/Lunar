@@ -1,5 +1,5 @@
 const express = require('express');
-const { verifyToken, requireRole, JWT_SECRET } = require('../middleware/auth');
+const { verifyToken, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -27,20 +27,17 @@ function logSecurityEvent(type, details, severity = 'INFO', ip = '127.0.0.1') {
  * Kiểm tra trạng thái an ninh tổng thể của hệ thống backend
  */
 router.get('/health-check', (req, res) => {
-  const isJwtConfigured = Boolean(JWT_SECRET && JWT_SECRET !== 'default_secret');
-
   res.json({
-    status: 'SECURE',
+    status: 'HEALTHY',
     timestamp: new Date().toISOString(),
     zeroTrustBaseline: {
       httpOnlyCookies: 'ENABLED',
       hstsHeader: 'ENABLED (31536000s)',
       xssSanitizer: 'ACTIVE',
       sqlInjectionProtection: 'ACTIVE (Prepared Statements)',
-      rateLimiter: 'ACTIVE (Auth: 5req/min, Payment: 10req/min)',
-      jwtStatus: isJwtConfigured ? 'STRONG_SECRET_CONFIGURED' : 'DEVELOPMENT_FALLBACK'
+      rateLimiter: 'ACTIVE'
     },
-    owaspCompliance: 'ASVS Level 2 (Standard Verified)'
+    owaspCompliance: 'ASVS controls enabled'
   });
 });
 

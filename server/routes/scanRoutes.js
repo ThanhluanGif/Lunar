@@ -1,7 +1,7 @@
 const express = require('express');
 const { verifyToken } = require('../middleware/auth');
 const { getPool } = require('../db/connection');
-const { scanQuotaLimiter } = require('../middleware/rateLimiter');
+const { scanQuotaLimiter, scanRateLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
@@ -94,7 +94,7 @@ function analyzeCode(code) {
   };
 }
 
-router.post('/run', verifyToken, async (req, res) => {
+router.post('/run', verifyToken, scanRateLimiter, async (req, res) => {
   const { code, filename = 'app.ts', projectId, projectName, repoUrl } = req.body;
   if (typeof code !== 'string' || code.trim().length === 0) {
     return res.status(400).json({ success: false, error: 'A non-empty code string is required.' });

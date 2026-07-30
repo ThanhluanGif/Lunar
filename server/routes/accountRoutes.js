@@ -212,7 +212,7 @@ router.post('/resend-verification', verifyToken, accountRecoveryRateLimiter, asy
   }
 });
 
-router.patch('/account', verifyToken, async (req, res) => {
+router.patch('/account', verifyToken, accountMutationRateLimiter, async (req, res) => {
   const name = String(req.body?.name || '').trim();
   if (name.length < 2 || name.length > 120) {
     return res.status(400).json({ success: false, error: 'Tên phải có từ 2 đến 120 ký tự.' });

@@ -69,51 +69,51 @@ const assistantRateLimiter = rateLimit({
   }
 });
 
-// 4. Daily Scan Quota Limiter cho tài khoản Free (Max 5 lượt quét / ngày)
-const userScanStore = new Map();
-
-function scanQuotaLimiter(req, res, next) {
-  const identifier = req.user ? req.user.id : req.ip;
-  const userTier = req.user ? req.user.tier : 'FREE';
-
-  if (userTier === 'PRO' || userTier === 'ENTERPRISE') {
-    return next();
+// Guest scans are intentionally IP-based. express-rate-limit owns expiration
+// and cleanup, avoiding the unbounded Map used by the previous implementation.
+const scanQuotaLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    quotaExceeded: true,
+    error: 'TOO_MANY_REQUESTS: Hạn mức 5 lượt quét/ngày cho khách đã hết.'
   }
+});
 
-  const now = Date.now();
-  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  const MAX_FREE_DAILY_SCANS = 5;
+const scanRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu quét trong thời gian ngắn.' }
+});
 
-  let record = userScanStore.get(identifier);
-  if (!record || (now - record.lastReset) >= ONE_DAY_MS) {
-    record = { count: 0, lastReset: now };
-    userScanStore.set(identifier, record);
-  }
+const deepScanRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'TOO_MANY_REQUESTS: Quá nhiều deep scan. Vui lòng thử lại sau.' }
+});
 
-  if (record.count >= MAX_FREE_DAILY_SCANS) {
-    return res.status(429).json({
-      success: false,
-      quotaExceeded: true,
-      error: 'TOO_MANY_REQUESTS: Hạn mức 5 lượt quét/ngày cho tài khoản Free đã hết.',
-      remaining: 0,
-      resetInHours: Math.ceil((ONE_DAY_MS - (now - record.lastReset)) / (1000 * 60 * 60))
-    });
-  }
+const reportRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu xuất báo cáo.' }
+});
 
-  record.count += 1;
-  userScanStore.set(identifier, record);
-  req.remainingQuota = MAX_FREE_DAILY_SCANS - record.count;
-
-  next();
-}
-
-function renewServerQuota(identifier) {
-  let record = userScanStore.get(identifier);
-  if (record) {
-    record.count = Math.max(0, record.count - 3);
-    userScanStore.set(identifier, record);
-  }
-}
+const aiRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu AI trong thời gian ngắn.' }
+});
 
 module.exports = {
   authRateLimiter,
@@ -123,5 +123,8 @@ module.exports = {
   publicApiRateLimiter,
   assistantRateLimiter,
   scanQuotaLimiter,
-  renewServerQuota
+  scanRateLimiter,
+  deepScanRateLimiter,
+  reportRateLimiter,
+  aiRateLimiter
 };

@@ -8,15 +8,18 @@ services:
       args:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    networks:
+      - lunar_internal
     ports:
       # macOS Control Center/AirPlay commonly owns port 5000.
-      - "${LUNAR_APP_PORT:-5050}:5000"
+      - "127.0.0.1:${LUNAR_APP_PORT:-5050}:5000"
     environment:
       PORT: 5000
       NODE_ENV: production
       JWT_SECRET: ${LUNAR_JWT_SECRET:?Set LUNAR_JWT_SECRET to a strong random value}
       DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:-lunar_local_password}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
-      CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5050}
+      DATABASE_SSL: ${LUNAR_DATABASE_SSL:-false}
+      CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5050,http://127.0.0.1:5050}
       # An empty secret disables webhook confirmation with HTTP 503; never use a public default.
       PAYMENT_WEBHOOK_SECRET: ${LUNAR_PAYMENT_WEBHOOK_SECRET:-}
       # The app stays available without beneficiary details; order creation fails closed with HTTP 503.
@@ -29,6 +32,8 @@ services:
       GITHUB_CLIENT_ID: ${LUNAR_GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${LUNAR_GITHUB_CLIENT_SECRET:-}
       GITHUB_OAUTH_CALLBACK_URL: ${LUNAR_GITHUB_OAUTH_CALLBACK_URL:-http://localhost:5050/api/v1/auth/github/callback}
+      # Device Flow avoids local callback host/port mismatch; production should use web.
+      GITHUB_AUTH_FLOW: ${LUNAR_GITHUB_AUTH_FLOW:-device}
       # registered: GitHub uses the callback saved in OAuth App settings, avoiding local host/port mismatch.
       # explicit: send the exact callback above; recommended after production GitHub settings are finalized.
       GITHUB_OAUTH_REDIRECT_MODE: ${LUNAR_GITHUB_OAUTH_REDIRECT_MODE:-registered}
@@ -56,8 +61,11 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:5000/api/v1/ready >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -q --timeout=2 -O - http://127.0.0.1:5000/api/v1/ready >/dev/null || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -65,13 +73,15 @@ services:
 
   db:
     image: postgres:16-alpine
+    networks:
+      - lunar_internal
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${LUNAR_POSTGRES_USER:-lunar_admin}
       POSTGRES_PASSWORD: ${LUNAR_POSTGRES_PASSWORD:-lunar_local_password}
       POSTGRES_DB: ${LUNAR_POSTGRES_DB:-lunar_db}
     ports:
-      - "${LUNAR_POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${LUNAR_POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./server/schema.sql:/docker-entrypoint-initdb.d/schema.sql
@@ -81,6 +91,12 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
 
 volumes:
   postgres_data:
+
+networks:
+  lunar_internal:

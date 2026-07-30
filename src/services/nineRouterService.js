@@ -5,7 +5,9 @@
 
 export const NINE_ROUTER_CONFIG = {
   defaultEndpoint: import.meta.env.VITE_NINE_ROUTER_ENDPOINT || 'http://localhost:9000/v1',
-  apiKey: import.meta.env.VITE_NINE_ROUTER_KEY || 'sk-9router-lunar-dev-key',
+  // VITE_ values are public browser configuration. Never place a provider
+  // secret here; use the authenticated backend proxy for production traffic.
+  apiKey: import.meta.env.VITE_NINE_ROUTER_KEY || '',
   fallbackModel: 'gpt-4o-mini',
   models: [
     { id: '9router/gemini-2.0-flash', name: 'Gemini 2.0 Flash (9Router)', speed: '⚡ Rất Nhanh', provider: 'Google AI' },
@@ -19,6 +21,14 @@ export const NINE_ROUTER_CONFIG = {
  * Khởi tạo kết nối và gọi 9Router Proxy AI Engine
  */
 export async function queryNineRouterAI({ prompt, codeSnippet, model = '9router/gemini-2.0-flash' }) {
+  if (!NINE_ROUTER_CONFIG.apiKey) {
+    return {
+      success: true,
+      router: '9Router Local Fallback Engine',
+      model,
+      response: '[9Router AI Security] Proxy chưa được cấu hình; đã dùng engine SAST cục bộ.'
+    };
+  }
   console.log(`[9Router Engine] 🚀 Routing AI Request via 9Router Proxy... Model: ${model}`);
 
   const payload = {

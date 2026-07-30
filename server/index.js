@@ -61,8 +61,27 @@ app.use(express.json({
     }
   }
 }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, parameterLimit: 1000, limit: '2mb' }));
 app.use(cookieParser());
+
+// SameSite cookies are the primary CSRF control. Origin validation adds a
+// server-side check for browsers that send an authenticated cookie.
+app.use((req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || !req.cookies?.access_token) {
+    return next();
+  }
+  let requestOrigin = req.get('origin') || '';
+  if (!requestOrigin && req.get('referer')) {
+    try {
+      requestOrigin = new URL(req.get('referer')).origin;
+    } catch {
+      return res.status(403).json({ success: false, error: 'CSRF origin validation failed.' });
+    }
+  }
+  if (requestOrigin && allowedOrigins.includes(requestOrigin)) return next();
+  if (!requestOrigin) return next();
+  return res.status(403).json({ success: false, error: 'CSRF origin validation failed.' });
+});
 
 // 4. Input Sanitizer (Anti XSS / SQLi)
 app.use(inputSanitizer);
@@ -90,8 +109,7 @@ app.use('/api/v1/deep-scans', deepScanRoutes);
 app.get('/api/v1/health', (req, res) => {
   res.json({
     status: 'HEALTHY',
-    service: 'Lunar Security Zero-Trust REST API Engine',
-    securityLevel: 'OWASP ASVS Level 2 Standard Compliant',
+    service: 'Lunar Security REST API Engine',
     timestamp: new Date().toISOString()
   });
 });
@@ -100,7 +118,6 @@ app.get('/api/v1/ready', (req, res) => {
   const databaseConnected = getIsPgConnected();
   return res.status(databaseConnected ? 200 : 503).json({
     status: databaseConnected ? 'READY' : 'NOT_READY',
-    database: databaseConnected ? 'CONNECTED' : 'UNAVAILABLE',
     timestamp: new Date().toISOString()
   });
 });

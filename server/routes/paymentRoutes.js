@@ -351,13 +351,7 @@ if (process.env.NODE_ENV !== 'production' && process.env.ENABLE_PAYMENT_MOCK ===
 router.post('/mock-webhook', async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'production') {
-      const webhookSecret = process.env.PAYMENT_WEBHOOK_SECRET;
-      if (!webhookSecret) {
-        return res.status(503).json({ success: false, error: 'Payment webhook is not configured.' });
-      }
-      if (req.get('x-webhook-secret') !== webhookSecret) {
-        return res.status(401).json({ success: false, error: 'Invalid payment webhook signature.' });
-      }
+      return res.status(404).json({ success: false, error: 'Payment mock is disabled.' });
     }
 
     const { orderCode, simulateSuccess = true } = req.body;

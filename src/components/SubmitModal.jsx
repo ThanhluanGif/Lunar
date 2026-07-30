@@ -4,6 +4,8 @@ import { fetchGitHubRepoDetails } from '../services/githubService';
 import { scanRepository } from '../services/repoScanner';
 import { lunarApi } from '../services/lunarApi';
 
+const MAX_LOCAL_FILE_BYTES = 512000;
+
 export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser }) {
   const [githubUrl, setGithubUrl] = useState('');
   const [customCode, setCustomCode] = useState('');
@@ -18,11 +20,18 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > MAX_LOCAL_FILE_BYTES) {
+        setErrorMsg('File local vượt quá giới hạn 500KB. Hãy chọn file nhỏ hơn.');
+        e.target.value = '';
+        return;
+      }
+      setErrorMsg('');
       setLocalFileName(file.name);
       const reader = new FileReader();
       reader.onload = (event) => {
         setCustomCode(event.target?.result || '');
       };
+      reader.onerror = () => setErrorMsg('Không thể đọc file local đã chọn.');
       reader.readAsText(file);
     }
   };

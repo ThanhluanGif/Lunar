@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "qa": "npm run build && node scripts/qa-smoke.cjs",
     "qa:security": "node scripts/security-regression.cjs",
+    "qa:sast": "node scripts/sast-regression.cjs",
     "qa:docker": "node scripts/qa-docker.cjs",
     "qa:ui:mac": "node scripts/ui-smoke-mac.mjs"
   },
@@ -16,7 +17,6 @@
     "@babel/parser": "^7.29.7",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.9",
-    "9router": "^0.5.40",
     "ai": "^7.0.42",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
@@ -26,13 +26,11 @@
     "express-rate-limit": "^8.6.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.344.0",
-    "lunar-skills": "^1.0.0",
     "mermaid": "^11.16.0",
     "nodemailer": "^9.0.3",
     "pg": "^8.22.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "thanhluangit-skills": "^2.0.2"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.56",

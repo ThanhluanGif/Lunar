@@ -28,6 +28,8 @@ RUN npm ci --omit=dev
 COPY server ./server
 COPY --from=frontend-builder /app/dist ./dist
 
+USER node
+
 EXPOSE 5000
 
 CMD ["node", "server/index.js"]

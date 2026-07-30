@@ -15,8 +15,14 @@ const connectionString = process.env.DATABASE_URL || [
   encodeURIComponent(process.env.POSTGRES_DB || 'lunar_db')
 ].join('');
 
+const databaseSslEnabled = process.env.DATABASE_SSL === 'true'
+  || /[?&]sslmode=(require|verify-ca|verify-full)\b/i.test(connectionString);
+
 const pool = new Pool({
   connectionString,
+  ...(databaseSslEnabled
+    ? { ssl: { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false' } }
+    : {}),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 3000
 });

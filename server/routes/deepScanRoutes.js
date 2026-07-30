@@ -2,13 +2,21 @@ const express = require('express');
 const crypto = require('crypto');
 const { verifyToken } = require('../middleware/auth');
 const { getPool } = require('../db/connection');
-const { isScannable, scanFile, supportedLanguages, ruleCount } = require('../services/sastEngine');
+const { deepScanRateLimiter } = require('../middleware/rateLimiter');
+const {
+  isScannable,
+  isLikelyTestOrFixture,
+  scanFile,
+  supportedLanguages,
+  ruleCount
+} = require('../services/sastEngine');
 
 const router = express.Router();
 const MAX_FILES = Number.parseInt(process.env.DEEP_SCAN_MAX_FILES, 10) || 250;
 const MAX_FILE_BYTES = Number.parseInt(process.env.DEEP_SCAN_MAX_FILE_BYTES, 10) || 512000;
 const MAX_TOTAL_BYTES = Number.parseInt(process.env.DEEP_SCAN_MAX_TOTAL_BYTES, 10) || 5000000;
 const CONCURRENCY = Math.min(Number.parseInt(process.env.DEEP_SCAN_CONCURRENCY, 10) || 5, 10);
+const MAX_PERSISTED_FINDINGS = 1000;
 const IGNORED_PARTS = new Set([
   '.git', 'node_modules', 'dist', 'build', 'vendor', 'coverage', '.next',
   'target', 'bin', 'obj', '__pycache__', '.venv', 'venv'
@@ -19,7 +27,11 @@ function decryptToken(value) {
   if (!encryptionSecret || encryptionSecret.length < 32) {
     throw Object.assign(new Error('GitHub token encryption is not configured.'), { status: 503 });
   }
-  const [ivValue, tagValue, ciphertextValue] = String(value).split('.');
+  const parts = String(value || '').split('.');
+  if (parts.length !== 3 || parts.some((part) => !part || !/^[A-Za-z0-9_-]+$/.test(part))) {
+    throw Object.assign(new Error('Invalid encrypted GitHub token.'), { status: 400 });
+  }
+  const [ivValue, tagValue, ciphertextValue] = parts;
   const key = crypto.createHash('sha256').update(encryptionSecret).digest();
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivValue, 'base64url'));
   decipher.setAuthTag(Buffer.from(tagValue, 'base64url'));
@@ -55,6 +67,7 @@ function safeRepositoryName(value) {
 function shouldScan(item) {
   if (item.type !== 'blob' || !isScannable(item.path)) return false;
   if (item.size > MAX_FILE_BYTES) return false;
+  if (isLikelyTestOrFixture(item.path)) return false;
   return !item.path.split('/').some((part) => IGNORED_PARTS.has(part));
 }
 
@@ -77,6 +90,96 @@ function severityScore(findings) {
   ), 0));
 }
 
+async function persistFindings(client, scanId, findings) {
+  const persisted = findings.slice(0, MAX_PERSISTED_FINDINGS);
+  const chunkSize = 100;
+  for (let offset = 0; offset < persisted.length; offset += chunkSize) {
+    const chunk = persisted.slice(offset, offset + chunkSize);
+    const parameters = [scanId];
+    const rows = chunk.map((finding, index) => {
+      const parameterOffset = 2 + (index * 10);
+      parameters.push(
+        finding.cwe,
+        finding.ruleId,
+        finding.title,
+        finding.severity === 'critical'
+          ? 'critical'
+          : finding.severity === 'high'
+            ? 'warning'
+            : 'info',
+        finding.severity,
+        finding.cvss || null,
+        finding.line,
+        finding.filePath,
+        finding.codeSnippet,
+        finding.recommendation
+      );
+      const placeholders = Array.from(
+        { length: 10 },
+        (_, parameterIndex) => `$${parameterOffset + parameterIndex}`
+      );
+      return `($1, ${placeholders.join(', ')}, 'open')`;
+    });
+    await client.query(
+      `INSERT INTO vulnerabilities (
+         scan_id, cve_id, rule_id, title, severity, source_severity, cvss,
+         line_number, file_path, code_snippet, suggested_patch, status
+       ) VALUES ${rows.join(', ')}`,
+      parameters
+    );
+  }
+  return persisted.length;
+}
+
+async function reserveScanQuota(pool, userId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      'SELECT tier, daily_scans_used, last_scan_reset_at FROM users WHERE id = $1 FOR UPDATE',
+      [userId]
+    );
+    const quota = result.rows[0];
+    if (!quota) {
+      await client.query('ROLLBACK');
+      throw Object.assign(new Error('Account no longer exists.'), { status: 401 });
+    }
+    const resetDue = !quota.last_scan_reset_at
+      || new Date(quota.last_scan_reset_at).toDateString() !== new Date().toDateString();
+    const scansUsed = resetDue ? 0 : Number(quota.daily_scans_used || 0);
+    if (quota.tier === 'FREE' && scansUsed >= 5) {
+      await client.query('ROLLBACK');
+      return { allowed: false };
+    }
+    if (quota.tier === 'FREE') {
+      await client.query(
+        `UPDATE users
+         SET daily_scans_used = $2,
+             last_scan_reset_at = CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE last_scan_reset_at END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [userId, scansUsed + 1, resetDue]
+      );
+    }
+    await client.query('COMMIT');
+    return { allowed: true, reserved: quota.tier === 'FREE' };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function releaseScanQuota(pool, userId) {
+  await pool.query(
+    `UPDATE users
+     SET daily_scans_used = GREATEST(daily_scans_used - 1, 0), updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1 AND tier = 'FREE'`,
+    [userId]
+  );
+}
+
 router.get('/capabilities', verifyToken, (req, res) => {
   res.json({
     success: true,
@@ -91,7 +194,7 @@ router.get('/capabilities', verifyToken, (req, res) => {
   });
 });
 
-router.post('/repository', verifyToken, async (req, res) => {
+router.post('/repository', verifyToken, deepScanRateLimiter, async (req, res) => {
   const repository = safeRepositoryName(req.body?.repository);
   if (!repository) {
     return res.status(400).json({ success: false, error: 'repository must be owner/name.' });
@@ -100,6 +203,7 @@ router.post('/repository', verifyToken, async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
 
+  let quotaReserved = false;
   try {
     const connection = await pool.query(
       'SELECT access_token_encrypted FROM github_connections WHERE user_id = $1',
@@ -109,6 +213,11 @@ router.post('/repository', verifyToken, async (req, res) => {
       return res.status(409).json({ success: false, error: 'Connect GitHub before starting a deep scan.' });
     }
     const token = decryptToken(connection.rows[0].access_token_encrypted);
+    const quotaReservation = await reserveScanQuota(pool, req.user.id);
+    if (!quotaReservation.allowed) {
+      return res.status(429).json({ success: false, error: 'FREE daily scan quota reached.' });
+    }
+    quotaReserved = quotaReservation.reserved;
     const repo = await githubRequest(`/repos/${repository}`, token);
     const branch = String(req.body?.branch || repo.default_branch || 'main').slice(0, 255);
     const tree = await githubRequest(
@@ -116,6 +225,8 @@ router.post('/repository', verifyToken, async (req, res) => {
       token
     );
     if (tree.truncated) {
+      if (quotaReserved) await releaseScanQuota(pool, req.user.id);
+      quotaReserved = false;
       return res.status(422).json({
         success: false,
         error: 'GitHub returned a truncated tree. Scan a smaller branch or repository.'
@@ -123,6 +234,10 @@ router.post('/repository', verifyToken, async (req, res) => {
     }
 
     const candidates = (tree.tree || []).filter(shouldScan).slice(0, MAX_FILES);
+    const scannableFiles = (tree.tree || []).filter((item) => (
+      item.type === 'blob' && isScannable(item.path) && item.size <= MAX_FILE_BYTES
+    ));
+    const filesExcluded = Math.max(0, scannableFiles.length - candidates.length);
     let totalBytes = 0;
     const bounded = candidates.filter((item) => {
       const size = Number(item.size || 0);
@@ -148,7 +263,7 @@ router.post('/repository', verifyToken, async (req, res) => {
           findings
         };
       } catch (error) {
-        return { path: item.path, size: item.size, status: 'error', findings: [], error: error.message };
+        return { path: item.path, size: item.size, status: 'error', findings: [], error: 'Unable to fetch or scan this file.' };
       }
     });
 
@@ -157,24 +272,6 @@ router.post('/repository', verifyToken, async (req, res) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const lockedUser = await client.query(
-        'SELECT tier, daily_scans_used, last_scan_reset_at FROM users WHERE id = $1 FOR UPDATE',
-        [req.user.id]
-      );
-      const quota = lockedUser.rows[0];
-      const resetDue = new Date(quota.last_scan_reset_at).toDateString() !== new Date().toDateString();
-      const scansUsed = resetDue ? 0 : quota.daily_scans_used;
-      if (quota.tier === 'FREE' && scansUsed >= 5) {
-        await client.query('ROLLBACK');
-        return res.status(429).json({ success: false, error: 'FREE daily scan quota reached.' });
-      }
-      if (resetDue) {
-        await client.query(
-          'UPDATE users SET daily_scans_used = 0, last_scan_reset_at = CURRENT_TIMESTAMP WHERE id = $1',
-          [req.user.id]
-        );
-      }
-
       const projectResult = await client.query(
         `INSERT INTO projects (
            user_id, name, repo_url, language, security_score,
@@ -193,29 +290,9 @@ router.post('/repository', verifyToken, async (req, res) => {
         [projectId, req.user.id, score, findings.length]
       );
       const scanId = scanResult.rows[0].id;
-      for (const finding of findings.slice(0, 1000)) {
-        await client.query(
-          `INSERT INTO vulnerabilities (
-             scan_id, cve_id, title, severity, line_number, file_path,
-             code_snippet, suggested_patch, status
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'open')`,
-          [
-            scanId,
-            finding.cwe,
-            finding.title,
-            finding.severity === 'critical' ? 'critical' : finding.severity === 'high' ? 'warning' : 'info',
-            finding.line,
-            finding.filePath,
-            finding.codeSnippet,
-            finding.recommendation
-          ]
-        );
-      }
-      await client.query(
-        'UPDATE users SET daily_scans_used = daily_scans_used + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
-        [req.user.id]
-      );
+      const findingsPersisted = await persistFindings(client, scanId, findings);
       await client.query('COMMIT');
+      quotaReserved = false;
 
       return res.json({
         success: true,
@@ -227,8 +304,10 @@ router.post('/repository', verifyToken, async (req, res) => {
         score,
         filesDiscovered: (tree.tree || []).length,
         filesScanned: fileResults.length,
+        filesExcluded,
         bytesScanned: totalBytes,
         findings: findings.length,
+        findingsPersisted,
         severity: {
           critical: findings.filter((item) => item.severity === 'critical').length,
           high: findings.filter((item) => item.severity === 'high').length,
@@ -245,8 +324,23 @@ router.post('/repository', verifyToken, async (req, res) => {
       client.release();
     }
   } catch (error) {
+    if (quotaReserved) {
+      await releaseScanQuota(pool, req.user.id).catch((releaseError) => {
+        console.error('Unable to release deep scan quota reservation:', releaseError.message);
+      });
+    }
     console.error('Deep repository scan failed:', error.message);
-    return res.status(error.status || 500).json({ success: false, error: error.message });
+    const status = [400, 401, 404, 409, 422, 429, 503].includes(error.status) ? error.status : 502;
+    const message = {
+      400: 'Invalid deep scan request.',
+      401: 'Your account is no longer available.',
+      404: 'GitHub repository or resource was not found.',
+      409: 'Connect GitHub before starting a deep scan.',
+      422: 'GitHub returned a repository tree that cannot be scanned.',
+      429: 'GitHub or Lunar scan quota is temporarily exhausted.',
+      503: 'Deep scan is temporarily unavailable.'
+    }[status] || 'Deep scan failed. Please try again later.';
+    return res.status(status).json({ success: false, error: message });
   }
 });
 

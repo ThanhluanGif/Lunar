@@ -1,5 +1,6 @@
 const express = require('express');
 const { verifyToken } = require('../middleware/auth');
+const { reportRateLimiter } = require('../middleware/rateLimiter');
 const { getPool } = require('../db/connection');
 const {
   UUID_PATTERN,
@@ -10,7 +11,7 @@ const {
 
 const router = express.Router();
 
-router.post('/export', verifyToken, async (req, res) => {
+router.post('/export', verifyToken, reportRateLimiter, async (req, res) => {
   const scanId = String(req.body?.scanId || '').trim();
   if (!UUID_PATTERN.test(scanId)) {
     return res.status(400).json({ success: false, error: 'A valid scanId is required.' });
@@ -29,7 +30,7 @@ router.post('/export', verifyToken, async (req, res) => {
   });
 });
 
-router.get('/export/pdf/:scanId', verifyToken, async (req, res) => {
+router.get('/export/pdf/:scanId', verifyToken, reportRateLimiter, async (req, res) => {
   const scanId = String(req.params.scanId || '').trim();
   if (!UUID_PATTERN.test(scanId)) {
     return res.status(400).json({ success: false, error: 'A valid scanId is required.' });
@@ -38,7 +39,11 @@ router.get('/export/pdf/:scanId', verifyToken, async (req, res) => {
   if (!pool) return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
   const report = await loadOwnedScanSummary(pool, scanId, req.user.id);
   if (!report) return res.status(404).json({ success: false, error: 'Scan not found.' });
-  const pdf = createAuditReportPdf(report.projectTitle, report.summary);
+  const pdf = createAuditReportPdf(report.projectTitle, {
+    ...report.summary,
+    metadata: report.metadata,
+    findings: report.findings
+  });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename(report.projectTitle)}"`);
   res.setHeader('Cache-Control', 'private, no-store');
