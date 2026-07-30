@@ -5,6 +5,7 @@
  */
 
 import { supabaseDb } from './supabaseClient';
+import { lunarApi } from './lunarApi';
 
 // Giả lập lịch sử email đã gửi trong RAM
 const emailLogHistory = [];
@@ -79,29 +80,24 @@ export async function sendProInvoiceGmail(email, userName, planInfo, transaction
  * Gửi Báo Cáo An Ninh Mã Nguồn (Security Audit Report Digest) qua Gmail
  */
 export async function sendSecurityAuditGmail(email, projectTitle, scanResult) {
-  console.log(`[Gmail Mailer] 🛡️ Sending Audit Report for "${projectTitle}" to: ${email}`);
-
-  const maxCvss = scanResult?.stats?.maxCvss || 0;
-  const criticalCount = scanResult?.stats?.criticalCount || 0;
-  const highCount = scanResult?.stats?.highCount || 0;
-
+  const result = await lunarApi.sendAuditReportEmail({
+    projectTitle,
+    scanSummary: scanResult
+  });
   const emailContent = {
-    id: `mail-audit-${Date.now()}`,
-    to: email,
+    id: result.messageId || `mail-audit-${Date.now()}`,
+    to: result.recipient || email,
     subject: `🛡️ [Security Audit Report] Báo Cáo An Ninh Mã Nguồn: ${projectTitle}`,
     type: 'AUDIT_REPORT',
     timestamp: new Date().toISOString(),
-    html: `
-      <div style="font-family: Arial, sans-serif; background-color: #0b0f19; color: #e2e8f0; padding: 30px;">
-        <h2>🌙 Lunar.dev Audit Report: ${projectTitle}</h2>
-        <p>CVSS: ${maxCvss.toFixed(1)} / Critical: ${criticalCount} / High: ${highCount}</p>
-      </div>
-    `
+    status: result.mode === 'dry-run' ? 'DRY_RUN' : 'DELIVERED'
   };
 
   emailLogHistory.unshift(emailContent);
-  await supabaseDb.saveEmailLog(emailContent);
-  return { success: true, message: `Báo cáo Audit đã được chuyển đến Gmail ${email}` };
+  return {
+    ...result,
+    message: `Báo cáo Audit đã được chuyển đến Gmail ${result.recipient || email}`
+  };
 }
 
 /**

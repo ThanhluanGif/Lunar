@@ -30,10 +30,45 @@ export const lunarApi = {
     method: 'POST',
     body: JSON.stringify({ name, nickname, email, password })
   }),
+  forgotPassword: (email) => request('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  }),
+  resetPassword: (token, password) => request('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, password })
+  }),
+  verifyEmail: (token) => request('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token })
+  }),
+  resendEmailVerification: () => request('/auth/resend-verification', {
+    method: 'POST'
+  }),
+  updateAccount: (name) => request('/auth/account', {
+    method: 'PATCH',
+    body: JSON.stringify({ name })
+  }),
+  changePassword: (currentPassword, newPassword) => request('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword })
+  }),
+  getScanHistory: (limit = 30) => request(`/auth/scan-history?limit=${limit}`),
   logout: () => request('/auth/logout', { method: 'POST' }),
   getGitHubConfig: () => request('/auth/github/config'),
   getGitHubStatus: () => request('/auth/github/status'),
+  getGitHubRepositories: () => request('/auth/github/repositories'),
   syncGitHubRepositories: () => request('/auth/github/sync', { method: 'POST' }),
+  disconnectGitHub: () => request('/auth/github/disconnect', { method: 'POST' }),
+  getCommunityAudits: () => request('/community/audits'),
+  createCommunityAudit: (payload) => request('/community/audits', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
+  upvoteCommunityAudit: (auditId) => request(`/community/audits/${encodeURIComponent(auditId)}/upvote`, {
+    method: 'POST'
+  }),
+  getCommunityLeaderboard: () => request('/community/leaderboard'),
   getDashboardAccess: () => request('/dashboard/access'),
   getDashboardOverview: (days = 28) => request(`/dashboard/overview?days=${days}`),
   getAdminOverview: () => request('/admin/overview'),
@@ -70,5 +105,22 @@ export const lunarApi = {
   updateAdminPayment: (orderCode, status, reason) => request(`/admin/payments/${orderCode}`, {
     method: 'PATCH',
     body: JSON.stringify({ status, reason })
+  }),
+  runGuestPreviewScan: (payload) => request('/scans/guest-preview', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
+  getGmailNotificationStatus: () => request('/notifications/gmail/status'),
+  updateGmailNotificationPreferences: (payload) => request('/notifications/gmail/preferences', {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  }),
+  disconnectGmail: () => request('/notifications/gmail/disconnect', {
+    method: 'POST'
+  }),
+  getGmailNotificationHistory: () => request('/notifications/gmail/history'),
+  sendAuditReportEmail: (payload) => request('/notifications/gmail/audit-report', {
+    method: 'POST',
+    body: JSON.stringify(payload)
   })
 };

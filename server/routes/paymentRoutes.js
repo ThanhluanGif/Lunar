@@ -1,5 +1,7 @@
 const express = require('express');
+const crypto = require('crypto');
 const { verifyToken } = require('../middleware/auth');
+const { paymentRateLimiter } = require('../middleware/rateLimiter');
 const { getPool } = require('../db/connection');
 
 const router = express.Router();
@@ -7,6 +9,24 @@ const router = express.Router();
 // In-memory fallback state for dev / testing when DB is offline
 const paymentsMemory = new Map();
 const userSubscriptionsMemory = new Map();
+
+function signatureMatches(rawBody, suppliedSignature, secret) {
+  if (!rawBody || !secret || !suppliedSignature) return false;
+  const normalized = String(suppliedSignature).replace(/^sha256=/i, '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(normalized)) return false;
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  const suppliedBuffer = Buffer.from(normalized, 'hex');
+  const expectedBuffer = Buffer.from(expected, 'hex');
+  return suppliedBuffer.length === expectedBuffer.length
+    && crypto.timingSafeEqual(suppliedBuffer, expectedBuffer);
+}
+
+function normalizeGatewayStatus(status) {
+  const normalized = String(status || '').trim().toUpperCase();
+  if (['PAID', 'SUCCESS', 'SUCCEEDED', 'COMPLETED'].includes(normalized)) return 'SUCCESS';
+  if (['FAILED', 'CANCELLED', 'CANCELED', 'EXPIRED'].includes(normalized)) return 'FAILED';
+  return null;
+}
 
 /**
  * Helper to generate dynamic VietQR URL
@@ -22,7 +42,7 @@ function generateVietQRUrl(bankId, accountNo, amount, content, accountName) {
  * POST /api/v1/payment/create-order
  * Khởi tạo đơn hàng thanh toán nâng cấp gói cước
  */
-router.post('/create-order', verifyToken, async (req, res) => {
+router.post('/create-order', verifyToken, paymentRateLimiter, async (req, res) => {
   try {
     const { tier, paymentMethod } = req.body;
     const userId = req.user ? req.user.id : 'guest-user';
@@ -148,6 +168,161 @@ router.get('/status/:orderCode', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching payment status:', error);
     return res.status(500).json({ success: false, error: 'Lỗi khi tra cứu trạng thái thanh toán.' });
+  }
+});
+
+/**
+ * POST /api/v1/payment/webhook
+ * Provider-neutral payment confirmation endpoint.
+ * Signature: HMAC-SHA256(raw request body, PAYMENT_WEBHOOK_SECRET)
+ * Header: x-lunar-signature: sha256=<hex digest>
+ */
+router.post('/webhook', async (req, res) => {
+  const secret = process.env.PAYMENT_WEBHOOK_SECRET;
+  if (!secret || secret.length < 16) {
+    return res.status(503).json({ success: false, error: 'Payment webhook is not configured.' });
+  }
+  const suppliedSignature = req.get('x-lunar-signature') || req.get('x-webhook-signature');
+  if (!signatureMatches(req.rawBody, suppliedSignature, secret)) {
+    return res.status(401).json({ success: false, error: 'Invalid payment webhook signature.' });
+  }
+
+  const orderCode = String(req.body?.orderCode || '').trim();
+  const eventId = String(req.body?.eventId || req.body?.transactionId || '').trim();
+  const providerReference = String(req.body?.transactionId || eventId).trim();
+  const status = normalizeGatewayStatus(req.body?.status);
+  const amount = Number(req.body?.amount);
+  if (!orderCode || !eventId || !providerReference || !status || !Number.isSafeInteger(amount) || amount <= 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'eventId, transactionId, orderCode, amount và trạng thái payment hợp lệ là bắt buộc.'
+    });
+  }
+
+  const pool = getPool();
+  if (!pool) return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
+  const payloadHash = crypto.createHash('sha256').update(req.rawBody).digest('hex');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const existingEvent = await client.query(
+      'SELECT status FROM payment_webhook_events WHERE event_id = $1 FOR UPDATE',
+      [eventId]
+    );
+    if (existingEvent.rows[0]) {
+      await client.query('COMMIT');
+      return res.json({
+        success: true,
+        idempotent: true,
+        orderCode,
+        status: existingEvent.rows[0].status
+      });
+    }
+
+    const paymentResult = await client.query(
+      `SELECT id, user_id, amount, tier_target, status
+       FROM payments
+       WHERE order_code = $1
+       FOR UPDATE`,
+      [orderCode]
+    );
+    const payment = paymentResult.rows[0];
+    if (!payment) {
+      await client.query(
+        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
+         VALUES ($1, $2, $3, 'ORDER_NOT_FOUND')`,
+        [eventId, orderCode, payloadHash]
+      );
+      await client.query('COMMIT');
+      return res.status(404).json({ success: false, error: 'Đơn hàng không tồn tại.' });
+    }
+    if (Number(payment.amount) !== amount) {
+      await client.query(
+        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
+         VALUES ($1, $2, $3, 'AMOUNT_MISMATCH')`,
+        [eventId, orderCode, payloadHash]
+      );
+      await client.query('COMMIT');
+      return res.status(409).json({ success: false, error: 'Số tiền xác nhận không khớp đơn hàng.' });
+    }
+
+    if (payment.status === 'SUCCESS') {
+      await client.query(
+        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
+         VALUES ($1, $2, $3, 'SUCCESS')`,
+        [eventId, orderCode, payloadHash]
+      );
+      await client.query('COMMIT');
+      return res.json({
+        success: true,
+        idempotent: true,
+        orderCode,
+        status: 'SUCCESS'
+      });
+    }
+
+    await client.query(
+      `UPDATE payments
+       SET status = $1::varchar,
+           provider_reference = $2,
+           webhook_payload_hash = $3,
+           confirmed_at = CASE WHEN $1::varchar = 'SUCCESS' THEN CURRENT_TIMESTAMP ELSE confirmed_at END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4`,
+      [status, providerReference, payloadHash, payment.id]
+    );
+    if (status === 'SUCCESS') {
+      await client.query(
+        `UPDATE users
+         SET tier = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [payment.tier_target, payment.user_id]
+      );
+      await client.query(
+        `INSERT INTO subscriptions (user_id, tier, started_at, auto_renew)
+         VALUES ($1, $2, CURRENT_TIMESTAMP, FALSE)`,
+        [payment.user_id, payment.tier_target]
+      );
+    }
+    await client.query(
+      `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
+       VALUES ($1, $2, $3, $4)`,
+      [eventId, orderCode, payloadHash, status]
+    );
+    await client.query('COMMIT');
+    paymentsMemory.set(orderCode, {
+      ...(paymentsMemory.get(orderCode) || {}),
+      orderCode,
+      userId: payment.user_id,
+      tierTarget: payment.tier_target,
+      amount,
+      status
+    });
+    if (status === 'SUCCESS') {
+      userSubscriptionsMemory.set(payment.user_id, {
+        tier: payment.tier_target,
+        updatedAt: new Date().toISOString()
+      });
+    }
+    return res.json({
+      success: true,
+      idempotent: false,
+      orderCode,
+      status,
+      tierGranted: status === 'SUCCESS' ? payment.tier_target : null
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        error: 'Mã giao dịch gateway đã được dùng cho đơn hàng khác.'
+      });
+    }
+    console.error('Payment webhook processing failed:', error);
+    return res.status(500).json({ success: false, error: 'Không thể xử lý xác nhận thanh toán.' });
+  } finally {
+    client.release();
   }
 });
 

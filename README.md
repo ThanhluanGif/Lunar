@@ -230,23 +230,83 @@ Các giá trị local mặc định đủ để chạy thử. Trước khi tri�
 
 ### Kết nối GitHub OAuth trên Mac
 
-Tạo GitHub OAuth App với:
+1. Mở GitHub → **Settings** → **Developer settings** → **OAuth Apps** →
+   **New OAuth App**.
+2. Điền:
 
 - Homepage URL: `http://localhost:5050`
 - Authorization callback URL:
   `http://localhost:5050/api/v1/auth/github/callback`
 
-Sau đó điền vào `.env`:
+3. Tạo client secret và điền vào `.env`:
 
 ```dotenv
 LUNAR_GITHUB_CLIENT_ID=...
 LUNAR_GITHUB_CLIENT_SECRET=...
 LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY=chuỗi-ngẫu-nhiên-tối-thiểu-32-ký-tự
 LUNAR_GITHUB_OAUTH_CALLBACK_URL=http://localhost:5050/api/v1/auth/github/callback
+LUNAR_GITHUB_OAUTH_SCOPES=read:user user:email
 ```
 
-Tạo encryption key bằng `openssl rand -hex 32`, rồi chạy lại
-`docker compose up -d --build`.
+4. Tạo encryption key bằng `openssl rand -hex 32`.
+5. Chạy lại `docker compose up -d --build`, mở trang và bấm **GitHub**.
+
+Ở production, thay cả Homepage URL và callback URL bằng HTTPS của domain thật.
+Callback trong GitHub phải khớp chính xác với `LUNAR_GITHUB_OAUTH_CALLBACK_URL`.
+Scope mặc định chỉ đọc hồ sơ, email và repository public; không thêm scope
+`repo` trừ khi thực sự cần quét repository private.
+
+### Cấu hình thông báo Gmail
+
+Mỗi người dùng tự kết nối Gmail bằng Google OAuth2. Lunar chỉ yêu cầu scope
+`gmail.send`, lưu refresh token mã hóa theo từng user và không lưu mật khẩu
+Gmail. Bật Gmail API trong Google Cloud, tạo OAuth Client loại Web application,
+rồi khai báo redirect URI:
+
+`http://localhost:5050/api/v1/notifications/gmail/oauth/callback`
+
+```dotenv
+LUNAR_GMAIL_CLIENT_ID=...
+LUNAR_GMAIL_CLIENT_SECRET=...
+LUNAR_GMAIL_OAUTH_CALLBACK_URL=http://localhost:5050/api/v1/notifications/gmail/oauth/callback
+LUNAR_GMAIL_TOKEN_ENCRYPTION_KEY=chuỗi-ngẫu-nhiên-tối-thiểu-32-ký-tự
+LUNAR_GMAIL_DRY_RUN=false
+```
+
+Tạo encryption key bằng `openssl rand -hex 32`. Client secret và token không
+được đặt trong biến `VITE_*`, frontend hoặc repository. Sau khi server được cấu
+hình, từng người dùng bấm **Gmail Alert → Kết nối Gmail bằng Google OAuth**.
+
+Sau khi cập nhật `.env`, build lại app bằng `docker compose up -d --build`.
+Không commit `.env` hoặc bất kỳ Gmail credential nào lên Git.
+
+### Email xác minh và đặt lại mật khẩu
+
+Email tài khoản là mail hệ thống của Lunar, tách biệt với Gmail Alert do từng
+người dùng tự OAuth. Cấu hình một SMTP mailbox:
+
+```dotenv
+LUNAR_AUTH_EMAIL_SMTP_URL=smtps://user:app-password@smtp.gmail.com
+LUNAR_AUTH_EMAIL_FROM=Lunar Security <no-reply@your-domain.com>
+LUNAR_AUTH_EMAIL_BASE_URL=http://localhost:5050
+LUNAR_AUTH_EMAIL_DRY_RUN=false
+```
+
+Ở production, `LUNAR_AUTH_EMAIL_BASE_URL` phải là domain HTTPS thật. Token reset
+và xác minh chỉ dùng một lần, có thời hạn và database chỉ lưu SHA-256 hash.
+
+### Webhook xác nhận thanh toán
+
+Đặt `LUNAR_PAYMENT_WEBHOOK_SECRET` thành chuỗi ngẫu nhiên mạnh. Gateway gửi
+`POST /api/v1/payment/webhook` với JSON gồm `eventId`, `transactionId`,
+`orderCode`, `amount`, `status` và header:
+
+```text
+x-lunar-signature: sha256=<HMAC-SHA256 của raw JSON body>
+```
+
+Webhook kiểm tra chữ ký, số tiền, chống xử lý lặp theo `eventId`, sau đó mới cập
+nhật payment, subscription và tier người dùng.
 
 ### Kiểm thử stack Docker
 

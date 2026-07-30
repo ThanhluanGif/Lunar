@@ -12,6 +12,28 @@ const authRateLimiter = rateLimit({
   }
 });
 
+const accountRecoveryRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu khôi phục tài khoản. Vui lòng thử lại sau.'
+  }
+});
+
+const accountMutationRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Quá nhiều thay đổi bảo mật tài khoản.'
+  }
+});
+
 // 2. Payment Rate Limiter - Chống Spam đơn hàng thanh toán (Max 10 req / 1 phút)
 const paymentRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 phút
@@ -84,6 +106,8 @@ function renewServerQuota(identifier) {
 
 module.exports = {
   authRateLimiter,
+  accountRecoveryRateLimiter,
+  accountMutationRateLimiter,
   paymentRateLimiter,
   publicApiRateLimiter,
   scanQuotaLimiter,

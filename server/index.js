@@ -7,10 +7,11 @@ const path = require('path');
 // Security Middlewares
 const securityHeaders = require('./middleware/securityHeaders');
 const inputSanitizer = require('./middleware/inputSanitizer');
-const { publicApiRateLimiter, paymentRateLimiter } = require('./middleware/rateLimiter');
+const { publicApiRateLimiter } = require('./middleware/rateLimiter');
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
+const accountRoutes = require('./routes/accountRoutes');
 const githubAuthRoutes = require('./routes/githubAuthRoutes');
 const scanRoutes = require('./routes/scanRoutes');
 const githubRoutes = require('./routes/githubRoutes');
@@ -23,6 +24,7 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const deepScanRoutes = require('./routes/deepScanRoutes');
+const { router: notificationRoutes } = require('./routes/notificationRoutes');
 
 const { initPgDatabase, getIsPgConnected } = require('./db/connection');
 
@@ -44,12 +46,19 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000,http:
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // 3. Body parser with 10MB payload size limit (Anti-DDOS Buffer Overflow)
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buffer) => {
+    if (req.originalUrl?.startsWith('/api/v1/payment/webhook')) {
+      req.rawBody = Buffer.from(buffer);
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
@@ -61,18 +70,20 @@ app.use('/api/v1/public', publicApiRateLimiter);
 
 // 6. Registered Business Routes
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/auth', accountRoutes);
 app.use('/api/v1/auth/github', githubAuthRoutes);
 app.use('/api/v1/scans', scanRoutes);
 app.use('/api/v1/github', githubRoutes);
 app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/community', communityRoutes);
 app.use('/api/v1/policies', policyRoutes);
-app.use('/api/v1/payment', paymentRateLimiter, paymentRoutes);
+app.use('/api/v1/payment', paymentRoutes);
 app.use('/api/v1/security', securityAuditRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/deep-scans', deepScanRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 // Health check endpoint
 app.get('/api/v1/health', (req, res) => {

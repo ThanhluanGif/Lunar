@@ -1,11 +1,40 @@
-import React, { useState } from 'react';
-import { Trophy, Medal, Star, GitFork, Award, ExternalLink, Filter, Sparkles, Code2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Trophy, Medal, Award, Filter, Sparkles, Code2 } from 'lucide-react';
+import { lunarApi } from '../services/lunarApi';
 
 export default function Leaderboard({ projects = [], onSelectProject, onShowBadgeModal }) {
   const [selectedLang, setSelectedLang] = useState('All');
   const [selectedPeriod, setSelectedPeriod] = useState('all-time');
+  const [apiProjects, setApiProjects] = useState([]);
+  const [loadError, setLoadError] = useState('');
 
-  const filteredProjects = projects
+  useEffect(() => {
+    if (projects.length > 0) return undefined;
+    let active = true;
+    lunarApi.getCommunityLeaderboard()
+      .then((response) => {
+        if (!active) return;
+        setApiProjects((response.projects || []).map((project) => ({
+          ...project,
+          stars: 0,
+          forks: 0,
+          reviewCount: project.communityReviews || 0,
+          author: {
+            name: project.authorName,
+            username: String(project.authorHandle || '').replace(/^@/, ''),
+            avatar: project.authorAvatar,
+            badge: `${project.scanCount || 0} verified scans`
+          }
+        })));
+      })
+      .catch((error) => {
+        if (active) setLoadError(error.message || 'Không thể tải bảng xếp hạng.');
+      });
+    return () => { active = false; };
+  }, [projects.length]);
+
+  const sourceProjects = projects.length > 0 ? projects : apiProjects;
+  const filteredProjects = sourceProjects
     .filter(p => selectedLang === 'All' || p.language === selectedLang)
     .sort((a, b) => (b.overallScore || 0) - (a.overallScore || 0));
 
@@ -95,6 +124,9 @@ export default function Leaderboard({ projects = [], onSelectProject, onShowBadg
 
       {/* Leaderboard Table / Cards */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {loadError && (
+          <div className="glass-card" style={{ padding: '16px', color: '#fca5a5' }}>{loadError}</div>
+        )}
         {filteredProjects.map((proj, idx) => {
           const rank = idx + 1;
           const rankInfo = getRankBadge(rank);
@@ -156,7 +188,7 @@ export default function Leaderboard({ projects = [], onSelectProject, onShowBadg
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                     <span>⭐ {proj.stars} stars</span>
                     <span>🍴 {proj.forks} forks</span>
-                    <span>💬 {proj.communityReviews?.length || 0} reviews</span>
+                    <span>💬 {proj.reviewCount ?? proj.communityReviews?.length ?? 0} reviews</span>
                   </div>
                 </div>
               </div>

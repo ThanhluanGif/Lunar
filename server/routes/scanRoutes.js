@@ -1,6 +1,8 @@
 const express = require('express');
 const { verifyToken } = require('../middleware/auth');
 const { getPool } = require('../db/connection');
+const { scanQuotaLimiter } = require('../middleware/rateLimiter');
+const { dispatchCriticalAlert } = require('./notificationRoutes');
 
 const router = express.Router();
 
@@ -206,6 +208,20 @@ router.post('/run', verifyToken, async (req, res) => {
     );
     await client.query('COMMIT');
 
+    const criticalFindings = analysis.findings.filter((finding) => finding.severity === 'critical');
+    if (criticalFindings.length > 0) {
+      dispatchCriticalAlert({
+        userId: req.user.id,
+        projectTitle: String(projectName || filename).slice(0, 255),
+        summary: {
+          maxCvss: 9.2,
+          criticalCount: criticalFindings.length,
+          highCount: analysis.findings.filter((finding) => finding.severity === 'warning').length,
+          total: analysis.findings.length
+        }
+      }).catch((error) => console.warn('Critical Gmail notification skipped:', error.message));
+    }
+
     return res.status(201).json({
       success: true,
       source: 'postgresql',
@@ -260,6 +276,42 @@ router.post('/renew-quota', verifyToken, async (req, res) => {
     message: 'Daily quota renewed with 3 scans.',
     dailyScansUsed: result.rows[0].daily_scans_used,
     karmaPoints: result.rows[0].karma_points
+  });
+});
+
+/**
+ * Public Guest Preview Scan Endpoint (Unauthenticated)
+ * Provides high-level security threat score and issue counts without revealing deep line-by-line vulnerabilities or patches.
+ */
+router.post('/guest-preview', scanQuotaLimiter, (req, res) => {
+  const { code, filename = 'app.ts' } = req.body || {};
+  if (typeof code !== 'string' || code.trim().length === 0) {
+    return res.status(400).json({ success: false, error: 'A non-empty code string is required for scanning.' });
+  }
+  if (Buffer.byteLength(code, 'utf8') > 100 * 1024) {
+    return res.status(413).json({ success: false, error: 'Guest preview scan limit is 100KB. Sign in to scan larger repositories.' });
+  }
+
+  const analysis = analyzeCode(code);
+  const criticalCount = analysis.findings.filter(f => f.severity === 'critical').length;
+  const warningCount = analysis.findings.filter(f => f.severity === 'warning').length;
+  const maxCvss = criticalCount > 0 ? 9.2 : warningCount > 0 ? 7.1 : 0;
+
+  return res.json({
+    success: true,
+    isGuestPreview: true,
+    filename: String(filename).slice(0, 255),
+    score: analysis.score,
+    stats: {
+      total: analysis.findings.length,
+      maxCvss,
+      criticalCount,
+      highCount: warningCount,
+      mediumCount: 0,
+      lowCount: 0
+    },
+    remainingQuota: req.remainingQuota,
+    message: 'Guest Preview Scan Complete. Sign in to unlock full line-by-line annotations & AI Code Repair.'
   });
 });
 

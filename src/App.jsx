@@ -14,6 +14,8 @@ import GitBotConfigModal from './components/GitBotConfigModal';
 import AuditReportExportModal from './components/AuditReportExportModal';
 import QuotaDepletedModal from './components/QuotaDepletedModal';
 import GmailSettingsModal from './components/GmailSettingsModal';
+import AccountSettingsModal from './components/AccountSettingsModal';
+import NotFoundPage from './components/NotFoundPage';
 import AdminDashboard from './components/AdminDashboard';
 import LunarDashboard from './components/LunarDashboard';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
@@ -23,6 +25,7 @@ import { lunarApi } from './services/lunarApi';
 import { Moon, ShieldCheck, Wrench, Users, Zap, Bot, Package, ArrowRight, Star, GitFork, UserCheck, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
 
 import UserGitHubWorkspace from './components/UserGitHubWorkspace';
+import GitHubRepoSelector from './components/GitHubRepoSelector';
 import RealTimeStatsBanner from './components/RealTimeStatsBanner';
 
 export default function App() {
@@ -33,6 +36,9 @@ export default function App() {
   
   const [currentUser, setCurrentUser] = useState(null);
   const [currentTier, setCurrentTier] = useState('FREE');
+  const [githubAuthToast, setGithubAuthToast] = useState(''); // '' | 'success' | 'failed'
+  const [accountToast, setAccountToast] = useState('');
+  const [resetToken, setResetToken] = useState('');
   
   // Modals
   const [isSubmitOpen, setIsSubmitOpen] = useState(false);
@@ -43,6 +49,45 @@ export default function App() {
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
   const [isGmailSettingsOpen, setIsGmailSettingsOpen] = useState(false);
+  const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('gmail_auth')) {
+      setIsGmailSettingsOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const passwordResetToken = params.get('reset_token');
+    const verificationToken = params.get('verify_email');
+    if (passwordResetToken) {
+      setResetToken(passwordResetToken);
+      setIsAuthOpen(true);
+      params.delete('reset_token');
+    }
+    if (verificationToken) {
+      params.delete('verify_email');
+      lunarApi.verifyEmail(verificationToken)
+        .then((response) => {
+          setAccountToast(response.message);
+          return lunarApi.getMe().catch(() => null);
+        })
+        .then((session) => {
+          if (session?.user) handleLoginSuccess(session.user);
+        })
+        .catch((error) => setAccountToast(error.message || 'Không thể xác minh email.'));
+    }
+    if (passwordResetToken || verificationToken) {
+      const query = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    }
+    if (verificationToken) {
+      const timer = window.setTimeout(() => setAccountToast(''), 6000);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, []);
 
   const handleOpenPricing = (planId = 'PRO') => {
     if (planId && typeof planId === 'string' && planId !== 'FREE') {
@@ -113,6 +158,36 @@ export default function App() {
     };
   }, []);
 
+  // TASK-01: Handle GitHub OAuth redirect result (?github_auth=success|failed)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const githubAuth = params.get('github_auth');
+    if (!githubAuth) return;
+
+    // Clean URL without page reload
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, '', cleanUrl);
+
+    if (githubAuth === 'success') {
+      setGithubAuthToast('success');
+      // Re-fetch session — JWT cookie was set by the backend callback
+      lunarApi.getMe()
+        .then(({ user }) => {
+          setCurrentUser(user);
+          setCurrentTier(user.tier || 'FREE');
+          localStorage.setItem('lunar_auth_session', JSON.stringify(user));
+        })
+        .catch(() => {
+          setGithubAuthToast('failed');
+        });
+    } else {
+      setGithubAuthToast('failed');
+    }
+
+    const timer = setTimeout(() => setGithubAuthToast(''), 4000);
+    return () => clearTimeout(timer);
+  }, []);
+
   // The Lunar backend is authoritative for identity, tier and role.
   useEffect(() => {
     let mounted = true;
@@ -134,6 +209,12 @@ export default function App() {
 
   // Scan every project file so cross-file and local-folder findings reach the repair UI.
   const scanResult = useMemo(() => {
+    if (selectedProject?.guestPreview) {
+      return {
+        vulnerabilities: [],
+        stats: selectedProject.guestPreview.stats
+      };
+    }
     const fileScans = (selectedProject?.files || []).map((file) => {
       const deterministic = scanCodeForSecurityVulnerabilities(file.content, file.path, file.language);
       const backendFindings = (file.securityFindings || []).map((finding, index) => ({
@@ -177,6 +258,10 @@ export default function App() {
   const activeFile = selectedProject?.files?.find((file) => file.path === activeVuln?.filePath)
     || selectedProject?.files?.[0]
     || { content: '', path: 'app.ts' };
+
+  if (!['/', '/index.html'].includes(window.location.pathname)) {
+    return <NotFoundPage />;
+  }
 
   const handleAddProject = (newProj) => {
     setProjects((current) => [newProj, ...current]);
@@ -225,10 +310,14 @@ export default function App() {
     )));
   };
 
-  const handleLoginSuccess = (user) => {
+  const handleLoginSuccess = (user, notice = '') => {
     setCurrentUser(user);
     setCurrentTier(user.tier || 'FREE');
     localStorage.setItem('lunar_auth_session', JSON.stringify(user));
+    if (notice) {
+      setAccountToast(notice);
+      window.setTimeout(() => setAccountToast(''), 6000);
+    }
   };
 
   const handleLogout = async () => {
@@ -297,7 +386,55 @@ export default function App() {
             onOpenGitBot={() => setIsGitBotOpen(true)}
             onRenewFreeQuota={handleRenewFreeQuota}
             onOpenGmailSettings={() => setIsGmailSettingsOpen(true)}
+            onOpenAccountSettings={() => setIsAccountSettingsOpen(true)}
           />
+
+          {/* TASK-01 / TASK-14: GitHub OAuth result toast */}
+          {githubAuthToast === 'success' && (
+            <div style={{
+              background: 'rgba(16, 185, 129, 0.15)',
+              borderBottom: '1px solid #10b981',
+              padding: '10px 24px',
+              textAlign: 'center',
+              fontSize: '0.88rem',
+              color: '#34d399',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              animation: 'fadeIn 0.3s ease'
+            }}>
+              ✅ Đăng nhập GitHub thành công! Repositories của bạn đã được đồng bộ.
+            </div>
+          )}
+          {githubAuthToast === 'failed' && (
+            <div style={{
+              background: 'rgba(220, 38, 38, 0.15)',
+              borderBottom: '1px solid #dc2626',
+              padding: '10px 24px',
+              textAlign: 'center',
+              fontSize: '0.88rem',
+              color: '#f87171',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px'
+            }}>
+              ❌ Kết nối GitHub thất bại. Vui lòng thử lại hoặc kiểm tra cấu hình OAuth.
+            </div>
+          )}
+          {accountToast && (
+            <div style={{
+              background: 'rgba(16, 185, 129, 0.15)',
+              borderBottom: '1px solid rgba(16,185,129,.5)',
+              padding: '10px 24px',
+              textAlign: 'center',
+              fontSize: '0.86rem',
+              color: '#6ee7b7'
+            }}>
+              {accountToast}
+            </div>
+          )}
 
           {!currentUser && (
             <div style={{
@@ -348,7 +485,12 @@ export default function App() {
               onSelectDemoProject={handleSelectProject}
               onOpenPricing={handleOpenPricing}
             />
-            <div style={{ maxWidth: '1240px', margin: '0 auto' }}>
+            <div style={{ maxWidth: '1240px', margin: '0 auto', paddingTop: '24px' }}>
+              <GitHubRepoSelector
+                currentUser={currentUser}
+                onSelectRepo={handleSelectProject}
+                onOpenAuth={() => setIsAuthOpen(true)}
+              />
               <UserGitHubWorkspace
                 currentUser={currentUser}
                 onSelectProject={handleSelectProject}
@@ -374,8 +516,9 @@ export default function App() {
         {activeTab === 'community' && (
           <div style={{ paddingTop: '28px' }}>
             <SecurityCommunity
-              audits={selectedProject?.communityAudits || []}
               onAddAudit={handleAddAudit}
+              currentUser={currentUser}
+              onOpenAuth={() => setIsAuthOpen(true)}
             />
           </div>
         )}
@@ -436,6 +579,21 @@ export default function App() {
               projectTitle={selectedProject.title}
             />
 
+            {selectedProject.guestPreview && (
+              <div className="glass-panel" style={{
+                padding: '16px 20px',
+                marginBottom: '24px',
+                border: '1px solid rgba(244,63,94,.35)',
+                background: 'rgba(244,63,94,.08)'
+              }} data-testid="guest-preview-summary">
+                <strong style={{ color: '#fda4af' }}>Guest Security Preview</strong>
+                <p style={{ color: 'var(--text-secondary)', marginTop: '5px', fontSize: '0.84rem' }}>
+                  Đã phát hiện {scanResult.stats.total} vấn đề, gồm {scanResult.stats.criticalCount} Critical và {scanResult.stats.highCount} High.
+                  Chi tiết dòng code và AI Auto-Fix được khóa cho tới khi đăng nhập.
+                </p>
+              </div>
+            )}
+
             {/* Code Viewer with Line Annotations */}
             <CodeViewer
               files={selectedProject.files}
@@ -446,7 +604,7 @@ export default function App() {
             {/* Paywall Gate for Auto-Fix Hub */}
             <PaywallGate
               isLoggedIn={currentTier !== 'FREE' || !!currentUser}
-              onOpenAuth={() => setIsPricingOpen(true)}
+              onOpenAuth={() => setIsAuthOpen(true)}
               title="Unlock Lunar AI Code Repair Workbench & GitHub PR Bot"
             >
               <VulnerabilityPatcher
@@ -474,12 +632,17 @@ export default function App() {
         isOpen={isSubmitOpen}
         onClose={() => setIsSubmitOpen(false)}
         onAddProject={handleAddProject}
+        currentUser={currentUser}
       />
 
       <AuthModal
         isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
+        onClose={() => {
+          setIsAuthOpen(false);
+          setResetToken('');
+        }}
         onLoginSuccess={handleLoginSuccess}
+        initialResetToken={resetToken}
       />
 
       <PricingModal
@@ -511,6 +674,13 @@ export default function App() {
         currentUser={currentUser}
         activeProject={selectedProject}
         scanResult={scanResult}
+      />
+
+      <AccountSettingsModal
+        isOpen={isAccountSettingsOpen}
+        onClose={() => setIsAccountSettingsOpen(false)}
+        currentUser={currentUser}
+        onUserUpdated={handleLoginSuccess}
       />
 
       {isQuotaModalOpen && (

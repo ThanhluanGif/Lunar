@@ -1,34 +1,82 @@
-import React, { useState } from 'react';
-import { ShieldCheck, MessageSquare, Award, ThumbsUp, Send, AlertTriangle, Users, Terminal, Sparkles, Trophy } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ThumbsUp, Send, AlertTriangle, Users, Terminal, Trophy, Loader2 } from 'lucide-react';
+import { lunarApi } from '../services/lunarApi';
 
-export default function SecurityCommunity({ audits = [], onAddAudit }) {
+export default function SecurityCommunity({ onAddAudit, currentUser, onOpenAuth }) {
+  const [audits, setAudits] = useState([]);
+  const [topHackers, setTopHackers] = useState([]);
+  const [title, setTitle] = useState('');
   const [newTopic, setNewTopic] = useState('');
-  const [authorName, setAuthorName] = useState('');
-  const [authorRole, setAuthorRole] = useState('Ethical Hacker / Pentester');
-  const [selectedBadge, setSelectedBadge] = useState('CVE Hunter');
+  const [targetRepo, setTargetRepo] = useState('');
+  const [vulnerabilityType, setVulnerabilityType] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const topHackers = [
-    { name: 'Nguyễn Văn Đạt', handle: '@dat-whitehat', karma: 4210, badge: 'Top 1 Pentester', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80' },
-    { name: 'Trần Thị Mai', handle: '@mai-appsec', karma: 3890, badge: 'Patch Master', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80' },
-    { name: 'Phạm Hoàng Nam', handle: '@nam-redteam', karma: 3120, badge: 'CVE Hunter', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80' }
-  ];
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!newTopic.trim() || !authorName.trim()) return;
-
-    onAddAudit({
-      id: 'aud-' + Date.now(),
-      author: authorName,
-      role: authorRole,
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-      severityFlag: 'CRITICAL',
-      comment: newTopic,
-      createdAt: 'Vừa xong',
-      likes: 0
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    Promise.all([
+      lunarApi.getCommunityAudits(),
+      lunarApi.getCommunityLeaderboard()
+    ]).then(([feed, leaderboard]) => {
+      if (!active) return;
+      setAudits(feed.audits || []);
+      setTopHackers((leaderboard.leaders || []).slice(0, 3));
+    }).catch((loadError) => {
+      if (active) setError(loadError.message || 'Không thể tải dữ liệu cộng đồng.');
+    }).finally(() => {
+      if (active) setLoading(false);
     });
+    return () => { active = false; };
+  }, []);
 
-    setNewTopic('');
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!currentUser) {
+      onOpenAuth();
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const response = await lunarApi.createCommunityAudit({
+        title,
+        targetRepo,
+        vulnerabilityType,
+        severity: 'critical',
+        content: newTopic
+      });
+      const audit = {
+        ...response.audit,
+        authorName: currentUser.name,
+        avatar: currentUser.avatarUrl || currentUser.avatar_url
+      };
+      setAudits((current) => [audit, ...current]);
+      onAddAudit?.(audit);
+      setTitle('');
+      setTargetRepo('');
+      setVulnerabilityType('');
+      setNewTopic('');
+    } catch (submitError) {
+      setError(submitError.message || 'Không thể đăng bài.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpvote = async (auditId) => {
+    if (!currentUser) {
+      onOpenAuth();
+      return;
+    }
+    try {
+      const response = await lunarApi.upvoteCommunityAudit(auditId);
+      setAudits((current) => current.map((audit) => (
+        audit.id === auditId ? { ...audit, likes: response.upvotes } : audit
+      )));
+    } catch (upvoteError) {
+      setError(upvoteError.message || 'Không thể upvote bài viết.');
+    }
   };
 
   return (
@@ -67,6 +115,11 @@ export default function SecurityCommunity({ audits = [], onAddAudit }) {
         
         {/* Main Feed: Discussions & Audit Reviews */}
         <div>
+          {error && (
+            <div style={{ color: '#fca5a5', padding: '10px 14px', background: 'rgba(239,68,68,.12)', borderRadius: '8px', marginBottom: '14px' }}>
+              {error}
+            </div>
+          )}
           
           {/* Post Form */}
           <form onSubmit={handleSubmit} className="glass-panel" style={{ padding: '20px', marginBottom: '24px' }}>
@@ -77,27 +130,42 @@ export default function SecurityCommunity({ audits = [], onAddAudit }) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
               <div className="input-group" style={{ marginBottom: 0 }}>
-                <label className="input-label">Họ tên / Nickname Pentester</label>
+                <label className="input-label">Tiêu đề cảnh báo</label>
                 <input
                   type="text"
-                  placeholder="VD: Nguyễn Văn A"
+                  placeholder="VD: Phát hiện SQL Injection"
                   className="input-control"
-                  value={authorName}
-                  onChange={(e) => setAuthorName(e.target.value)}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  minLength={5}
+                  maxLength={255}
                   required
                 />
               </div>
 
               <div className="input-group" style={{ marginBottom: 0 }}>
-                <label className="input-label">Chức danh Chuyên môn</label>
+                <label className="input-label">Repository</label>
                 <input
                   type="text"
-                  placeholder="VD: Senior Pentester @ Company"
+                  placeholder="owner/repository"
                   className="input-control"
-                  value={authorRole}
-                  onChange={(e) => setAuthorRole(e.target.value)}
+                  value={targetRepo}
+                  onChange={(e) => setTargetRepo(e.target.value)}
+                  maxLength={255}
                 />
               </div>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Loại lỗ hổng</label>
+              <input
+                type="text"
+                placeholder="VD: SQL Injection · CWE-89"
+                className="input-control"
+                value={vulnerabilityType}
+                onChange={(e) => setVulnerabilityType(e.target.value)}
+                maxLength={100}
+              />
             </div>
 
             <div className="input-group" style={{ marginBottom: '14px' }}>
@@ -108,34 +176,43 @@ export default function SecurityCommunity({ audits = [], onAddAudit }) {
                 className="input-control"
                 value={newTopic}
                 onChange={(e) => setNewTopic(e.target.value)}
+                minLength={20}
+                maxLength={10000}
                 required
                 style={{ resize: 'vertical' }}
               />
             </div>
 
-            <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
-              <Send size={16} />
-              Đăng Bài Lên Cộng Đồng Cybersecurity
+            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+              {loading ? <Loader2 size={16} /> : <Send size={16} />}
+              {currentUser ? 'Đăng Bài Lên Cộng Đồng Cybersecurity' : 'Đăng nhập để đăng bài'}
             </button>
           </form>
 
           {/* Audit Posts List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {!loading && audits.length === 0 && (
+              <div className="glass-card" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                Chưa có bài phân tích nào. Hãy trở thành người đầu tiên chia sẻ.
+              </div>
+            )}
             {audits.map((aud) => (
               <div key={aud.id} className="glass-card" style={{ padding: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <img
+                    {aud.avatar ? <img
                       src={aud.avatar}
-                      alt={aud.author}
+                      alt=""
                       style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover' }}
-                    />
+                    /> : <span style={{ width: '42px', height: '42px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: '#4f46e5', fontWeight: 800 }}>
+                      {(aud.authorName || aud.author || 'U').charAt(0).toUpperCase()}
+                    </span>}
                     <div>
                       <h4 style={{ fontSize: '0.98rem', fontWeight: '700', color: 'var(--text-primary)' }}>
-                        {aud.author}
+                        {aud.authorName || aud.author}
                       </h4>
                       <span style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-                        {aud.role} • {aud.createdAt}
+                        {aud.author} • {new Date(aud.createdAt).toLocaleString('vi-VN')}
                       </span>
                     </div>
                   </div>
@@ -145,14 +222,15 @@ export default function SecurityCommunity({ audits = [], onAddAudit }) {
                   </span>
                 </div>
 
-                <p style={{ fontSize: '0.92rem', color: 'var(--text-primary)', lineHeight: '1.6', marginBottom: '14px' }}>
+                <h3 style={{ fontSize: '1rem', marginBottom: '6px' }}>{aud.title}</h3>
+                <p style={{ fontSize: '0.92rem', color: 'var(--text-primary)', lineHeight: '1.6', marginBottom: '14px', whiteSpace: 'pre-wrap' }}>
                   {aud.comment}
                 </p>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.82rem' }}>
-                  <button style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button type="button" onClick={() => handleUpvote(aud.id)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <ThumbsUp size={14} />
-                    <span>Hữu ích ({aud.likes || 12})</span>
+                    <span>Hữu ích ({aud.likes || 0})</span>
                   </button>
                 </div>
               </div>
@@ -190,18 +268,20 @@ export default function SecurityCommunity({ audits = [], onAddAudit }) {
                     {idx + 1}
                   </div>
 
-                  <img
+                  {hacker.avatar ? <img
                     src={hacker.avatar}
-                    alt={hacker.name}
+                    alt=""
                     style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
-                  />
+                  /> : <span style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: '#334155', fontWeight: 800 }}>
+                    {(hacker.name || 'U').charAt(0).toUpperCase()}
+                  </span>}
 
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '0.88rem', fontWeight: '700', color: 'var(--text-primary)' }}>
                       {hacker.name}
                     </div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      {hacker.badge} • {hacker.karma} Karma
+                      {hacker.handle} • {hacker.karma} Karma
                     </div>
                   </div>
                 </div>

@@ -5,33 +5,11 @@ const jwt = require('jsonwebtoken');
 const { JWT_SECRET, verifyToken } = require('../middleware/auth');
 const { authRateLimiter } = require('../middleware/rateLimiter');
 const { queryDb, getIsPgConnected, getPool } = require('../db/connection');
+const { getAccountEmailConfiguration, sendEmailVerification } = require('../services/accountEmailService');
+const { PURPOSES, issueAccountToken } = require('../services/accountTokenService');
+const { serializeUser, tokenPayload } = require('../services/userSerializer');
 
 const router = express.Router();
-
-function tokenPayload(user) {
-  return {
-    id: user.id,
-    email: user.email,
-    nickname: user.nickname,
-    tier: user.tier,
-    role: user.role || 'USER',
-    status: user.status || 'ACTIVE'
-  };
-}
-
-function serializeUser(user) {
-  return {
-    id: user.id,
-    nickname: user.nickname,
-    name: user.name,
-    email: user.email,
-    tier: user.tier,
-    role: user.role || 'USER',
-    status: user.status || 'ACTIVE',
-    karmaPoints: user.karma_points ?? user.karmaPoints ?? 0,
-    dailyScansUsed: user.daily_scans_used ?? user.dailyScansUsed ?? 0
-  };
-}
 
 // Fallback In-Memory DB Store
 const usersDb = [
@@ -70,8 +48,8 @@ router.post('/register', authRateLimiter, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Email, nickname và mật khẩu là bắt buộc.' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ success: false, error: 'Mật khẩu phải có tối thiểu 8 ký tự.' });
+    if (password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
+      return res.status(400).json({ success: false, error: 'Mật khẩu phải có tối thiểu 8 ký tự và tối đa 72 byte.' });
     }
 
     const cleanNickname = nickname.startsWith('@') ? nickname : `@${nickname}`;
@@ -90,7 +68,8 @@ router.post('/register', authRateLimiter, async (req, res) => {
       const result = await queryDb(
         `INSERT INTO users (nickname, name, email, password_hash, tier, role)
          VALUES ($1, $2, $3, $4, 'FREE', $5)
-         RETURNING id, nickname, name, email, tier, role, status, karma_points, daily_scans_used`,
+         RETURNING id, nickname, name, email, email_verified_at, auth_version,
+                   tier, role, status, karma_points, daily_scans_used`,
         [cleanNickname, name || cleanNickname.replace('@', ''), cleanEmail, passwordHash, 'USER']
       );
 
@@ -104,10 +83,30 @@ router.post('/register', authRateLimiter, async (req, res) => {
       // Set HttpOnly Cookie
       res.cookie('access_token', token, COOKIE_OPTIONS);
 
+      let verificationEmailSent = false;
+      if (getAccountEmailConfiguration().configured) {
+        try {
+          const verificationToken = await issueAccountToken(getPool(), {
+            userId: newUser.id,
+            purpose: PURPOSES.EMAIL_VERIFICATION,
+            ttlMinutes: 24 * 60
+          });
+          await sendEmailVerification({
+            email: newUser.email,
+            name: newUser.name,
+            token: verificationToken
+          });
+          verificationEmailSent = true;
+        } catch (emailError) {
+          console.warn('Registration verification email failed:', emailError.message);
+        }
+      }
+
       return res.status(201).json({
         success: true,
         message: 'Đăng ký tài khoản thành công.',
         token,
+        verificationEmailSent,
         user: serializeUser(newUser)
       });
     }
@@ -170,7 +169,13 @@ router.post('/login', authRateLimiter, async (req, res) => {
     const cleanEmail = email.toLowerCase().trim();
 
     if (getIsPgConnected()) {
-      const result = await queryDb('SELECT * FROM users WHERE email = $1', [cleanEmail]);
+      const result = await queryDb(
+        `SELECT u.*, gc.avatar_url
+         FROM users u
+         LEFT JOIN github_connections gc ON gc.user_id = u.id
+         WHERE u.email = $1`,
+        [cleanEmail]
+      );
       if (result && result.rows.length > 0) {
         const dbUser = result.rows[0];
         if (dbUser.status === 'SUSPENDED') {
@@ -276,7 +281,8 @@ router.post('/bootstrap-admin', verifyToken, async (req, res) => {
       `UPDATE users
        SET role = 'ADMIN', updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
-       RETURNING id, nickname, name, email, tier, role, status, karma_points, daily_scans_used`,
+       RETURNING id, nickname, name, email, auth_version, tier, role, status,
+                 karma_points, daily_scans_used`,
       [req.user.id]
     );
     const adminUser = updated.rows[0];
@@ -320,8 +326,12 @@ router.post('/bootstrap-admin', verifyToken, async (req, res) => {
 router.get('/me', verifyToken, async (req, res) => {
   if (getIsPgConnected()) {
     const result = await queryDb(
-      `SELECT id, nickname, name, email, tier, role, status, karma_points, daily_scans_used
-       FROM users WHERE id = $1`,
+      `SELECT u.id, u.nickname, u.name, u.email, u.email_verified_at,
+              u.tier, u.role, u.status, u.karma_points, u.daily_scans_used,
+              gc.avatar_url
+       FROM users u
+       LEFT JOIN github_connections gc ON gc.user_id = u.id
+       WHERE u.id = $1`,
       [req.user.id]
     );
     if (result && result.rows.length > 0) {

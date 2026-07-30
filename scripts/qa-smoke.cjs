@@ -1,4 +1,6 @@
 const { spawn } = require('child_process');
+const crypto = require('crypto');
+const { Pool } = require('pg');
 
 const port = 5200 + Math.floor(Math.random() * 500);
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -13,7 +15,14 @@ const child = spawn(process.execPath, ['server/index.js'], {
     ADMIN_BOOTSTRAP_TOKEN: process.env.ADMIN_BOOTSTRAP_TOKEN || 'qa-one-time-admin-bootstrap-token',
     GEMINI_API_KEY: '',
     OPENAI_API_KEY: '',
-    ANTHROPIC_API_KEY: ''
+    ANTHROPIC_API_KEY: '',
+    GMAIL_DRY_RUN: 'true',
+    GMAIL_CLIENT_ID: 'qa-google-oauth-client',
+    GMAIL_CLIENT_SECRET: 'qa-google-oauth-secret',
+    GMAIL_OAUTH_CALLBACK_URL: `${baseUrl}/api/v1/notifications/gmail/oauth/callback`,
+    GMAIL_TOKEN_ENCRYPTION_KEY: 'qa-gmail-token-encryption-key-at-least-32-characters',
+    AUTH_EMAIL_DRY_RUN: 'true',
+    AUTH_EMAIL_BASE_URL: baseUrl
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -78,8 +87,109 @@ async function registerOrLogin({ name, nickname, email, password, extra = {} }) 
   return { ...login.body, cookie: cookieFrom(login.response) };
 }
 
-async function run() {
+async function verifyGmailOAuthServiceContract() {
+  const managedKeys = [
+    'GMAIL_CLIENT_ID',
+    'GMAIL_CLIENT_SECRET',
+    'GMAIL_OAUTH_CALLBACK_URL',
+    'GMAIL_TOKEN_ENCRYPTION_KEY'
+  ];
+  const previous = Object.fromEntries(managedKeys.map((key) => [key, process.env[key]]));
+  Object.assign(process.env, {
+    GMAIL_CLIENT_ID: 'service-contract-client',
+    GMAIL_CLIENT_SECRET: 'service-contract-secret',
+    GMAIL_OAUTH_CALLBACK_URL: 'http://localhost:5050/api/v1/notifications/gmail/oauth/callback',
+    GMAIL_TOKEN_ENCRYPTION_KEY: 'service-contract-encryption-key-at-least-32-characters'
+  });
   try {
+    const oauth = require('../server/services/gmailOAuthService');
+    const refreshToken = 'qa-refresh-token-must-never-be-stored-in-plaintext';
+    const encrypted = oauth.encryptRefreshToken(refreshToken);
+    if (encrypted.includes(refreshToken) || oauth.decryptRefreshToken(encrypted) !== refreshToken) {
+      throw new Error('Gmail refresh token encryption-at-rest contract failed.');
+    }
+
+    const exchanged = await oauth.exchangeAuthorizationCode('qa-authorization-code', async (url, options) => {
+      if (
+        !url.endsWith('/token')
+        || !String(options.body).includes('grant_type=authorization_code')
+      ) {
+        throw new Error('OAuth authorization-code exchange request is malformed.');
+      }
+      return new Response(JSON.stringify({
+        access_token: 'qa-access-token',
+        refresh_token: refreshToken,
+        scope: 'openid email https://www.googleapis.com/auth/gmail.send'
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const identity = await oauth.fetchGoogleIdentity(exchanged.access_token, async () => (
+      new Response(JSON.stringify({
+        sub: 'google-user-123',
+        email: 'qa-user@example.com',
+        email_verified: true
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    ));
+    const refreshed = await oauth.refreshUserAccessToken(encrypted, async (url, options) => {
+      if (!String(options.body).includes('grant_type=refresh_token')) {
+        throw new Error('OAuth refresh request is malformed.');
+      }
+      return new Response(JSON.stringify({
+        access_token: 'qa-refreshed-access-token',
+        expires_in: 3600
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const revoked = await oauth.revokeUserGrant(encrypted, async (url, options) => {
+      if (!String(options.body).includes('token=qa-refresh-token')) {
+        throw new Error('OAuth revocation request is malformed.');
+      }
+      return new Response('', { status: 200 });
+    });
+    const gmail = require('../server/services/gmailService');
+    let rawMime = '';
+    const delivery = await gmail.sendGmailApiMessage({
+      mode: 'user-oauth',
+      senderEmail: 'connected-sender@example.com',
+      accessToken: 'short-lived-access-token'
+    }, {
+      to: 'lunar-account@example.com',
+      subject: 'Lunar Gmail API contract',
+      text: 'Least-privilege Gmail API delivery.'
+    }, async (url, options) => {
+      const requestBody = JSON.parse(options.body);
+      rawMime = Buffer.from(requestBody.raw, 'base64url').toString('utf8');
+      if (
+        !url.includes('/gmail/v1/users/me/messages/send')
+        || options.headers.Authorization !== 'Bearer short-lived-access-token'
+      ) {
+        throw new Error('Gmail API send request is malformed.');
+      }
+      return new Response(JSON.stringify({ id: 'gmail-message-123' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    });
+    if (
+      identity.email !== 'qa-user@example.com'
+      || refreshed.accessToken !== 'qa-refreshed-access-token'
+      || !revoked
+      || delivery.messageId !== 'gmail-message-123'
+      || !rawMime.includes('connected-sender@example.com')
+      || !rawMime.includes('lunar-account@example.com')
+    ) {
+      throw new Error('Gmail OAuth exchange/identity/refresh/revoke/send contract failed.');
+    }
+  } finally {
+    managedKeys.forEach((key) => {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    });
+  }
+}
+
+async function run() {
+  let qaPool;
+  try {
+    await verifyGmailOAuthServiceContract();
     await waitUntilReady();
 
     const health = await request('/api/v1/health');
@@ -100,6 +210,31 @@ async function run() {
       body: JSON.stringify({ code: 'eval(input)', filename: 'guest.js' })
     }, 401);
 
+    const guestPreview = await request('/api/v1/scans/guest-preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        code: 'eval(req.query.command);\\nconst password = \"guest-secret-value\";',
+        filename: 'guest-fixture.js'
+      })
+    });
+    const serializedGuestPreview = JSON.stringify(guestPreview.body);
+    if (
+      !guestPreview.body.isGuestPreview
+      || guestPreview.body.stats.criticalCount < 1
+      || serializedGuestPreview.includes('lineNumber')
+      || serializedGuestPreview.includes('codeSnippet')
+      || serializedGuestPreview.includes('suggestedPatch')
+      || serializedGuestPreview.includes('req.query.command')
+    ) {
+      throw new Error('Guest preview leaked protected finding evidence.');
+    }
+    await request('/api/v1/scans/guest-preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: 'x'.repeat(100 * 1024 + 1), filename: 'oversized.js' })
+    }, 413);
+
     const uniqueId = Date.now();
     const regular = await registerOrLogin({
       name: 'QA User',
@@ -111,12 +246,188 @@ async function run() {
     if (regular.user.tier !== 'FREE' || regular.user.role !== 'USER') {
       throw new Error('Registration accepted client-controlled tier or role.');
     }
+    if (regular.user.emailVerified !== false) {
+      throw new Error('Password registration unexpectedly bypassed email verification.');
+    }
+
+    const forgotPassword = await request('/api/v1/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: regular.user.email })
+    });
+    if (!forgotPassword.body.success || JSON.stringify(forgotPassword.body).includes(regular.user.id)) {
+      throw new Error('Forgot-password response leaked account state.');
+    }
+
+    qaPool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const { PURPOSES, issueAccountToken } = require('../server/services/accountTokenService');
+    const resetToken = await issueAccountToken(qaPool, {
+      userId: regular.user.id,
+      purpose: PURPOSES.PASSWORD_RESET,
+      ttlMinutes: 30
+    });
+    await request('/api/v1/auth/reset-password', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: resetToken, password: 'ResetPass123!' })
+    });
+    const resetLogin = await request('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: regular.user.email, password: 'ResetPass123!' })
+    });
+    regular.cookie = cookieFrom(resetLogin.response);
+
+    const verificationToken = await issueAccountToken(qaPool, {
+      userId: regular.user.id,
+      purpose: PURPOSES.EMAIL_VERIFICATION,
+      ttlMinutes: 60
+    });
+    await request('/api/v1/auth/verify-email', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: verificationToken })
+    });
+    await request('/api/v1/auth/verify-email', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: verificationToken })
+    }, 400);
+    const verifiedMe = await request('/api/v1/auth/me', {
+      headers: { cookie: regular.cookie }
+    });
+    if (!verifiedMe.body.user.emailVerified) {
+      throw new Error('Email verification did not persist.');
+    }
+
+    const accountUpdate = await request('/api/v1/auth/account', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: regular.cookie },
+      body: JSON.stringify({ name: 'QA User Updated' })
+    });
+    if (accountUpdate.body.user.name !== 'QA User Updated') {
+      throw new Error('Account profile update did not persist.');
+    }
+    const previousSessionCookie = regular.cookie;
+    const changedPassword = await request('/api/v1/auth/change-password', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: regular.cookie },
+      body: JSON.stringify({
+        currentPassword: 'ResetPass123!',
+        newPassword: 'ChangedPass123!'
+      })
+    });
+    await request('/api/v1/auth/me', {
+      headers: { cookie: previousSessionCookie }
+    }, 401);
+    regular.cookie = cookieFrom(changedPassword.response);
 
     const userAccess = await request('/api/v1/dashboard/access', { headers: { cookie: regular.cookie } });
     if (userAccess.body.identity !== 'FREE') {
       throw new Error('FREE user access profile is incorrect.');
     }
     await request('/api/v1/admin/overview', { headers: { cookie: regular.cookie } }, 403);
+
+    const githubRepositories = await request('/api/v1/auth/github/repositories', {
+      headers: { cookie: regular.cookie }
+    });
+    if (!Array.isArray(githubRepositories.body.repositories)) {
+      throw new Error('GitHub repository combobox endpoint did not return a repository array.');
+    }
+    await request('/api/v1/auth/github/repositories', {}, 401);
+
+    const gmailStatus = await request('/api/v1/notifications/gmail/status', {
+      headers: { cookie: regular.cookie }
+    });
+    if (
+      !gmailStatus.body.configured
+      || !gmailStatus.body.oauthConfigured
+      || !gmailStatus.body.connected
+      || !gmailStatus.body.canSend
+      || gmailStatus.body.mode !== 'dry-run'
+      || gmailStatus.body.connection?.email !== regular.user.email
+      || JSON.stringify(gmailStatus.body).includes('refreshToken')
+      || JSON.stringify(gmailStatus.body).includes('accessToken')
+      || JSON.stringify(gmailStatus.body).includes('clientSecret')
+    ) {
+      throw new Error('Per-user Gmail OAuth status contract is invalid in QA dry-run mode.');
+    }
+    await request('/api/v1/notifications/gmail/oauth/start', {}, 401);
+    await request('/api/v1/notifications/gmail/disconnect', { method: 'POST' }, 401);
+    const gmailOAuthStart = await request('/api/v1/notifications/gmail/oauth/start', {
+      headers: { cookie: regular.cookie },
+      redirect: 'manual'
+    }, 302);
+    const gmailAuthorizationUrl = new URL(gmailOAuthStart.response.headers.get('location'));
+    if (
+      gmailAuthorizationUrl.origin !== 'https://accounts.google.com'
+      || gmailAuthorizationUrl.searchParams.get('access_type') !== 'offline'
+      || !gmailAuthorizationUrl.searchParams.get('scope')?.includes('gmail.send')
+      || gmailAuthorizationUrl.searchParams.get('redirect_uri')
+        !== `${baseUrl}/api/v1/notifications/gmail/oauth/callback`
+    ) {
+      throw new Error('Gmail OAuth authorization redirect is missing least-privilege parameters.');
+    }
+    const oauthStateCookie = gmailOAuthStart.response.headers.get('set-cookie')?.split(';')[0];
+    const oauthSetCookie = gmailOAuthStart.response.headers.get('set-cookie') || '';
+    if (
+      !oauthStateCookie?.startsWith('gmail_oauth_state=')
+      || !/HttpOnly/i.test(oauthSetCookie)
+      || !/SameSite=Lax/i.test(oauthSetCookie)
+    ) {
+      throw new Error('Gmail OAuth start did not issue an HttpOnly state cookie.');
+    }
+    const invalidState = await request(
+      '/api/v1/notifications/gmail/oauth/callback?state=invalid&code=not-exchanged',
+      {
+        headers: { cookie: `${regular.cookie}; ${oauthStateCookie}` },
+        redirect: 'manual'
+      },
+      302
+    );
+    if (!invalidState.response.headers.get('location')?.includes('gmail_auth=invalid_state')) {
+      throw new Error('Gmail OAuth callback did not reject an invalid CSRF state.');
+    }
+    await request('/api/v1/notifications/gmail/audit-report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ projectTitle: 'Unauthorized report' })
+    }, 401);
+    const preferences = await request('/api/v1/notifications/gmail/preferences', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: regular.cookie },
+      body: JSON.stringify({ instantCritical: true, weeklyDigest: false, proReceipt: true })
+    });
+    if (preferences.body.preferences.weeklyDigest !== false) {
+      throw new Error('Gmail notification preferences did not persist.');
+    }
+    const gmailDelivery = await request('/api/v1/notifications/gmail/audit-report', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: regular.cookie },
+      body: JSON.stringify({
+        recipientEmail: 'attacker-controlled@example.com',
+        projectTitle: 'QA Security Report',
+        scanSummary: { stats: { maxCvss: 9.2, criticalCount: 1, highCount: 2, total: 3 } }
+      })
+    });
+    if (
+      gmailDelivery.body.mode !== 'dry-run'
+      || gmailDelivery.body.recipient !== regular.user.email
+      || gmailDelivery.body.senderEmail !== regular.user.email
+      || !gmailDelivery.body.attachmentName?.endsWith('.pdf')
+    ) {
+      throw new Error('Gmail delivery did not enforce the account email and PDF attachment contract.');
+    }
+    const gmailHistory = await request('/api/v1/notifications/gmail/history', {
+      headers: { cookie: regular.cookie }
+    });
+    if (
+      !gmailHistory.body.emails?.length
+      || gmailHistory.body.emails[0].recipientEmail !== regular.user.email
+      || gmailHistory.body.emails[0].senderEmail !== regular.user.email
+    ) {
+      throw new Error('Gmail delivery history was not persisted.');
+    }
 
     const aiProviders = await request('/api/v1/ai/providers', {
       headers: { cookie: regular.cookie }
@@ -207,6 +518,60 @@ eval(userInput);`,
     if (scan.body.source !== 'postgresql' || scan.body.scan.issuesCount < 1) {
       throw new Error('Verified scan was not analyzed and persisted.');
     }
+    let criticalAlert;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const history = await request('/api/v1/notifications/gmail/history', {
+        headers: { cookie: regular.cookie }
+      });
+      criticalAlert = history.body.emails?.find((email) => email.emailType === 'CRITICAL_ALERT');
+      if (criticalAlert) break;
+      await sleep(50);
+    }
+    if (
+      !criticalAlert
+      || criticalAlert.senderEmail !== regular.user.email
+      || criticalAlert.recipientEmail !== regular.user.email
+    ) {
+      throw new Error('Critical scan did not dispatch a per-user Gmail alert.');
+    }
+
+    const scanHistory = await request('/api/v1/auth/scan-history', {
+      headers: { cookie: regular.cookie }
+    });
+    if (!scanHistory.body.scans?.some((item) => item.id === scan.body.scan.id)) {
+      throw new Error('Account scan history did not include the persisted scan.');
+    }
+
+    const communityPost = await request('/api/v1/community/audits', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: regular.cookie },
+      body: JSON.stringify({
+        title: 'QA detects unsafe dynamic execution',
+        targetRepo: 'qa/security-fixture',
+        vulnerabilityType: 'Dynamic execution',
+        severity: 'critical',
+        content: 'This QA community report contains enough detail to validate PostgreSQL persistence.'
+      })
+    }, 201);
+    const communityFeed = await request('/api/v1/community/audits');
+    if (!communityFeed.body.audits?.some((item) => item.id === communityPost.body.audit.id)) {
+      throw new Error('Community audit was not served from PostgreSQL.');
+    }
+    const firstUpvote = await request(`/api/v1/community/audits/${communityPost.body.audit.id}/upvote`, {
+      method: 'POST',
+      headers: { cookie: regular.cookie }
+    });
+    const duplicateUpvote = await request(`/api/v1/community/audits/${communityPost.body.audit.id}/upvote`, {
+      method: 'POST',
+      headers: { cookie: regular.cookie }
+    });
+    if (duplicateUpvote.body.upvotes !== firstUpvote.body.upvotes || !duplicateUpvote.body.alreadyUpvoted) {
+      throw new Error('Community upvote idempotency failed.');
+    }
+    const communityLeaderboard = await request('/api/v1/community/leaderboard');
+    if (!communityLeaderboard.body.leaders?.length || !Array.isArray(communityLeaderboard.body.projects)) {
+      throw new Error('Community leaderboard did not return persisted users and projects.');
+    }
 
     const dashboard = await request('/api/v1/dashboard/overview?days=28', {
       headers: { cookie: regular.cookie }
@@ -286,20 +651,41 @@ eval(userInput);`,
       body: JSON.stringify({ tier: 'ENTERPRISE', paymentMethod: 'VIETQR' })
     });
     const orderCode = createOrder.body.order.orderCode;
-
-    await request('/api/v1/payment/mock-webhook', {
+    const paymentEventPayload = JSON.stringify({
+      eventId: `qa-event-${uniqueId}`,
+      transactionId: `qa-transaction-${uniqueId}`,
+      orderCode,
+      amount: createOrder.body.order.amount,
+      status: 'PAID'
+    });
+    await request('/api/v1/payment/webhook', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ orderCode, simulateSuccess: true })
+      body: paymentEventPayload
     }, 401);
-    await request('/api/v1/payment/mock-webhook', {
+    const paymentSignature = crypto
+      .createHmac('sha256', 'qa-payment-webhook-secret')
+      .update(paymentEventPayload)
+      .digest('hex');
+    const webhookConfirmation = await request('/api/v1/payment/webhook', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-webhook-secret': 'qa-payment-webhook-secret'
+        'x-lunar-signature': `sha256=${paymentSignature}`
       },
-      body: JSON.stringify({ orderCode, simulateSuccess: true })
+      body: paymentEventPayload
     });
+    const webhookRetry = await request('/api/v1/payment/webhook', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-lunar-signature': `sha256=${paymentSignature}`
+      },
+      body: paymentEventPayload
+    });
+    if (webhookConfirmation.body.status !== 'SUCCESS' || !webhookRetry.body.idempotent) {
+      throw new Error('Signed payment webhook or event idempotency failed.');
+    }
     const paymentStatus = await request(`/api/v1/payment/status/${orderCode}`, {
       headers: { cookie: regular.cookie }
     });
@@ -313,6 +699,12 @@ eval(userInput);`,
       database: readiness.body.database,
       securityHealth: security.body.status,
       guestAccess: 'PASS',
+      guestPreviewMasking: 'PASS',
+      githubComboboxContract: 'PASS',
+      accountRecoveryAndVerification: 'PASS',
+      accountSettingsAndScanHistory: 'PASS',
+      communityPersistence: 'PASS',
+      gmailPerUserOAuthContract: 'PASS',
       userRbac: 'PASS',
       persistedDashboard: 'PASS',
       aiFailClosed: 'PASS',
@@ -320,9 +712,10 @@ eval(userInput);`,
       sastRuleSignatures: scannerModule.SECURITY_RULE_SIGNATURE_COUNT,
       adminRbac: 'PASS',
       auditedAdminActions: auditLog.body.logs.length,
-      paymentFlow: paymentStatus.body.status
+      signedPaymentWebhook: paymentStatus.body.status
     }, null, 2));
   } finally {
+    await qaPool?.end();
     child.kill();
   }
 }

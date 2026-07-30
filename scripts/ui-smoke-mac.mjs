@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const baseUrl = process.env.LUNAR_UI_URL || 'http://127.0.0.1:5050';
+const gmailOnly = process.argv.includes('--gmail-only');
 const chromeCandidates = [
   process.env.CHROME_PATH,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -190,11 +191,103 @@ try {
     'Lunar landing page'
   );
 
+  if (gmailOnly) {
+    const gmailUnique = Date.now();
+    const gmailTestEmail = `gmail-browser-${gmailUnique}@example.com`;
+    const registration = await evaluate(`fetch('/api/v1/auth/register', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Gmail Browser QA',
+        nickname: 'gmailqa${gmailUnique}',
+        email: ${JSON.stringify(gmailTestEmail)},
+        password: 'StrongPass123!'
+      })
+    }).then(async (response) => ({ status: response.status, body: await response.json() }))`);
+    if (registration.status !== 201) {
+      throw new Error(`Gmail browser QA registration failed: ${JSON.stringify(registration)}`);
+    }
+    await client.send('Page.reload', { ignoreCache: true });
+    await waitFor(
+      `fetch('/api/v1/auth/me', { credentials: 'include' })
+        .then((response) => response.status === 200)`,
+      'authenticated Gmail browser session'
+    );
+    await clickButton('Gmail Alert');
+    await waitFor(
+      `document.body.innerText.includes('Gmail Cá Nhân & Cảnh Báo An Ninh')
+        && document.body.innerText.includes('Quản trị viên chưa cấu hình Google OAuth Client cho Lunar')`,
+      'per-user Gmail OAuth modal'
+    );
+    const gmailStatus = await evaluate(`fetch('/api/v1/notifications/gmail/status', {
+      credentials: 'include'
+    }).then((response) => response.json())`);
+    const gmailUi = await evaluate(`(() => {
+      const sendButton = [...document.querySelectorAll('button')]
+        .find((button) => button.textContent.includes('Gửi thử Audit PDF'));
+      const recipient = document.querySelector('input[aria-label="Email tài khoản Lunar nhận cảnh báo"]');
+      return {
+        heading: document.body.innerText.includes('Gmail Cá Nhân & Cảnh Báo An Ninh'),
+        leastPrivilegeCopy: document.body.innerText.includes('không lưu mật khẩu Gmail'),
+        recipientEmail: recipient?.value || null,
+        sendDisabled: Boolean(sendButton?.disabled)
+      };
+    })()`);
+    if (
+      gmailStatus.configured
+      || gmailStatus.connected
+      || !gmailUi.heading
+      || !gmailUi.leastPrivilegeCopy
+      || gmailUi.recipientEmail !== gmailTestEmail
+      || !gmailUi.sendDisabled
+      || runtimeErrors.length
+      || consoleErrors.length
+    ) {
+      throw new Error(`Per-user Gmail browser contract failed: ${JSON.stringify({
+        gmailStatus,
+        gmailUi,
+        runtimeErrors,
+        consoleErrors
+      })}`);
+    }
+    console.log(JSON.stringify({
+      status: 'PASS',
+      baseUrl,
+      gmailPerUserOAuthUi: gmailUi
+    }, null, 2));
+  } else {
   results.page = {
     title: await evaluate('document.title'),
     rootRendered: await evaluate(`Boolean(document.querySelector('#root')?.children.length)`),
     workspaceRendered: await evaluate(`document.body.innerText.includes('Đồng Bộ GitHub Repositories Cá Nhân')`)
   };
+
+  await clickButton('Quét Code');
+  await waitFor(
+    `document.body.innerText.includes('Upload Repo & Chấm Điểm AI')`,
+    'guest project submission modal'
+  );
+  await clickButton('Paste Snippet');
+  await fill('textarea[placeholder*="Dán mã nguồn"]', [
+    'eval(req.query.command);',
+    'const password = "guest-browser-secret";'
+  ].join('\n'));
+  await clickButton('Bắt Đầu Phân Tích & Chấm Điểm AI');
+  await waitFor(
+    `Boolean(document.querySelector('[data-testid="guest-preview-summary"]'))
+      && document.body.innerText.includes('Bản xem trước cho Khách')
+      && document.body.innerText.includes('Mở Khóa Soi Code Chi Tiết')`,
+    'guest preview masking',
+    15000
+  );
+  results.guestPreview = {
+    summaryRendered: await evaluate(`Boolean(document.querySelector('[data-testid="guest-preview-summary"]'))`),
+    detailsLocked: await evaluate(`document.body.innerText.includes('Mở Khóa Soi Code Chi Tiết')`),
+    autoFixLocked: await evaluate(`document.body.innerText.includes('Unlock Lunar AI Code Repair Workbench')`)
+  };
+  await clickButton('← Back to Overview');
+  await waitFor(`document.body.innerText.includes('Code review that')`, 'landing page after guest preview');
 
   await clickButton('Sign In');
   await waitFor(`Boolean(document.querySelector('#auth-modal'))`, 'authentication modal');
@@ -203,12 +296,17 @@ try {
     .filter(Boolean))`);
 
   await clickButton('GitHub');
-  await clickButton('Kết Nối & Nạp GitHub Repositories');
-  await waitFor(
-    `document.body.innerText.includes('GitHub OAuth chưa được cấu hình')`,
-    'GitHub configuration warning'
-  );
-  results.githubMissingConfigHandled = true;
+  const githubConfiguration = await evaluate(`fetch('/api/v1/auth/github/config')
+    .then((response) => response.json())`);
+  results.githubOAuthConfigured = Boolean(githubConfiguration.configured);
+  if (!githubConfiguration.configured) {
+    await clickButton('Kết Nối & Nạp GitHub Repositories');
+    await waitFor(
+      `document.body.innerText.includes('GitHub OAuth chưa được cấu hình')`,
+      'GitHub configuration warning'
+    );
+    results.githubMissingConfigHandled = true;
+  }
 
   await evaluate(`document.querySelector('#auth-modal button[aria-label="Đóng hộp đăng nhập"]')?.click()`);
   await waitFor(`!document.querySelector('#auth-modal')`, 'modal close');
@@ -223,7 +321,13 @@ try {
   await fill(`#auth-modal input[type="text"]`, 'Browser Smoke User');
   await fill(`#auth-modal input[type="email"]`, email);
   await fill(`#auth-modal input[type="password"]`, 'StrongPass123!');
-  await clickButton('Khởi Tạo Tài Khoản Pro');
+  const registrationSubmitted = await evaluate(`(() => {
+    const form = document.querySelector('#auth-modal form');
+    if (!form) return false;
+    form.requestSubmit();
+    return true;
+  })()`);
+  if (!registrationSubmitted) throw new Error('Registration form was not available for submission.');
   await sleep(1200);
   const registrationState = await evaluate(`(() => ({
     modalOpen: Boolean(document.querySelector('#auth-modal')),
@@ -245,6 +349,11 @@ try {
 
   results.cookieSession = await evaluate(`fetch('/api/v1/auth/me', { credentials: 'include' })
     .then(async (response) => ({ status: response.status, body: await response.json() }))`);
+  await waitFor(
+    `Boolean(document.querySelector('section[aria-label="GitHub repository quick scan"]'))`,
+    'GitHub quick scan combobox'
+  );
+  results.githubComboboxRendered = true;
 
   await fill(`input[placeholder="Nhập GitHub Username của bạn..."]`, 'ThanhluanGif');
   await clickButton('Tải Repos');
@@ -255,12 +364,34 @@ try {
   );
   results.publicGitHubSync = true;
 
-  await clickButton('Kết Nối GitHub');
-  await waitFor(
-    `document.body.innerText.includes('LUNAR_GITHUB_CLIENT_ID')`,
-    'workspace GitHub configuration warning'
-  );
-  results.workspaceGitHubWarning = true;
+  if (githubConfiguration.configured) {
+    results.workspaceGitHubConfigured = true;
+  } else {
+    await clickButton('Kết Nối GitHub');
+    await waitFor(
+      `document.body.innerText.includes('LUNAR_GITHUB_CLIENT_ID')`,
+      'workspace GitHub configuration warning'
+    );
+    results.workspaceGitHubWarning = true;
+  }
+
+  const accountMenuOpened = await evaluate(`(() => {
+    const button = document.querySelector('button[aria-haspopup="menu"]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!accountMenuOpened) throw new Error('Authenticated account menu was not available.');
+  await clickButton('Account Settings');
+  await waitFor(`Boolean(document.querySelector('#account-settings-modal'))`, 'account settings modal');
+  results.accountSettings = await evaluate(`(() => ({
+    rendered: Boolean(document.querySelector('#account-settings-modal')),
+    profileTab: document.body.innerText.includes('Hồ sơ'),
+    securityTab: document.body.innerText.includes('Bảo mật'),
+    historyTab: document.body.innerText.includes('Lịch sử scan'),
+    connectionsTab: document.body.innerText.includes('Kết nối')
+  }))()`);
+  await evaluate(`document.querySelector('#account-settings-modal button[aria-label="Đóng cài đặt tài khoản"]')?.click()`);
 
   await clickButton('Quét Code');
   await waitFor(
@@ -301,6 +432,46 @@ try {
   );
   results.projectSimulation.patchAppliedAndRescanned = true;
 
+  await clickButton('Audit Report & Badge');
+  await waitFor(
+    `document.body.innerText.includes('Quản trị viên chưa cấu hình Google OAuth Client cho Gmail')`,
+    'audit report Gmail configuration state'
+  );
+  results.auditGmailFailClosed = await evaluate(`(() => {
+    const button = [...document.querySelectorAll('button')]
+      .find((item) => item.textContent.includes('Gửi Báo Cáo Audit Trực Tiếp Về Gmail'));
+    return Boolean(button?.disabled);
+  })()`);
+  await evaluate(`document.querySelector('button[aria-label="Đóng báo cáo audit"]')?.click()`);
+
+  await clickButton('Gmail Alert');
+  await waitFor(
+    `document.body.innerText.includes('Quản trị viên chưa cấu hình Google OAuth Client cho Lunar')`,
+    'Gmail settings configuration state'
+  );
+  results.gmailSettingsFailClosed = await evaluate(`(() => {
+    const button = [...document.querySelectorAll('button')]
+      .find((item) => item.textContent.includes('Gửi thử Audit PDF'));
+    return Boolean(button?.disabled);
+  })()`);
+  await evaluate(`document.querySelector('button[aria-label="Đóng cấu hình Gmail"]')?.click()`);
+
+  await clickButton('Cộng Đồng Security');
+  await waitFor(
+    `document.body.innerText.includes('Cộng Đồng An Ninh Mạng')
+      && document.body.innerText.includes('Top 3 White-Hat Hackers')`,
+    'PostgreSQL community screen'
+  );
+  results.communityRendered = true;
+
+  await client.send('Page.navigate', { url: `${baseUrl}/definitely-not-a-lunar-page` });
+  await waitFor(
+    `document.body.innerText.includes('404 · LOST IN ORBIT')
+      && document.body.innerText.includes('Không tìm thấy trang này')`,
+    '404 page'
+  );
+  results.notFoundRendered = true;
+
   const expectedGuestAuthProbe = (item) => item.status === 401 && item.url.endsWith('/api/v1/auth/me');
   results.diagnostics = {
     consoleErrors,
@@ -314,6 +485,19 @@ try {
   }
   if (results.cookieSession?.status !== 200 || !results.cookieSession?.body?.user?.email) {
     throw new Error('Browser registration did not establish a working cookie session.');
+  }
+  if (
+    !results.guestPreview?.summaryRendered
+    || !results.guestPreview?.detailsLocked
+    || !results.guestPreview?.autoFixLocked
+    || !results.githubComboboxRendered
+    || !results.auditGmailFailClosed
+    || !results.gmailSettingsFailClosed
+    || !results.accountSettings?.rendered
+    || !results.communityRendered
+    || !results.notFoundRendered
+  ) {
+    throw new Error(`Guest/GitHub/Gmail/account/community/404 browser contract failed: ${JSON.stringify(results)}`);
   }
   if (
     !results.projectSimulation?.workbenchRendered
@@ -330,8 +514,21 @@ try {
   }
 
   console.log(JSON.stringify({ status: 'PASS', baseUrl, ...results }, null, 2));
+  }
 } finally {
   client?.close();
-  chrome.kill('SIGTERM');
-  await rm(profileDir, { recursive: true, force: true });
+  if (chrome.exitCode === null) {
+    const chromeExited = new Promise((resolve) => chrome.once('exit', resolve));
+    chrome.kill('SIGTERM');
+    await Promise.race([chromeExited, sleep(2000)]);
+  }
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(profileDir, { recursive: true, force: true });
+      break;
+    } catch (error) {
+      if (attempt === 4) throw error;
+      await sleep(200);
+    }
+  }
 }

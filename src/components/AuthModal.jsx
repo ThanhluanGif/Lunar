@@ -1,17 +1,28 @@
-import React, { useState } from 'react';
-import { X, Github, Mail, ShieldCheck, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, Github, Mail, ShieldCheck, Sparkles, AlertCircle, Loader2, KeyRound } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
 
-export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
+export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialResetToken = '' }) {
   const [activeTab, setActiveTab] = useState('email');
-  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  const [authMode, setAuthMode] = useState(initialResetToken ? 'reset' : 'login');
   
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetToken, setResetToken] = useState(initialResetToken);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [noticeMsg, setNoticeMsg] = useState('');
+
+  useEffect(() => {
+    if (!initialResetToken) return;
+    setResetToken(initialResetToken);
+    setAuthMode('reset');
+    setActiveTab('email');
+    setErrorMsg('');
+  }, [initialResetToken]);
 
   if (!isOpen) return null;
 
@@ -36,9 +47,30 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setNoticeMsg('');
     setLoading(true);
 
     try {
+      if (authMode === 'forgot') {
+        const response = await lunarApi.forgotPassword(email);
+        setNoticeMsg(response.message);
+        setLoading(false);
+        return;
+      }
+      if (authMode === 'reset') {
+        if (password !== confirmPassword) {
+          throw new Error('Mật khẩu xác nhận không khớp.');
+        }
+        const response = await lunarApi.resetPassword(resetToken, password);
+        setNoticeMsg(response.message);
+        setPassword('');
+        setConfirmPassword('');
+        setResetToken('');
+        setAuthMode('login');
+        setLoading(false);
+        return;
+      }
+
       const response = authMode === 'register'
         ? await lunarApi.register({
             email,
@@ -47,56 +79,12 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
             nickname: email.split('@')[0]
           })
         : await lunarApi.login(email, password);
-      onLoginSuccess(response.user);
-      setLoading(false);
-      onClose();
-      return;
-
-      if (authMode === 'register') {
-        const { data, error } = await supabase.auth.signUp({
-          email: email,
-          password: password,
-          options: { data: { full_name: fullName } }
-        });
-
-        if (error) {
-          console.warn('Supabase signup notice:', error.message);
-        }
-
-        const newUser = {
-          id: data?.user?.id || 'usr-' + Date.now(),
-          nickname: `@${email.split('@')[0]}`,
-          name: fullName || email.split('@')[0],
-          email: email,
-          tier: 'FREE',
-          karma_points: 500,
-          avatar_url: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80`,
-          daily_scans_used: 0
-        };
-        sendWelcomeGmail(newUser.email, newUser.name);
-        onLoginSuccess(newUser);
-      } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email,
-          password: password
-        });
-
-        if (error) {
-          console.warn('Supabase signin notice:', error.message);
-        }
-
-        const existingUser = {
-          id: data?.user?.id || 'usr-' + Date.now(),
-          nickname: `@${email.split('@')[0]}`,
-          name: email.split('@')[0],
-          email: email,
-          tier: 'FREE',
-          karma_points: 1200,
-          avatar_url: `https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80`,
-          daily_scans_used: 0
-        };
-        onLoginSuccess(existingUser);
-      }
+      const accountNotice = authMode === 'register'
+        ? response.verificationEmailSent
+          ? 'Đăng ký thành công. Hãy kiểm tra email để xác minh tài khoản.'
+          : 'Đăng ký thành công. Bạn có thể gửi email xác minh lại trong Account Settings.'
+        : '';
+      onLoginSuccess(response.user, accountNotice);
       setLoading(false);
       onClose();
     } catch (err) {
@@ -164,7 +152,11 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
             <ShieldCheck size={24} color="#fff" />
           </div>
           <h2 id="auth-modal-title" style={{ fontFamily: 'var(--font-heading)', fontSize: '1.35rem', fontWeight: '800', color: '#fff' }}>
-            Đăng Nhập Lunar.dev
+            {authMode === 'forgot'
+              ? 'Khôi phục tài khoản'
+              : authMode === 'reset'
+                ? 'Đặt lại mật khẩu'
+                : 'Đăng Nhập Lunar.dev'}
           </h2>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
             Dùng email và mật khẩu hoặc kết nối an toàn qua GitHub OAuth
@@ -172,7 +164,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
         </div>
 
         {/* Auth Method Tabs */}
-        <div style={{
+        {authMode !== 'forgot' && authMode !== 'reset' && <div style={{
           display: 'flex',
           gap: '4px',
           margin: '16px 0 20px 0',
@@ -196,7 +188,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
           >
             <Github size={14} /> GitHub
           </button>
-        </div>
+        </div>}
 
         {errorMsg && (
           <div style={{
@@ -213,6 +205,19 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
           }}>
             <AlertCircle size={16} />
             <span>{errorMsg}</span>
+          </div>
+        )}
+        {noticeMsg && (
+          <div style={{
+            padding: '10px 14px',
+            background: 'rgba(16, 185, 129, 0.14)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            borderRadius: 'var(--radius-md)',
+            color: '#6ee7b7',
+            fontSize: '0.82rem',
+            marginBottom: '16px'
+          }}>
+            {noticeMsg}
           </div>
         )}
 
@@ -267,7 +272,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
               </div>
             )}
 
-            <div className="input-group">
+            {authMode !== 'reset' && <div className="input-group">
               <label className="input-label">Email</label>
               <input
                 type="email"
@@ -277,9 +282,9 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
-            </div>
+            </div>}
 
-            <div className="input-group">
+            {authMode !== 'forgot' && <div className="input-group">
               <label className="input-label">Mật khẩu</label>
               <input
                 type="password"
@@ -288,8 +293,26 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                minLength={8}
+                maxLength={72}
               />
-            </div>
+            </div>}
+
+            {authMode === 'reset' && (
+              <div className="input-group">
+                <label className="input-label">Xác nhận mật khẩu mới</label>
+                <input
+                  type="password"
+                  placeholder="••••••••••••"
+                  className="input-control"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  required
+                  minLength={8}
+                  maxLength={72}
+                />
+              </div>
+            )}
 
             <button
               type="submit"
@@ -297,15 +320,34 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
               className="btn btn-primary"
               style={{ width: '100%', padding: '11px', marginTop: '8px' }}
             >
-              {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Sparkles size={16} />}
-              {authMode === 'login' ? 'Đăng Nhập Ngay' : 'Khởi Tạo Tài Khoản Pro'}
+              {loading
+                ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                : authMode === 'forgot' || authMode === 'reset'
+                  ? <KeyRound size={16} />
+                  : <Sparkles size={16} />}
+              {authMode === 'login'
+                ? 'Đăng Nhập Ngay'
+                : authMode === 'register'
+                  ? 'Khởi Tạo Tài Khoản'
+                  : authMode === 'forgot'
+                    ? 'Gửi liên kết đặt lại'
+                    : 'Lưu mật khẩu mới'}
             </button>
 
             <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              {authMode === 'login' ? (
-                <span>Chưa có tài khoản? <button type="button" onClick={() => setAuthMode('register')} style={{ background: 'none', border: 'none', color: '#60a5fa', fontWeight: '600', cursor: 'pointer' }}>Đăng ký ngay</button></span>
-              ) : (
-                <span>Đã có tài khoản? <button type="button" onClick={() => setAuthMode('login')} style={{ background: 'none', border: 'none', color: '#60a5fa', fontWeight: '600', cursor: 'pointer' }}>Đăng nhập</button></span>
+              {authMode === 'login' && (
+                <>
+                  <span>Chưa có tài khoản? <button type="button" onClick={() => { setAuthMode('register'); setNoticeMsg(''); }} style={{ background: 'none', border: 'none', color: '#60a5fa', fontWeight: '600', cursor: 'pointer' }}>Đăng ký ngay</button></span>
+                  <span style={{ display: 'block', marginTop: '8px' }}>
+                    <button type="button" onClick={() => { setAuthMode('forgot'); setNoticeMsg(''); setErrorMsg(''); }} style={{ background: 'none', border: 'none', color: '#c084fc', fontWeight: '600', cursor: 'pointer' }}>Quên mật khẩu?</button>
+                  </span>
+                </>
+              )}
+              {authMode === 'register' && (
+                <span>Đã có tài khoản? <button type="button" onClick={() => { setAuthMode('login'); setNoticeMsg(''); }} style={{ background: 'none', border: 'none', color: '#60a5fa', fontWeight: '600', cursor: 'pointer' }}>Đăng nhập</button></span>
+              )}
+              {(authMode === 'forgot' || authMode === 'reset') && (
+                <button type="button" onClick={() => { setAuthMode('login'); setNoticeMsg(''); setErrorMsg(''); }} style={{ background: 'none', border: 'none', color: '#60a5fa', fontWeight: '600', cursor: 'pointer' }}>← Quay lại đăng nhập</button>
               )}
             </div>
           </form>

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Moon, ShieldCheck, Github, Sparkles, LogOut, Terminal, Cpu, Plus, Layers, Mail, Zap, Crown, User } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ShieldCheck, Sparkles, LogOut, Plus, Layers, Mail, Zap, Crown, User, Settings, ChevronDown } from 'lucide-react';
 
 export default function Navbar({ 
   activeTab, 
@@ -10,8 +10,21 @@ export default function Navbar({
   onOpenAuth, 
   onLogout, 
   onOpenPricing, 
-  onOpenGmailSettings 
+  onOpenGmailSettings,
+  onOpenAccountSettings
 }) {
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return undefined;
+    const closeOnOutsideClick = (event) => {
+      if (!accountMenuRef.current?.contains(event.target)) setAccountMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, [accountMenuOpen]);
+
   const getTierBadge = () => {
     if (currentTier === 'ENTERPRISE') return <span style={{ fontSize: '0.68rem', fontWeight: '800', padding: '2px 8px', borderRadius: '999px', background: 'rgba(34, 211, 238, 0.15)', color: '#22d3ee', border: '1px solid rgba(34, 211, 238, 0.3)' }}>ENTERPRISE</span>;
     if (currentTier === 'PRO') return <span style={{ fontSize: '0.68rem', fontWeight: '800', padding: '2px 8px', borderRadius: '999px', background: 'rgba(157, 110, 245, 0.15)', color: '#c084fc', border: '1px solid rgba(157, 110, 245, 0.3)' }}>PRO</span>;
@@ -245,42 +258,102 @@ export default function Navbar({
 
           {/* User Account Info Bar */}
           {currentUser ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
+            <div ref={accountMenuRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setAccountMenuOpen((open) => !open)}
+                aria-expanded={accountMenuOpen}
+                aria-haspopup="menu"
+                style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
                 background: 'rgba(255, 255, 255, 0.04)',
                 border: '1px solid rgba(255, 255, 255, 0.08)',
                 padding: '4px 10px',
-                borderRadius: '8px'
+                borderRadius: '8px',
+                color: 'inherit',
+                cursor: 'pointer'
               }}>
-                <img
-                  src={currentUser.avatar_url || 'https://lh3.googleusercontent.com/a/default-user=s96-c'}
-                  alt={currentUser.name}
-                  style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
-                />
+                {currentUser.avatarUrl || currentUser.avatar_url ? (
+                  <img
+                    src={currentUser.avatarUrl || currentUser.avatar_url}
+                    alt=""
+                    style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <span style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    display: 'grid',
+                    placeItems: 'center',
+                    background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)',
+                    fontSize: '0.72rem',
+                    fontWeight: 800
+                  }}>
+                    {(currentUser.name || currentUser.email || 'U').charAt(0).toUpperCase()}
+                  </span>
+                )}
                 <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#e2e5f0' }}>{currentUser.name}</span>
                 {getTierBadge()}
-              </div>
-
-              <button
-                onClick={onLogout}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  color: '#7880a0',
-                  padding: '6px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-                title="Đăng xuất"
-              >
-                <LogOut size={14} />
+                <ChevronDown size={13} color="#7880a0" />
               </button>
+
+              {accountMenuOpen && (
+                <div
+                  role="menu"
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 10px)',
+                    right: 0,
+                    width: '230px',
+                    padding: '8px',
+                    borderRadius: '12px',
+                    background: '#11131d',
+                    border: '1px solid rgba(255,255,255,.1)',
+                    boxShadow: '0 18px 45px rgba(0,0,0,.45)'
+                  }}
+                >
+                  <div style={{ padding: '8px 10px 10px', borderBottom: '1px solid rgba(255,255,255,.07)', marginBottom: '6px' }}>
+                    <strong style={{ display: 'block', fontSize: '0.82rem' }}>{currentUser.name}</strong>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{currentUser.email}</span>
+                  </div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAccountMenuOpen(false);
+                      onOpenAccountSettings();
+                    }}
+                    style={menuButtonStyle}
+                  >
+                    <Settings size={15} /> Account Settings
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAccountMenuOpen(false);
+                      onOpenGmailSettings();
+                    }}
+                    style={menuButtonStyle}
+                  >
+                    <Mail size={15} /> Gmail Notifications
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAccountMenuOpen(false);
+                      onLogout();
+                    }}
+                    style={{ ...menuButtonStyle, color: '#fca5a5' }}
+                  >
+                    <LogOut size={15} /> Đăng xuất
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <button
@@ -309,3 +382,18 @@ export default function Navbar({
     </header>
   );
 }
+
+const menuButtonStyle = {
+  width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '9px',
+  padding: '9px 10px',
+  border: 0,
+  borderRadius: '8px',
+  background: 'transparent',
+  color: '#cbd5e1',
+  cursor: 'pointer',
+  fontSize: '0.8rem',
+  textAlign: 'left'
+};

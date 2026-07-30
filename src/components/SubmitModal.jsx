@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { X, Github, Sparkles, Loader2, Code, ShieldCheck, AlertCircle } from 'lucide-react';
 import { fetchGitHubRepoDetails } from '../services/githubService';
 import { scanRepository } from '../services/repoScanner';
+import { lunarApi } from '../services/lunarApi';
 
-export default function SubmitModal({ isOpen, onClose, onAddProject }) {
+export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser }) {
   const [githubUrl, setGithubUrl] = useState('');
   const [customCode, setCustomCode] = useState('');
   const [activeMode, setActiveMode] = useState('github'); // 'github' | 'snippet' | 'local'
@@ -105,6 +106,29 @@ export default function SubmitModal({ isOpen, onClose, onAddProject }) {
 
       setStepText('Đang chạy AI Engine: Phân tích SAST (OWASP, CVSS v3.1, Bug Check & Auto Fix)...');
       await new Promise(r => setTimeout(r, 1000));
+
+      if (!currentUser) {
+        const guestCode = rawProjectData.files
+          .filter((file) => typeof file.content === 'string')
+          .map((file) => `// FILE: ${file.path}\n${file.content}`)
+          .join('\n\n');
+        const preview = await lunarApi.runGuestPreviewScan({
+          code: guestCode,
+          filename: rawProjectData.files[0]?.path || 'guest-project.js'
+        });
+        onAddProject({
+          ...rawProjectData,
+          id: `guest-${Date.now()}`,
+          submittedAt: 'Vừa xong',
+          guestPreview: preview,
+          overallScore: preview.score,
+          cvssScore: preview.stats.maxCvss,
+          files: rawProjectData.files.map((file) => ({ ...file, annotations: [] }))
+        });
+        setLoading(false);
+        onClose();
+        return;
+      }
 
       const projectScan = await scanRepository(rawProjectData.files, {
         repositoryName: rawProjectData.title

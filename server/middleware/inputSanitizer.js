@@ -7,11 +7,9 @@ const BLOCKED_OBJECT_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 function sanitizeValue(value) {
   if (typeof value === 'string') {
-    // Truncate overly long strings (> 100KB) to prevent ReDoS / Buffer Overflow
-    if (value.length > 100000) {
-      value = value.substring(0, 100000);
-    }
-    // Remove null bytes
+    // Payload limits belong to the route that understands the field. Silently
+    // truncating source code here bypasses route-specific 100KB/500KB checks.
+    // Express already enforces the global 10MB request-body ceiling.
     return value.replace(/\0/g, '');
   }
   if (typeof value === 'object' && value !== null) {

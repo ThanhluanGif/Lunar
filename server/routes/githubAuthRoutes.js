@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, optionalToken, verifyToken } = require('../middleware/auth');
 const { getPool } = require('../db/connection');
+const { tokenPayload } = require('../services/userSerializer');
 
 const router = express.Router();
 const GITHUB_API = 'https://api.github.com';
@@ -116,6 +117,18 @@ async function syncRepositories(client, userId, repositories) {
       ]
     );
   }
+}
+
+function publicRepository(repository) {
+  return {
+    id: repository.id,
+    fullName: repository.full_name || repository.name,
+    name: repository.name || String(repository.full_name || '').split('/').pop(),
+    repoUrl: repository.html_url,
+    language: repository.language || 'Unknown',
+    isPrivate: Boolean(repository.private),
+    updatedAt: repository.updated_at || null
+  };
 }
 
 router.get('/config', (req, res) => {
@@ -231,12 +244,22 @@ router.get('/callback', optionalToken, async (req, res) => {
         ? `${baseNickname.slice(0, 35)}-${profile.id}`
         : baseNickname;
       const inserted = await client.query(
-        `INSERT INTO users (nickname, name, email, password_hash, tier, role, status)
-         VALUES ($1, $2, $3, $4, 'FREE', 'USER', 'ACTIVE')
+        `INSERT INTO users (
+           nickname, name, email, password_hash, tier, role, status, email_verified_at
+         )
+         VALUES ($1, $2, $3, $4, 'FREE', 'USER', 'ACTIVE', CURRENT_TIMESTAMP)
          RETURNING id`,
         [nickname, profile.name || profile.login, githubEmail, passwordHash]
       );
       userId = inserted.rows[0].id;
+    } else {
+      await client.query(
+        `UPDATE users
+         SET email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [userId]
+      );
     }
 
     const encryptedToken = encryptToken(tokenPayload.access_token, config.encryptionKey);
@@ -267,14 +290,19 @@ router.get('/callback', optionalToken, async (req, res) => {
     await syncRepositories(client, userId, repositories);
 
     const userResult = await client.query(
-      'SELECT id, email, nickname, tier, role, status FROM users WHERE id = $1',
+      `SELECT u.id, u.email, u.nickname, u.name, u.email_verified_at, u.auth_version,
+              u.tier, u.role, u.status, u.karma_points, u.daily_scans_used,
+              gc.avatar_url
+       FROM users u
+       LEFT JOIN github_connections gc ON gc.user_id = u.id
+       WHERE u.id = $1`,
       [userId]
     );
     const user = userResult.rows[0];
     if (user.status === 'SUSPENDED') throw new Error('This Lunar account is suspended.');
     await client.query('COMMIT');
 
-    const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign(tokenPayload(user), JWT_SECRET, { expiresIn: '7d' });
     res.cookie('access_token', token, authCookieOptions);
     return res.redirect('/?github_auth=success');
   } catch (error) {
@@ -296,6 +324,26 @@ router.get('/status', verifyToken, async (req, res) => {
     [req.user.id]
   );
   return res.json({ success: true, connected: result.rows.length > 0, connection: result.rows[0] || null });
+});
+
+router.get('/repositories', verifyToken, async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
+  const result = await pool.query(
+    `SELECT github_repo_id AS id,
+            name AS "fullName",
+            split_part(name, '/', 2) AS name,
+            repo_url AS "repoUrl",
+            language,
+            is_private AS "isPrivate",
+            synced_at AS "updatedAt"
+     FROM projects
+     WHERE user_id = $1 AND github_repo_id IS NOT NULL
+     ORDER BY synced_at DESC NULLS LAST, name ASC
+     LIMIT 100`,
+    [req.user.id]
+  );
+  return res.json({ success: true, repositories: result.rows });
 });
 
 router.post('/sync', verifyToken, async (req, res) => {
@@ -331,11 +379,32 @@ router.post('/sync', verifyToken, async (req, res) => {
     } finally {
       client.release();
     }
-    return res.json({ success: true, repositoriesSynced: repositories.length });
+    return res.json({
+      success: true,
+      repositoriesSynced: repositories.length,
+      repositories: repositories.map(publicRepository)
+    });
   } catch (error) {
     console.error('GitHub repository sync failed:', error.message);
     return res.status(502).json({ success: false, error: 'Unable to synchronize GitHub repositories.' });
   }
+});
+
+router.post('/disconnect', verifyToken, async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
+  const result = await pool.query(
+    'DELETE FROM github_connections WHERE user_id = $1 RETURNING github_login',
+    [req.user.id]
+  );
+  if (!result.rows[0]) {
+    return res.status(404).json({ success: false, error: 'No GitHub account is connected.' });
+  }
+  return res.json({
+    success: true,
+    disconnected: true,
+    message: 'GitHub đã được ngắt khỏi Lunar. Bạn có thể thu hồi OAuth grant trong GitHub Settings.'
+  });
 });
 
 module.exports = router;

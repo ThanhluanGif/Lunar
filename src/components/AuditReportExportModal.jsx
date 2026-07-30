@@ -1,12 +1,36 @@
-import React, { useState } from 'react';
-import { X, ShieldCheck, Copy, Check, Award, Download, FileText, Mail, Send } from 'lucide-react';
-import { sendSecurityAuditGmail } from '../services/gmailMailerService';
+import React, { useEffect, useState } from 'react';
+import { X, ShieldCheck, Copy, Check, Download, Mail } from 'lucide-react';
+import { lunarApi } from '../services/lunarApi';
 
 export default function AuditReportExportModal({ isOpen, onClose, project, scanResult, currentUser }) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [sendingGmail, setSendingGmail] = useState(false);
   const [gmailSentSuccess, setGmailSentSuccess] = useState(false);
+  const [gmailConfigured, setGmailConfigured] = useState(false);
+  const [gmailMessage, setGmailMessage] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isOpen) return () => { cancelled = true; };
+    setGmailConfigured(false);
+    setGmailMessage('');
+    if (!currentUser) return () => { cancelled = true; };
+    lunarApi.getGmailNotificationStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setGmailConfigured(status.canSend);
+        if (!status.canSend) {
+          setGmailMessage(status.oauthConfigured
+            ? 'Hãy mở Gmail Alert và kết nối Gmail cá nhân trước khi gửi báo cáo.'
+            : 'Quản trị viên chưa cấu hình Google OAuth Client cho Gmail.');
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setGmailMessage(error.message || 'Không thể kiểm tra cấu hình Gmail.');
+      });
+    return () => { cancelled = true; };
+  }, [currentUser, isOpen]);
 
   if (!isOpen || !project) return null;
 
@@ -25,12 +49,23 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
 
   const handleSendGmail = async () => {
     setSendingGmail(true);
-    const targetEmail = currentUser?.email || 'developer@gmail.com';
-
-    await sendSecurityAuditGmail(targetEmail, project.title, scanResult);
-    setSendingGmail(false);
-    setGmailSentSuccess(true);
-    setTimeout(() => setGmailSentSuccess(false), 4000);
+    setGmailMessage('');
+    try {
+      const result = await lunarApi.sendAuditReportEmail({
+        projectTitle: project.title,
+        scanSummary: scanResult
+      });
+      setGmailSentSuccess(true);
+      setGmailMessage(result.mode === 'dry-run'
+        ? `Dry-run Gmail thành công cho ${result.recipient}.`
+        : `Đã gửi báo cáo tới ${result.recipient}.`);
+      setTimeout(() => setGmailSentSuccess(false), 4000);
+    } catch (error) {
+      setGmailSentSuccess(false);
+      setGmailMessage(error.message || 'Không thể gửi báo cáo qua Gmail.');
+    } finally {
+      setSendingGmail(false);
+    }
   };
 
   const handleDownloadPdf = async () => {
@@ -92,6 +127,7 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
       }}>
         <button
           onClick={onClose}
+          aria-label="Đóng báo cáo audit"
           style={{
             position: 'absolute',
             top: '20px',
@@ -165,7 +201,19 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
             marginBottom: '14px',
             textAlign: 'center'
           }}>
-            📧 Đã gửi thành công báo cáo Audit tới Gmail: <strong>{currentUser?.email || 'developer@gmail.com'}</strong>!
+            📧 {gmailMessage}
+          </div>
+        )}
+
+        {!gmailSentSuccess && gmailMessage && (
+          <div role="alert" style={{ color: '#fda4af', fontSize: '0.84rem', marginBottom: '14px' }}>
+            {gmailMessage}
+          </div>
+        )}
+
+        {!gmailConfigured && currentUser && !gmailMessage && (
+          <div style={{ color: '#fcd34d', fontSize: '0.82rem', marginBottom: '14px' }}>
+            Hãy kết nối Gmail cá nhân trước khi gửi báo cáo.
           </div>
         )}
 
@@ -177,7 +225,7 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
 
           <button
             onClick={handleSendGmail}
-            disabled={sendingGmail}
+            disabled={sendingGmail || !gmailConfigured || !currentUser}
             className="btn btn-secondary"
             style={{ width: '100%', padding: '11px', borderColor: '#ea4335', color: '#fca5a5', gap: '8px' }}
           >
@@ -190,4 +238,3 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
     </div>
   );
 }
-
