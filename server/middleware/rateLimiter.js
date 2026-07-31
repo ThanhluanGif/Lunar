@@ -17,15 +17,23 @@ function validateRateLimitDeployment(env = process.env) {
 }
 
 function normalizedAuthIdentifier(req) {
-  const candidate = req.body?.email
-    || req.body?.nickname
-    || req.body?.token
-    || req.user?.email
-    || req.user?.id
-    || '';
-  return typeof candidate === 'string'
-    ? candidate.trim().toLowerCase().slice(0, 512)
-    : '';
+  const body = req.body || {};
+  const bodyCandidate = [
+    ['email', body.email],
+    ['username', body.username],
+    ['nickname', body.nickname],
+    ['token', body.token]
+  ].find(([, value]) => typeof value === 'string' && value.trim());
+  const [kind, candidate] = bodyCandidate
+    || (typeof req.user?.email === 'string' && req.user.email.trim()
+      ? ['email', req.user.email]
+      : ['userId', req.user?.id || '']);
+  if (typeof candidate !== 'string') return '';
+
+  const normalized = candidate.trim().toLowerCase().slice(0, 512);
+  if (!normalized || kind === 'token' || kind === 'userId') return normalized;
+  if (normalized.startsWith('@') || normalized.includes('@')) return normalized;
+  return `@${normalized}`;
 }
 
 function authIdentifierKey(req) {

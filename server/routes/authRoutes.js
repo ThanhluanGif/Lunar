@@ -9,12 +9,14 @@ const { getAccountEmailConfiguration, sendEmailVerification } = require('../serv
 const { PURPOSES, issueAccountToken } = require('../services/accountTokenService');
 const { createCookieOptions } = require('../services/cookiePolicy');
 const { serializeUser, tokenPayload } = require('../services/userSerializer');
+const { recordSuccessfulLogin } = require('../services/loginActivityService');
 
 const router = express.Router();
 
 // Development-only fallback store. It starts empty and is never used in
 // production, where authentication must fail closed if PostgreSQL is down.
 const usersDb = [];
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NICKNAME_PATTERN = /^[A-Za-z0-9_.-]{2,49}$/;
 
@@ -173,15 +175,22 @@ router.post('/register', authRateLimiter, authIdentifierRateLimiter, async (req,
  */
 router.post('/login', authRateLimiter, authIdentifierRateLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const cleanEmail = normalizeEmail(email);
+    const suppliedIdentifier = req.body?.email ?? req.body?.username;
+    const password = req.body?.password;
+
     if (
-      !cleanEmail
+      typeof suppliedIdentifier !== 'string'
       || typeof password !== 'string'
       || password.length === 0
       || Buffer.byteLength(password, 'utf8') > 72
     ) {
       return res.status(400).json({ success: false, error: 'Vui lòng cung cấp email và mật khẩu.' });
+    }
+
+    const cleanEmail = normalizeEmail(suppliedIdentifier);
+    const cleanNickname = normalizeNickname(suppliedIdentifier);
+    if (!cleanEmail && !cleanNickname) {
+      return res.status(400).json({ success: false, error: 'Vui lòng cung cấp email hoặc nickname hợp lệ.' });
     }
 
     if (process.env.NODE_ENV === 'production' && !getIsPgConnected()) {
@@ -193,17 +202,23 @@ router.post('/login', authRateLimiter, authIdentifierRateLimiter, async (req, re
         `SELECT u.*, gc.avatar_url
          FROM users u
          LEFT JOIN github_connections gc ON gc.user_id = u.id
-         WHERE u.email = $1`,
-        [cleanEmail]
+         WHERE u.email = $1 OR LOWER(u.nickname) = LOWER($2)`,
+        [cleanEmail || null, cleanNickname || null]
       );
       if (result && result.rows.length > 0) {
         const dbUser = result.rows[0];
-        if (dbUser.status === 'SUSPENDED') {
-          return res.status(403).json({ success: false, error: 'Tài khoản đã bị tạm khóa.' });
-        }
         const isMatch = await bcrypt.compare(password, dbUser.password_hash);
         if (isMatch) {
-          await queryDb('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [dbUser.id]);
+          if (dbUser.status === 'SUSPENDED') {
+            return res.status(403).json({ success: false, error: 'Tài khoản đã bị tạm khóa.' });
+          }
+          await recordSuccessfulLogin(getPool(), {
+            userId: dbUser.id,
+            authMethod: 'PASSWORD',
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+            correlationId: req.correlationId
+          });
           const token = jwt.sign(
             tokenPayload(dbUser),
             JWT_SECRET,
@@ -222,7 +237,10 @@ router.post('/login', authRateLimiter, authIdentifierRateLimiter, async (req, re
     }
 
     // In-memory fallback
-    const user = usersDb.find(u => u.email.toLowerCase() === cleanEmail);
+    const user = usersDb.find((candidate) => (
+      (cleanEmail && candidate.email.toLowerCase() === cleanEmail)
+      || (cleanNickname && candidate.nickname.toLowerCase() === cleanNickname.toLowerCase())
+    ));
     if (!user) {
       return res.status(401).json({ success: false, error: 'Email hoặc mật khẩu không chính xác.' });
     }
@@ -230,6 +248,9 @@ router.post('/login', authRateLimiter, authIdentifierRateLimiter, async (req, re
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ success: false, error: 'Email hoặc mật khẩu không chính xác.' });
+    }
+    if (user.status === 'SUSPENDED') {
+      return res.status(403).json({ success: false, error: 'Tài khoản đã bị tạm khóa.' });
     }
 
     const token = jwt.sign(

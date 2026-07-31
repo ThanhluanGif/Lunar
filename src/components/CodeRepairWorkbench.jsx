@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { createGitHubSecurityPR } from '../services/githubBotService';
 import { simulateProjectHackerAttack } from '../services/geminiService';
+import { normalizeAutoPatch } from '../services/autoPatchPolicy';
+import { getUpgradeQuotaContext } from '../services/quotaUpgrade';
 
 function matchesActiveFinding(finding, activeFile, activeVuln) {
   const filePath = activeFile?.path || activeVuln?.filePath;
@@ -23,19 +25,14 @@ function matchesActiveFinding(finding, activeFile, activeVuln) {
   return false;
 }
 
-function validatedPatchFor(finding) {
-  const remediation = finding?.remediation;
-  const patch = remediation?.patchCode || finding?.patchedCode || '';
-  const validated = remediation?.patchValidated === true || finding?.patchValidated === true;
-  return validated && patch ? patch : '';
-}
-
 export default function CodeRepairWorkbench({
   activeFile,
   activeVuln,
   projectAttackSimulation,
   repoUrl,
-  onApplyPatch
+  onApplyPatch,
+  currentTier,
+  onQuotaExceeded
 }) {
   const simulationFinding = useMemo(() => (
     projectAttackSimulation?.findings?.find((finding) => matchesActiveFinding(finding, activeFile, activeVuln))
@@ -47,13 +44,13 @@ export default function CodeRepairWorkbench({
   const [isSimulatingAttack, setIsSimulatingAttack] = useState(false);
   const [simulationError, setSimulationError] = useState('');
   const [liveFinding, setLiveFinding] = useState(simulationFinding);
-  const [appliedPatch, setAppliedPatch] = useState('');
+  const [patchStatus, setPatchStatus] = useState('triaged');
   const [isCreatingPR, setIsCreatingPR] = useState(false);
   const [prResult, setPrResult] = useState(null);
 
   useEffect(() => {
     setLiveFinding(simulationFinding);
-    setAppliedPatch('');
+    setPatchStatus('triaged');
     setSimulationError('');
     setPrResult(null);
   }, [activeFile?.path, activeVuln?.id, simulationFinding]);
@@ -72,10 +69,14 @@ export default function CodeRepairWorkbench({
   const attackVector = liveFinding?.hackerAttackVector || activeVuln?.hackerAttackVector;
   const remediation = liveFinding?.remediation || activeVuln?.remediation;
   const originalCode = activeFile?.content || activeVuln?.originalCode || '';
-  const generatedPatch = validatedPatchFor(liveFinding) || validatedPatchFor(activeVuln);
-  const patchedCode = appliedPatch || generatedPatch || originalCode;
+  const patchFilePath = activeFile?.path || activeVuln?.filePath;
+  const livePatch = normalizeAutoPatch({ ...liveFinding, filePath: patchFilePath });
+  const activePatch = normalizeAutoPatch({ ...activeVuln, filePath: patchFilePath });
+  const patchOwner = livePatch.available ? liveFinding : activeVuln || liveFinding;
+  const patch = livePatch.available ? livePatch : activePatch;
+  const patchedCode = patch.available ? patch.after : null;
   const threatLevel = attackVector?.threatLevel || activeVuln?.severity || liveFinding?.severity || 'MEDIUM';
-  const canApplyPatch = Boolean(generatedPatch && generatedPatch !== originalCode);
+  const canApplyPatch = patch.available && patch.before === originalCode;
 
   const handleSimulateAttack = async () => {
     if (!activeFile?.content) return;
@@ -99,6 +100,11 @@ export default function CodeRepairWorkbench({
         setSimulationError('Không tìm thấy chuỗi tấn công có đủ bằng chứng trong file hiện tại.');
       }
     } catch (error) {
+      const quota = getUpgradeQuotaContext(error, currentTier, 'AI_REVIEW');
+      if (quota && onQuotaExceeded) {
+        onQuotaExceeded(quota);
+        return;
+      }
       setSimulationError(error.status === 401
         ? 'Bạn cần đăng nhập để chạy AI Deep Project Scan.'
         : error.message || 'Không thể chạy mô phỏng phòng thủ.');
@@ -107,23 +113,39 @@ export default function CodeRepairWorkbench({
     }
   };
 
-  const handleApplyPatch = () => {
+  const handleApplyPatch = async () => {
     if (!canApplyPatch) return;
-    setAppliedPatch(generatedPatch);
-    onApplyPatch?.({
-      filePath: activeFile?.path || activeVuln?.filePath,
-      vulnerabilityId: activeVuln?.id || liveFinding?.id,
-      patchedCode: generatedPatch
-    });
+    setPatchStatus('applied');
+    setSimulationError('');
+    try {
+      const finding = {
+        ...patchOwner,
+        ...patch,
+        filePath: activeFile?.path || activeVuln?.filePath,
+        remediation: { ...(remediation || {}), ...patch }
+      };
+      const result = await onApplyPatch?.({ finding, patch });
+      if (result?.status === 'verified') {
+        setPatchStatus('verified');
+      } else {
+        setPatchStatus('proposed');
+        setSimulationError(result?.reason || 'Patch chưa vượt qua validation và rescan.');
+      }
+    } catch (error) {
+      setPatchStatus('proposed');
+      setSimulationError(error.message || 'Không thể xác minh patch.');
+    }
   };
 
   const handleCopy = async () => {
+    if (!patchedCode) return;
     await navigator.clipboard.writeText(patchedCode);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = () => {
+    if (!patchedCode) return;
     const blob = new Blob([patchedCode], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -134,6 +156,7 @@ export default function CodeRepairWorkbench({
   };
 
   const handleCreatePR = async () => {
+    if (patchStatus !== 'verified' || !patchedCode) return;
     setIsCreatingPR(true);
     try {
       const result = await createGitHubSecurityPR(repoUrl, originalCode, patchedCode, {
@@ -247,36 +270,40 @@ export default function CodeRepairWorkbench({
         <ol style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.65, paddingLeft: '20px' }}>
           {(remediation?.stepByStepGuide || []).map((step) => <li key={step}>{step}</li>)}
         </ol>
-        <button className="btn btn-emerald" onClick={handleApplyPatch} disabled={!canApplyPatch || Boolean(appliedPatch)} data-testid="apply-project-patch">
-          {appliedPatch ? <CheckCircle size={16} /> : <Wrench size={16} />}
-          {appliedPatch ? 'Đã áp dụng bản vá' : '1-Click Apply Patch'}
+        <button className="btn btn-emerald" onClick={handleApplyPatch} disabled={!canApplyPatch || ['applied', 'verified'].includes(patchStatus)} data-testid="apply-project-patch">
+          {patchStatus === 'verified' ? <CheckCircle size={16} /> : <Wrench size={16} />}
+          {patchStatus === 'verified' ? 'Đã xác minh' : patchStatus === 'applied' ? 'Đang rescan…' : '1-Click Apply Patch'}
         </button>
+        {!patch.available && (
+          <p role="status" style={{ color: '#fbbf24', fontSize: '0.82rem', marginTop: '10px' }}>
+            {patch.reasonUnavailable}
+          </p>
+        )}
       </div>
 
-      {viewMode === 'side-by-side' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-          <CodePanel title="BEFORE · Code có lỗi" code={originalCode} color="#fca5a5" background="#1a0d10" />
-          <CodePanel title="AFTER · Bản vá đề xuất" code={patchedCode} color="#6ee7b7" background="#0d1f18" />
-        </div>
-      ) : (
-        <pre style={{ background: '#0d1117', padding: '16px', borderRadius: '8px', whiteSpace: 'pre-wrap', marginBottom: '20px' }}>
-          <span style={{ color: '#fca5a5' }}>- {originalCode}</span>{'\n'}
-          <span style={{ color: '#6ee7b7' }}>+ {patchedCode}</span>
-        </pre>
-      )}
+      {patch.available && (viewMode === 'side-by-side' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+            <CodePanel title="BEFORE · Code có lỗi" code={originalCode} color="#fca5a5" background="#1a0d10" />
+            <CodePanel title="AFTER · Bản vá đề xuất" code={patchedCode} color="#6ee7b7" background="#0d1f18" />
+          </div>
+        ) : (
+          <pre style={{ background: '#0d1117', padding: '16px', borderRadius: '8px', whiteSpace: 'pre-wrap', marginBottom: '20px' }}>
+            {patch.unifiedDiff}
+          </pre>
+        ))}
 
       {simulationError && (
         <p role="alert" style={{ color: '#fda4af', fontSize: '0.82rem', marginBottom: '12px' }}>{simulationError}</p>
       )}
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-        <button onClick={handleCopy} className="btn btn-secondary">
+        <button onClick={handleCopy} disabled={!patch.available} className="btn btn-secondary">
           {copied ? <CheckCircle size={16} /> : <Copy size={16} />} {copied ? 'Đã copy' : 'Copy bản vá'}
         </button>
-        <button onClick={handleDownload} className="btn btn-secondary">
+        <button onClick={handleDownload} disabled={!patch.available} className="btn btn-secondary">
           <Download size={16} /> Tải file đã vá
         </button>
-        <button onClick={handleCreatePR} disabled={isCreatingPR || !repoUrl} className="btn btn-emerald">
+        <button onClick={handleCreatePR} disabled={isCreatingPR || !repoUrl || patchStatus !== 'verified'} className="btn btn-emerald">
           {isCreatingPR ? <Loader2 size={16} className="spin" /> : <GitPullRequest size={16} />}
           {isCreatingPR ? 'Đang tạo PR…' : 'Tạo GitHub Pull Request'}
         </button>
@@ -295,7 +322,7 @@ function CodePanel({ title, code, color, background }) {
   return (
     <div style={{ background, border: `1px solid ${color}55`, borderRadius: '8px', padding: '16px' }}>
       <div style={{ color, fontSize: '0.75rem', fontWeight: 800, marginBottom: '8px' }}>{title}</div>
-      <pre style={{ color, margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>{code || '// Không có code để hiển thị'}</pre>
+      <pre style={{ color, margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>{code}</pre>
     </div>
   );
 }

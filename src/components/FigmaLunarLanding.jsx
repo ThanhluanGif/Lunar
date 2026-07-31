@@ -30,7 +30,6 @@ export default function FigmaLunarLanding({
   useEffect(() => {
     let isMounted = true;
     async function loadPublicMetrics() {
-      setLoadingPublicData(true);
       const [statsData, reviewsData] = await Promise.all([
         fetchPublicStats(),
         fetchPublicReviews()
@@ -42,7 +41,22 @@ export default function FigmaLunarLanding({
       }
     }
     loadPublicMetrics();
-    return () => { isMounted = false; };
+
+    // REAL-TIME UPDATES: Poll every 3 seconds & listen to scan/patch events
+    const intervalId = setInterval(loadPublicMetrics, 3000);
+    const handleUpdate = () => loadPublicMetrics();
+
+    window.addEventListener('lunar_audit_saved', handleUpdate);
+    window.addEventListener('lunar_scan_completed', handleUpdate);
+    window.addEventListener('lunar_vulnerability_patched', handleUpdate);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('lunar_audit_saved', handleUpdate);
+      window.removeEventListener('lunar_scan_completed', handleUpdate);
+      window.removeEventListener('lunar_vulnerability_patched', handleUpdate);
+    };
   }, []);
 
   const handleSendReview = async (e) => {

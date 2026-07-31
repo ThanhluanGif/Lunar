@@ -1080,3 +1080,141 @@ table {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Lunar Assistant Contact Enhancements */
+.lunar-assistant-quick-contacts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #0f172a;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.72rem;
+  overflow-x: auto;
+}
+
+.lunar-assistant-contact-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 0.71rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  border: none;
+  cursor: pointer;
+}
+
+.lunar-assistant-contact-badge.zalo {
+  background: #0068ff;
+  color: #ffffff;
+}
+
+.lunar-assistant-contact-badge.zalo:hover {
+  background: #0052cc;
+}
+
+.lunar-assistant-contact-badge.phone {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.lunar-assistant-contact-badge.phone:hover {
+  background: #059669;
+}
+
+.lunar-assistant-contact-badge.mail {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.lunar-assistant-contact-badge.mail:hover {
+  background: rgba(168, 85, 247, 0.35);
+}
+
+.lunar-assistant-contact-form-panel {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #0b0f19;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.lunar-assistant-contact-form-panel h4 {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #f3f4f6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lunar-assistant-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lunar-assistant-form-group label {
+  font-size: 0.71rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.lunar-assistant-form-group input,
+.lunar-assistant-form-group textarea {
+  padding: 7px 10px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #f8fafc;
+  font-size: 0.78rem;
+  outline: none;
+  font-family: inherit;
+}
+
+.lunar-assistant-form-group input:focus,
+.lunar-assistant-form-group textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.lunar-assistant-form-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.lunar-assistant-form-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.lunar-assistant-contact-success {
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #6ee7b7;
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+

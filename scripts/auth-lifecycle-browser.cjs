@@ -16,6 +16,7 @@ const databasePassword = crypto.randomBytes(24).toString('base64url');
 const jwtSecret = crypto.randomBytes(48).toString('base64url');
 const databaseUrl = `postgresql://lunar_auth:${encodeURIComponent(databasePassword)}@127.0.0.1:${databasePort}/lunar_auth`;
 const email = `routing-${seed}@example.com`;
+const nickname = `@${email.split('@')[0]}`;
 const accountCredential = crypto.randomBytes(24).toString('base64url');
 const displayName = 'Routing Lifecycle User';
 const chromeCandidates = [
@@ -258,7 +259,7 @@ async function run() {
     }
 
     await openEmailLogin(page);
-    await page.type('input[placeholder="developer@lunar.dev"]', email);
+    await page.type('input[autocomplete="username"]', nickname);
     await page.type('input[type="password"]', accountCredential);
     await markAndClick(page, 'Đăng Nhập Ngay', { scope: '[role="dialog"] button' });
     await waitForSignedInUser(page);
@@ -304,6 +305,7 @@ async function run() {
       logout: 200,
       sessionAfterLogout: 401,
       relogin: 200,
+      reloginByNickname: 'PASS',
       authCacheControl: 'no-store',
       corsPreflight: 'PASS',
       failedFetches: 0,

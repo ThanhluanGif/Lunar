@@ -14,6 +14,7 @@ const {
   resolveVerifiedEmailAutoLink
 } = require('../services/githubAccountLinking');
 const { serializeUser, tokenPayload } = require('../services/userSerializer');
+const { recordSuccessfulLogin } = require('../services/loginActivityService');
 const { writeSystemLog } = require('../middleware/logger');
 const { createCookieOptions } = require('../services/cookiePolicy');
 const { providerFetch } = require('../services/providerHttp');
@@ -178,7 +179,9 @@ async function persistGitHubIdentity({
   accessToken,
   grantedScopes,
   requestedUser,
-  correlationId
+  correlationId,
+  ipAddress,
+  userAgent
 }) {
   const [profile, repositories] = await Promise.all([
     githubRequest('/user', accessToken, correlationId),
@@ -285,6 +288,16 @@ async function persistGitHubIdentity({
     const user = userResult.rows[0];
     if (!user) throw new Error('Unable to load the Lunar account after GitHub login.');
     if (user.status === 'SUSPENDED') throw new Error('This Lunar account is suspended.');
+
+    if (!requestedUser) {
+      await recordSuccessfulLogin(client, {
+        userId,
+        authMethod: 'GITHUB',
+        ipAddress,
+        userAgent,
+        correlationId
+      });
+    }
 
     await client.query('COMMIT');
     committed = true;
@@ -492,7 +505,9 @@ router.post('/device/poll', githubAuthPollRateLimiter, optionalToken, async (req
       accessToken: githubToken.access_token,
       grantedScopes: githubToken.scope,
       requestedUser: req.user,
-      correlationId: req.correlationId
+      correlationId: req.correlationId,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
     });
     const token = jwt.sign(tokenPayload(result.user), JWT_SECRET, { expiresIn: '7d' });
     res.cookie('access_token', token, authCookieOptions);
@@ -571,7 +586,9 @@ router.get('/callback', optionalToken, async (req, res) => {
       accessToken: githubToken.access_token,
       grantedScopes: githubToken.scope,
       requestedUser: req.user,
-      correlationId: req.correlationId
+      correlationId: req.correlationId,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
     });
     const token = jwt.sign(tokenPayload(result.user), JWT_SECRET, { expiresIn: '7d' });
     res.cookie('access_token', token, authCookieOptions);

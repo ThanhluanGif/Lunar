@@ -1,9 +1,97 @@
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_REPORT_FINDINGS = 1000;
+const REPORT_TEXT_LIMIT = 16000;
+
+const LEGACY_RULE_CWES = {
+  'LUNAR-JS-EVAL': 'CWE-95',
+  'LUNAR-DOM-XSS': 'CWE-79',
+  'LUNAR-SQL-TEMPLATE': 'CWE-89',
+  'LUNAR-HARDCODED-SECRET': 'CWE-798',
+  'LUNAR-INSECURE-RANDOM': 'CWE-330'
+};
+
+const CWE_GUIDANCE = {
+  'CWE-22': {
+    rootCause: 'An untrusted path reaches filesystem resolution without canonical containment in an allowlisted root.',
+    impact: 'An attacker may read, overwrite or disclose files outside the intended repository boundary.',
+    strategy: 'Resolve the candidate path against a fixed root, reject traversal and symlink escape, and use the canonical path only.',
+    steps: ['Define the only allowed repository root.', 'Resolve and canonicalize the requested path.', 'Reject paths outside the root and deny symlink escape.', 'Add traversal and option-injection regression cases.'],
+    validation: ['Test ../, encoded traversal and symlink escape.', 'Confirm valid in-root files still work.', 'Rescan without suppressing the path-traversal rule.']
+  },
+  'CWE-78': {
+    rootCause: 'Untrusted data can influence command execution or shell parsing.',
+    impact: 'Successful exploitation may execute arbitrary operating-system commands with application privileges.',
+    strategy: 'Remove the shell boundary; use a fixed executable and an allowlisted argument array with shell disabled.',
+    steps: ['Replace command-string construction with a library or execFile/spawn.', 'Fix the executable server-side.', 'Validate each argument against an allowlist.', 'Apply timeout, output and working-directory limits.'],
+    validation: ['Test semicolon, command substitution, backticks, newline and option injection.', 'Verify no filesystem/process side effect occurs.', 'Rescan and retain the negative tests.']
+  },
+  'CWE-79': {
+    rootCause: 'Untrusted content reaches an HTML or DOM execution sink without context-appropriate encoding.',
+    impact: 'An attacker may execute script in another user session and steal data or perform actions as that user.',
+    strategy: 'Render untrusted values as text and sanitize only explicitly trusted HTML with a maintained policy.',
+    steps: ['Replace innerHTML-like sinks with text rendering.', 'If HTML is required, define an explicit sanitizer policy.', 'Keep URLs and attributes under separate allowlists.', 'Add browser regression tests with inert XSS payloads.'],
+    validation: ['Test element, attribute and URL contexts.', 'Confirm payloads render as text.', 'Run CSP and browser security tests.']
+  },
+  'CWE-89': {
+    rootCause: 'SQL text is assembled with untrusted values instead of binding parameters.',
+    impact: 'An attacker may read or modify data outside their authorization scope.',
+    strategy: 'Use parameterized queries and enforce ownership or tenant constraints in the same query.',
+    steps: ['Replace interpolation with placeholders.', 'Bind values through the database driver.', 'Add actor/tenant predicates where the resource is scoped.', 'Review dynamic identifiers through a strict allowlist.'],
+    validation: ['Test quotes, comments and boolean SQL payloads.', 'Test owner and non-owner access.', 'Verify query plans still use expected indexes.']
+  },
+  'CWE-95': {
+    rootCause: 'A string value is interpreted as executable code.',
+    impact: 'A malicious input may execute arbitrary application code and compromise the process.',
+    strategy: 'Replace dynamic execution with a strict parser or a fixed operation dispatcher.',
+    steps: ['Enumerate supported operations.', 'Map operation names to fixed functions.', 'Reject unknown operations and data shapes.', 'Add regression tests proving input remains data.'],
+    validation: ['Test code-like strings and nested payloads.', 'Confirm no dynamic execution API remains reachable.', 'Rescan the changed file.']
+  },
+  'CWE-285': {
+    rootCause: 'Authorization policy is missing, incomplete or enforced only in the client.',
+    impact: 'A lower-privilege actor may perform actions reserved for another role or owner.',
+    strategy: 'Enforce authentication, capability and resource ownership on the server before the operation.',
+    steps: ['Document the actor and required capability.', 'Place authentication and role policy before the controller.', 'Bind resource lookup to actor or tenant.', 'Return a non-enumerating error for unauthorized resources.'],
+    validation: ['Test anonymous, low-privilege, non-owner and valid actors.', 'Test cross-tenant identifiers.', 'Confirm audit logs record the authorized actor.']
+  },
+  'CWE-639': {
+    rootCause: 'A client-controlled resource identifier is used without binding it to the authenticated actor or tenant.',
+    impact: 'Changing an identifier may expose or modify another account resource.',
+    strategy: 'Bind every resource query to the actor/tenant or verify an explicit administrative capability.',
+    steps: ['Identify the resource owner column.', 'Add actor/tenant predicates to reads and writes.', 'Allowlist mutable fields.', 'Use 404 where needed to avoid resource enumeration.'],
+    validation: ['Repeat the request with another user resource ID.', 'Test cross-tenant access and a valid administrator.', 'Confirm no response metadata leaks resource existence.']
+  },
+  'CWE-798': {
+    rootCause: 'A credential is embedded in source or deployment configuration instead of a managed secret channel.',
+    impact: 'Anyone with artifact or repository access may reuse the credential until it is rotated.',
+    strategy: 'Remove the value, load it from a secret manager or required runtime variable, and rotate the exposed credential.',
+    steps: ['Remove the committed/default value.', 'Add required runtime secret configuration or *_FILE support.', 'Fail closed when the secret is absent.', 'Rotate the credential and review history/CI artifacts.'],
+    validation: ['Scan source, history and build output for the old value.', 'Start the service with and without the required secret.', 'Confirm logs and reports redact secret-like evidence.']
+  },
+  'CWE-862': {
+    rootCause: 'A sensitive endpoint or operation lacks a server-side authorization check.',
+    impact: 'An authenticated or anonymous actor may access protected functionality.',
+    strategy: 'Apply the narrow authorization middleware and verify resource ownership in the business query.',
+    steps: ['Trace inherited router middleware before adding new guards.', 'Require the minimum role or capability.', 'Bind the resource to actor/tenant.', 'Add negative integration tests.'],
+    validation: ['Test anonymous, authenticated non-owner and valid owner/admin.', 'Confirm middleware order before the controller.', 'Rescan route and controller together.']
+  }
+};
 
 function safeNumber(value, maximum = 100000) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 0;
   return Math.max(0, Math.min(maximum, number));
+}
+
+function safeText(value, maximum = REPORT_TEXT_LIMIT) {
+  return String(value ?? '')
+    .replace(/\0/g, '')
+    .replace(/[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, maximum);
+}
+
+function csvSourceText(value, maximum = REPORT_TEXT_LIMIT) {
+  return String(value ?? '').replace(/\0/g, '').slice(0, maximum);
 }
 
 function normalizeSummary(scanSummary) {
@@ -22,6 +110,13 @@ function asciiPdfText(value) {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .replace(/[–—]/g, '-')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/…/g, '...')
+    .replace(/→/g, '->')
     .replace(/[^\x20-\x7E]/g, '?')
     .replace(/([\\()])/g, '\\$1');
 }
@@ -33,7 +128,7 @@ function safeFilename(value, extension = 'pdf') {
     .replace(/[^a-zA-Z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
-  const safeExtension = extension === 'csv' ? 'csv' : 'pdf';
+  const safeExtension = ['csv', 'md', 'pdf'].includes(extension) ? extension : 'pdf';
   return `${base || 'lunar-security-audit'}-audit-report.${safeExtension}`;
 }
 
@@ -55,7 +150,10 @@ function quoteCsvField(value) {
 }
 
 function redactEvidence(value) {
-  return String(value || '')
+  const source = typeof value === 'object' && value !== null
+    ? value.matchedSource || value.codeSnippet || value.summary || JSON.stringify(value)
+    : value;
+  return safeText(source, REPORT_TEXT_LIMIT)
     .replace(
       /(\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|private[_-]?key)\b\s*[:=]\s*["'])[^"']+(["'])/gi,
       '$1[REDACTED]$2'
@@ -63,7 +161,130 @@ function redactEvidence(value) {
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi, 'Bearer [REDACTED]')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 700);
+    .slice(0, REPORT_TEXT_LIMIT);
+}
+
+function safeList(values, fallback = []) {
+  const normalized = Array.from(values || [])
+    .map((value) => safeText(value, 2000))
+    .filter(Boolean)
+    .slice(0, 20);
+  return normalized.length ? normalized : fallback;
+}
+
+function normalizedCwe(finding) {
+  const direct = safeText(finding?.cwe, 40).toUpperCase();
+  if (/^CWE-\d+$/.test(direct)) return direct;
+  const ruleId = safeText(finding?.ruleId || finding?.cwe, 100).toUpperCase();
+  return LEGACY_RULE_CWES[ruleId] || direct || 'CWE-UNKNOWN';
+}
+
+function genericGuidance(cwe) {
+  return CWE_GUIDANCE[cwe] || {
+    rootCause: 'A security-sensitive sink is reachable without sufficient validation, authorization or containment for its trust boundary.',
+    impact: `If reachability is confirmed, ${cwe} may affect confidentiality, integrity or availability.`,
+    strategy: 'Trace source to sink, preserve the intended behavior, and add the narrowest server-side control that closes the verified path.',
+    steps: ['Confirm source, sink, inherited middleware and runtime controls.', 'Create a regression test that reproduces the path.', 'Apply the smallest safe change.', 'Run tests, build and security rescan before marking verified.'],
+    validation: ['Run the exploit-path regression test.', 'Run relevant authorization and negative cases.', 'Rescan without disabling the detecting rule.']
+  };
+}
+
+function normalizeReportFinding(finding = {}, index = 0) {
+  const cwe = normalizedCwe(finding);
+  const guidance = genericGuidance(cwe);
+  const remediation = finding.remediation || {};
+  const hackerAttackVector = finding.hackerAttackVector || {};
+  const evidence = redactEvidence(finding.evidence || finding.codeSnippet || finding.originalCode);
+  const patchAvailable = finding.patchAvailable === true || finding.available === true;
+  return {
+    id: safeText(finding.id || `F-${index + 1}`, 160),
+    ruleId: safeText(finding.ruleId || finding.cveId || 'LEGACY-RULE', 100),
+    cwe,
+    title: safeText(finding.title || 'Security finding', 300),
+    severity: safeText(finding.severity || 'medium', 20).toUpperCase(),
+    cvss: Math.min(10, safeNumber(finding.cvss, 10)),
+    filePath: safeText(finding.filePath || finding.affectedFiles?.[0] || 'unknown-file', 700),
+    line: safeNumber(finding.line, 10000000),
+    status: safeText(finding.status || finding.patchStatus || 'open', 40),
+    triageStatus: safeText(finding.triageStatus || finding.aiVerdict || 'NEEDS_REVIEW', 60).toUpperCase(),
+    confidence: safeText(finding.confidence || finding.aiConfidence || 'UNSPECIFIED', 40).toUpperCase(),
+    attackTechnique: safeText(finding.attackTechnique, 200),
+    whyThisIsValid: safeText(
+      finding.whyThisIsValid
+      || finding.aiReason
+      || finding.explanation
+      || (evidence
+        ? `The scanner matched ${finding.ruleId || cwe} at the recorded source location. Confirm source-to-sink reachability and inherited controls before declaring exploitability.`
+        : 'The finding requires source, sink, middleware and runtime-control verification before final triage.'),
+      5000
+    ),
+    rootCause: safeText(finding.rootCause || guidance.rootCause, 5000),
+    evidence: evidence || '[not stored]',
+    impact: safeText(hackerAttackVector.breachImpact || finding.impact || guidance.impact, 5000),
+    attackChain: safeList(hackerAttackVector.attackChain || finding.attackChain),
+    remediationStrategy: safeText(remediation.defenseStrategy || finding.remediationStrategy || finding.recommendation || guidance.strategy, 5000),
+    remediationSteps: safeList(remediation.stepByStepGuide || finding.remediationSteps, guidance.steps),
+    validationSteps: safeList(remediation.validationSteps || finding.validationSteps, guidance.validation),
+    before: redactEvidence(finding.before || finding.originalCode || evidence),
+    after: patchAvailable ? redactEvidence(finding.after || remediation.after) : '',
+    unifiedDiff: patchAvailable ? redactEvidence(finding.unifiedDiff || remediation.unifiedDiff) : '',
+    patchAvailable,
+    patchStatus: safeText(finding.patchStatus || finding.lifecycleStatus || remediation.lifecycleStatus || 'detected', 40),
+    reasonUnavailable: patchAvailable ? '' : safeText(finding.reasonUnavailable || remediation.reasonUnavailable || 'No validated patch is attached; follow the remediation and validation steps.', 2000),
+    reference: /^CWE-\d+$/.test(cwe)
+      ? `https://cwe.mitre.org/data/definitions/${cwe.slice(4)}.html`
+      : 'https://owasp.org/www-project-top-ten/',
+    csv: {
+      ruleId: csvSourceText(finding.ruleId || finding.cveId || 'LEGACY-RULE', 100),
+      cwe: csvSourceText(finding.cwe || cwe, 40),
+      title: csvSourceText(finding.title || 'Security finding', 300),
+      severity: csvSourceText(finding.severity || 'medium', 20),
+      filePath: csvSourceText(finding.filePath || finding.affectedFiles?.[0] || '', 700),
+      evidence: redactEvidence(finding.evidence || finding.codeSnippet || finding.originalCode),
+      recommendation: csvSourceText(remediation.defenseStrategy || finding.remediationStrategy || finding.recommendation || guidance.strategy, 5000),
+      status: csvSourceText(finding.status || finding.patchStatus || 'open', 40)
+    }
+  };
+}
+
+function normalizeReportFindings(findings) {
+  const normalized = Array.from(findings || [])
+    .slice(0, MAX_REPORT_FINDINGS)
+    .map(normalizeReportFinding);
+  return Array.from(new Map(normalized.map((finding) => [
+    `${finding.ruleId}:${finding.cwe}:${finding.filePath}:${finding.line}`,
+    finding
+  ])).values());
+}
+
+function normalizePortableReport(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    const error = new Error('A report payload object is required.');
+    error.status = 400;
+    throw error;
+  }
+  if (!Array.isArray(payload.findings)) {
+    const error = new Error('Report findings must be an array.');
+    error.status = 400;
+    throw error;
+  }
+  if (payload.findings.length > MAX_REPORT_FINDINGS) {
+    const error = new Error(`Report exceeds ${MAX_REPORT_FINDINGS} findings.`);
+    error.status = 413;
+    throw error;
+  }
+  return {
+    projectTitle: safeText(payload.projectTitle || 'Lunar Security Audit', 300),
+    repositoryUrl: safeText(payload.repositoryUrl, 1200),
+    summary: normalizeSummary(payload.summary),
+    metadata: {
+      scanId: safeText(payload.metadata?.scanId, 100),
+      score: safeNumber(payload.metadata?.score, 100),
+      engine: safeText(payload.metadata?.engine || 'Lunar SAST + AI remediation', 200),
+      scannedAt: safeText(payload.metadata?.scannedAt, 100)
+    },
+    findings: normalizeReportFindings(payload.findings)
+  };
 }
 
 function wrapText(value, maximumCharacters = 92) {
@@ -156,10 +377,19 @@ function createPdfFromPages(pages) {
     const pageId = objects.length + 1;
     const contentId = pageId + 1;
     pageIds.push(pageId);
-    let y = 730;
+    let y = 710;
     const commands = [
+      '0.04 0.07 0.14 rg',
+      '0 748 612 44 re',
+      'f',
+      '0.13 0.82 0.86 RG',
+      '1.5 w',
+      '46 743 m',
+      '566 743 l',
+      'S',
       'BT',
       '/F2 8 Tf',
+      '1 1 1 rg',
       '1 0 0 1 46 765 Tm',
       '(LUNAR.DEV - VERIFIED SECURITY AUDIT) Tj',
       'ET'
@@ -169,6 +399,7 @@ function createPdfFromPages(pages) {
       commands.push(
         'BT',
         `/${style.font} ${style.size} Tf`,
+        '0.06 0.08 0.12 rg',
         `1 0 0 1 46 ${y} Tm`,
         `(${asciiPdfText(line.text)}) Tj`,
         'ET'
@@ -176,8 +407,14 @@ function createPdfFromPages(pages) {
       y -= style.leading;
     });
     commands.push(
+      '0.75 0.78 0.82 RG',
+      '0.5 w',
+      '46 48 m',
+      '566 48 l',
+      'S',
       'BT',
       '/F1 8 Tf',
+      '0.35 0.39 0.45 rg',
       '1 0 0 1 46 32 Tm',
       `(Page ${pageIndex + 1} of ${pages.length} - Evidence may contain redacted values) Tj`,
       'ET'
@@ -218,9 +455,7 @@ function createPdfFromPages(pages) {
 
 function createAuditReportPdf(projectTitle, scanSummary) {
   const summary = normalizeSummary(scanSummary);
-  const findings = Array.isArray(scanSummary?.findings)
-    ? scanSummary.findings.slice(0, 500)
-    : [];
+  const findings = normalizeReportFindings(scanSummary?.findings);
   const metadata = scanSummary?.metadata || {};
   const risk = summary.criticalCount > 0
     ? 'CRITICAL'
@@ -251,19 +486,26 @@ function createAuditReportPdf(projectTitle, scanSummary) {
       ...reportLine('', 'spacer')
     ],
     [
-      ...reportLine('Interpretation and limitations', 'heading'),
+      ...reportLine('How to use this remediation report', 'heading'),
       ...reportLine(
-        'Each item below is a deterministic source match with file and line evidence. '
-        + 'A finding is not proof of exploitability; validate reachability, trust boundaries '
-        + 'and runtime controls before remediation.',
+        'Process findings in severity order. For every item, confirm source, sink, inherited middleware '
+        + 'and runtime reachability before changing code. Apply the smallest safe fix, run the listed '
+        + 'validation steps, then rescan before marking the item verified.',
         'body'
       ),
       ...reportLine(
-        'Secret-like evidence is redacted in this portable report. Full source remains in the authenticated workspace.',
+        'Triage status is preserved. NEEDS_REVIEW is not proof of exploitability. Secret-like values are redacted in this portable file.',
         'muted'
       ),
       ...reportLine('', 'spacer'),
-      ...reportLine('Detailed findings', 'heading')
+      ...reportLine('Prioritized remediation index', 'heading'),
+      ...findings.slice(0, 40).flatMap((finding, index) => reportLine(
+        `${index + 1}. [${finding.severity}] ${finding.filePath}:${finding.line} - ${finding.title}`,
+        'muted'
+      )),
+      ...(findings.length > 40 ? reportLine(`${findings.length - 40} more findings continue in the detailed section.`, 'muted') : []),
+      ...reportLine('', 'spacer'),
+      ...reportLine('Detailed findings and fix playbooks', 'heading')
     ]
   ];
 
@@ -271,25 +513,42 @@ function createAuditReportPdf(projectTitle, scanSummary) {
     blocks.push(reportLine('No persisted findings were recorded for this scan.', 'body'));
   } else {
     findings.forEach((finding, index) => {
-      const severity = String(finding.severity || 'info').toUpperCase();
-      const rule = finding.ruleId || 'LEGACY-RULE';
-      const cwe = finding.cwe || 'CWE-UNKNOWN';
-      const location = `${finding.filePath || 'unknown file'}:${finding.line || 0}`;
+      const location = `${finding.filePath}:${finding.line}`;
       blocks.push([
         ...reportLine(
-          `${String(index + 1).padStart(3, '0')}. [${severity}] ${rule} / ${cwe} - ${finding.title || 'Security finding'}`,
+          `${String(index + 1).padStart(3, '0')}. [${finding.severity}] ${finding.ruleId} / ${finding.cwe} - ${finding.title}`,
           'finding'
         ),
         ...reportLine(
-          `Location: ${location} | CVSS: ${safeNumber(finding.cvss, 10).toFixed(1)} | Status: ${finding.status || 'open'}`,
+          `Location: ${location} | CVSS: ${finding.cvss.toFixed(1)} | Triage: ${finding.triageStatus} | Confidence: ${finding.confidence}`,
           'muted'
         ),
-        ...reportLine(`Evidence: ${redactEvidence(finding.evidence) || '[not stored]'}`, 'body'),
-        ...reportLine(`Recommendation: ${finding.recommendation || 'Review and apply the least-privilege safe pattern.'}`, 'body'),
+        ...reportLine(`Why this finding exists: ${finding.whyThisIsValid}`, 'body'),
+        ...reportLine(`Root cause: ${finding.rootCause}`, 'body'),
+        ...reportLine(`Evidence: ${finding.evidence}`, 'body'),
+        ...reportLine(`Impact: ${finding.impact}`, 'body'),
+        ...(finding.attackChain.length ? [
+          ...reportLine('Defensive attack path:', 'body'),
+          ...finding.attackChain.flatMap((step, stepIndex) => reportLine(`${stepIndex + 1}. ${step}`, 'muted'))
+        ] : []),
+        ...reportLine(`Fix strategy: ${finding.remediationStrategy}`, 'body'),
+        ...reportLine('Implementation steps:', 'body'),
+        ...finding.remediationSteps.flatMap((step, stepIndex) => reportLine(`${stepIndex + 1}. ${step}`, 'muted')),
+        ...reportLine(`Before: ${finding.before || '[not stored]'}`, 'body'),
+        ...(finding.patchAvailable
+          ? reportLine(
+              `${finding.patchStatus === 'verified' ? 'Verified' : 'Proposed'} after: ${finding.after || '[see unified diff]'}`,
+              'body'
+            )
+          : reportLine(`Patch status: unavailable - ${finding.reasonUnavailable}`, 'muted')),
+        ...(finding.unifiedDiff ? reportLine(`Unified diff: ${finding.unifiedDiff}`, 'muted') : []),
+        ...reportLine('Validation checklist:', 'body'),
+        ...finding.validationSteps.flatMap((step, stepIndex) => reportLine(`${stepIndex + 1}. ${step}`, 'muted')),
+        ...reportLine(`Reference: ${finding.reference}`, 'muted'),
         ...reportLine('', 'spacer')
       ]);
     });
-    if (summary.total > findings.length) {
+    if (summary.total > findings.length && findings.length >= MAX_REPORT_FINDINGS) {
       blocks.push(reportLine(
         `${summary.total - findings.length} additional findings were omitted from this portable report limit.`,
         'muted'
@@ -300,12 +559,129 @@ function createAuditReportPdf(projectTitle, scanSummary) {
   return createPdfFromPages(paginateBlocks(blocks));
 }
 
+function markdownText(value) {
+  return safeText(value).replace(/\|/g, '\\|');
+}
+
+function markdownCode(value, language = 'text') {
+  const content = redactEvidence(value).replace(/~~~/g, '~ ~ ~');
+  return `~~~${language}\n${content || '[not stored]'}\n~~~`;
+}
+
+function createAuditReportMarkdown(projectTitle, scanSummary) {
+  const summary = normalizeSummary(scanSummary);
+  const findings = normalizeReportFindings(scanSummary?.findings);
+  const metadata = scanSummary?.metadata || {};
+  const generatedAt = new Date().toISOString();
+  const lines = [
+    '---',
+    'report_type: lunar-security-remediation',
+    'report_version: 1',
+    `scan_id: "${markdownText(metadata.scanId || '')}"`,
+    `generated_at: "${generatedAt}"`,
+    `finding_count: ${findings.length}`,
+    '---',
+    '',
+    '# Lunar Security Remediation Report',
+    '',
+    `**Project:** ${markdownText(projectTitle || 'Lunar Security Audit')}`,
+    '',
+    `**Scan:** ${markdownText(metadata.scanId || 'not available')}  `,
+    `**Scanned:** ${markdownText(metadata.scannedAt || 'not available')}  `,
+    `**Engine:** ${markdownText(metadata.engine || 'Lunar SAST + AI remediation')}  `,
+    `**Security score:** ${safeNumber(metadata.score, 100)}/100  `,
+    `**Maximum CVSS:** ${summary.maxCvss.toFixed(1)}/10.0`,
+    '',
+    '## Executive Summary',
+    '',
+    `- Critical: ${summary.criticalCount}`,
+    `- High: ${summary.highCount}`,
+    `- Medium: ${summary.mediumCount}`,
+    `- Low: ${summary.lowCount}`,
+    `- Total findings in this file: ${findings.length}`,
+    '',
+    '## Handoff Instructions For Developers And AI Agents',
+    '',
+    '1. Work in severity order and keep each finding in a separate change when practical.',
+    '2. Do not assume NEEDS_REVIEW is exploitable. Verify source, sink, middleware, ownership and runtime reachability.',
+    '3. Do not mark a finding fixed until the patch is applied, tests pass and a rescan no longer reports the verified path.',
+    '4. Never paste redacted placeholders back as real credentials. Rotate any secret that may have been exposed.',
+    '5. Preserve existing behavior and unrelated user changes.',
+    '',
+    '## Prioritized Remediation Index',
+    '',
+    '| # | Severity | CVSS | Finding | Location | Triage | Patch |',
+    '|---:|---|---:|---|---|---|---|',
+    ...findings.map((finding, index) => (
+      `| ${index + 1} | ${finding.severity} | ${finding.cvss.toFixed(1)} | ${markdownText(finding.title)} | `
+      + `${markdownText(`${finding.filePath}:${finding.line}`)} | ${markdownText(finding.triageStatus)} | ${markdownText(finding.patchStatus)} |`
+    )),
+    '',
+    '## Detailed Findings',
+    ''
+  ];
+
+  if (!findings.length) lines.push('No persisted findings were recorded for this scan.', '');
+
+  findings.forEach((finding, index) => {
+    lines.push(
+      `### F-${String(index + 1).padStart(3, '0')} - ${markdownText(finding.title)}`,
+      '',
+      `- **Rule / CWE:** ${markdownText(finding.ruleId)} / ${markdownText(finding.cwe)}`,
+      `- **Severity / CVSS:** ${finding.severity} / ${finding.cvss.toFixed(1)}`,
+      `- **Location:** \`${markdownText(finding.filePath)}:${finding.line}\``,
+      `- **Triage:** ${markdownText(finding.triageStatus)}`,
+      `- **Confidence:** ${markdownText(finding.confidence)}`,
+      `- **Patch lifecycle:** ${markdownText(finding.patchStatus)}`,
+      '',
+      '#### Why This Finding Was Raised',
+      '',
+      finding.whyThisIsValid,
+      '',
+      '#### Root Cause',
+      '',
+      finding.rootCause,
+      '',
+      '#### Evidence',
+      '',
+      markdownCode(finding.evidence),
+      '',
+      '#### Security Impact',
+      '',
+      finding.impact,
+      ''
+    );
+    if (finding.attackChain.length) {
+      lines.push('#### Defensive Attack Path', '');
+      finding.attackChain.forEach((step, stepIndex) => lines.push(`${stepIndex + 1}. ${step}`));
+      lines.push('');
+    }
+    lines.push('#### Recommended Fix Strategy', '', finding.remediationStrategy, '', '#### Implementation Steps', '');
+    finding.remediationSteps.forEach((step, stepIndex) => lines.push(`${stepIndex + 1}. ${step}`));
+    lines.push('', '#### Before', '', markdownCode(finding.before), '');
+    if (finding.patchAvailable) {
+      lines.push(
+        `#### ${finding.patchStatus === 'verified' ? 'Verified' : 'Proposed'} After`,
+        '',
+        markdownCode(finding.after),
+        ''
+      );
+      if (finding.unifiedDiff) lines.push('#### Unified Diff', '', markdownCode(finding.unifiedDiff, 'diff'), '');
+    } else {
+      lines.push('#### Patch Availability', '', `No validated patch is attached: ${finding.reasonUnavailable}`, '');
+    }
+    lines.push('#### Validation Checklist', '');
+    finding.validationSteps.forEach((step) => lines.push(`- [ ] ${step}`));
+    lines.push('', '#### Reference', '', finding.reference, '', '---', '');
+  });
+
+  return Buffer.from(`${lines.join('\n')}\n`, 'utf8');
+}
+
 function createAuditReportCsv(projectTitle, scanSummary) {
   const summary = normalizeSummary(scanSummary);
   const metadata = scanSummary?.metadata || {};
-  const findings = Array.isArray(scanSummary?.findings)
-    ? scanSummary.findings.slice(0, 500)
-    : [];
+  const findings = normalizeReportFindings(scanSummary?.findings);
   const generatedAt = new Date().toISOString();
   const headers = [
     'scan_id',
@@ -329,7 +705,15 @@ function createAuditReportCsv(projectTitle, scanSummary) {
     'line',
     'evidence',
     'recommendation',
-    'status'
+    'status',
+    'triage_status',
+    'confidence',
+    'root_cause',
+    'why_this_is_valid',
+    'impact',
+    'implementation_steps',
+    'validation_steps',
+    'patch_status'
   ];
   const reportFields = [
     metadata.scanId || '',
@@ -348,18 +732,26 @@ function createAuditReportCsv(projectTitle, scanSummary) {
   const rows = findings.length
     ? findings.map((finding) => [
         ...reportFields,
-        finding.ruleId || 'LEGACY-RULE',
-        finding.cwe || 'CWE-UNKNOWN',
-        finding.title || 'Security finding',
-        finding.severity || 'info',
-        safeNumber(finding.cvss, 10),
-        finding.filePath || '',
-        safeNumber(finding.line),
-        redactEvidence(finding.evidence),
-        finding.recommendation || 'Review and apply the least-privilege safe pattern.',
-        finding.status || 'open'
+        finding.csv.ruleId,
+        finding.csv.cwe,
+        finding.csv.title,
+        finding.csv.severity,
+        finding.cvss,
+        finding.csv.filePath,
+        finding.line,
+        finding.csv.evidence,
+        finding.csv.recommendation,
+        finding.csv.status,
+        finding.triageStatus,
+        finding.confidence,
+        finding.rootCause,
+        finding.whyThisIsValid,
+        finding.impact,
+        finding.remediationSteps.join('\n'),
+        finding.validationSteps.join('\n'),
+        finding.patchStatus
       ])
-    : [[...reportFields, '', '', '', '', '', '', '', '', '', '']];
+    : [[...reportFields, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']];
   const csv = [headers, ...rows]
     .map((row) => row.map(quoteCsvField).join(','))
     .join('\r\n');
@@ -420,7 +812,7 @@ async function loadOwnedScanSummary(pool, scanId, userId) {
          WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
        file_path NULLS LAST,
        line_number NULLS LAST
-     LIMIT 500`,
+     LIMIT 1000`,
     [scanId]
   );
   const heuristicMaxCvss = scan.critical_count > 0
@@ -454,9 +846,11 @@ async function loadOwnedScanSummary(pool, scanId, userId) {
 module.exports = {
   UUID_PATTERN,
   createAuditReportCsv,
+  createAuditReportMarkdown,
   createAuditReportPdf,
   loadOwnedScanSummary,
   normalizeSummary,
+  normalizePortableReport,
   safeFilename,
   sanitizeCsvField
 };

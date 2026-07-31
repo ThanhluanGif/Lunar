@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ShieldCheck, Users, CreditCard, DollarSign, TrendingUp, Sparkles,
   Search, Filter, CheckCircle2, Clock, XCircle, RefreshCw, Send, Lock, 
   Crown, ArrowUpRight, Zap, AlertTriangle, Eye, UserCheck, ShieldAlert, Inbox, PlusCircle, BarChart3, Activity
 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
+import {
+  ADMIN_DASHBOARD_REFRESH_INTERVAL_MS,
+  createLatestRequestGate,
+  isSystemDashboardResponse
+} from '../services/dashboardSync';
 
 export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
   const [activeSubTab, setActiveSubTab] = useState('analytics'); // 'analytics' | 'users' | 'transactions' | 'audit'
@@ -20,55 +25,131 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
   const [actionNotice, setActionNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [daysRange, setDaysRange] = useState(14);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const requestGateRef = useRef(createLatestRequestGate());
+  const requestControllerRef = useRef(null);
+  const adminUserId = currentUser?.id || null;
 
-  const loadAdminData = async () => {
-    setLoading(true);
+  const loadAdminData = useCallback(async ({ background = false } = {}) => {
+    if (!adminUserId) return;
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    const requestId = requestGateRef.current.start();
+    if (!background) setLoading(true);
     setLoadError('');
     try {
-      const [overviewData, usersData, paymentsData, auditData, analyticsData] = await Promise.all([
-        lunarApi.getAdminOverview(),
-        lunarApi.getAdminUsers(),
-        lunarApi.getAdminPayments(),
-        lunarApi.getAdminAuditLog(),
-        lunarApi.getAdminAnalytics(daysRange)
+      const requestOptions = { signal: controller.signal };
+      const results = await Promise.allSettled([
+        lunarApi.getAdminOverview(requestOptions),
+        lunarApi.getAdminUsers(requestOptions),
+        lunarApi.getAdminPayments(requestOptions),
+        lunarApi.getAdminAuditLog(requestOptions),
+        lunarApi.getAdminAnalytics(daysRange, requestOptions)
       ]);
-      setOverview(overviewData);
-      setAnalytics(analyticsData);
-      setUsers(usersData.users.map((user) => ({
-        ...user,
-        github: user.nickname?.replace(/^@/, '') || '',
-        dailyScans: user.dailyScansUsed,
-        joined: new Date(user.createdAt).toLocaleDateString(),
-        lastLogin: user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'Chưa đăng nhập'
-      })));
-      setTransactions(paymentsData.payments.map((payment) => ({
-        id: payment.orderCode,
-        userName: payment.userName || 'Unknown user',
-        userEmail: payment.userEmail || 'Unknown email',
-        planName: payment.tierTarget,
-        amount: new Intl.NumberFormat('vi-VN', { style: 'currency', currency: payment.currency || 'VND' }).format(Number(payment.amount)),
-        method: payment.paymentMethod || 'VietQR',
-        status: payment.status
-      })));
-      setAuditLogs(auditData.logs.map((log) => ({
-        id: log.id,
-        to: log.actorEmail || 'system',
-        subject: `${log.actionType}: ${log.targetType}`,
-        status: 'AUDITED',
-        type: 'ADMIN_AUDIT',
-        timestamp: log.createdAt,
-        sentAt: new Date(log.createdAt).toLocaleString()
-      })));
+      if (!requestGateRef.current.isCurrent(requestId)) return;
+
+      const [overviewRes, usersRes, paymentsRes, auditRes, analyticsRes] = results;
+
+      if (overviewRes.status === 'fulfilled' && overviewRes.value) {
+        if (!isSystemDashboardResponse(overviewRes.value)) {
+          throw new Error('Admin overview returned data outside the system scope.');
+        }
+        setOverview(overviewRes.value);
+      }
+      if (analyticsRes.status === 'fulfilled' && analyticsRes.value) {
+        if (!isSystemDashboardResponse(analyticsRes.value)) {
+          throw new Error('Admin analytics returned data outside the system scope.');
+        }
+        setAnalytics(analyticsRes.value);
+      }
+      if (usersRes.status === 'fulfilled' && usersRes.value?.users) {
+        setUsers(usersRes.value.users.map((user) => ({
+          ...user,
+          github: user.nickname?.replace(/^@/, '') || '',
+          dailyScans: user.dailyScansUsed,
+          joined: new Date(user.createdAt).toLocaleDateString(),
+          lastLogin: user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'Chưa đăng nhập'
+        })));
+      }
+      if (paymentsRes.status === 'fulfilled' && paymentsRes.value?.payments) {
+        setTransactions(paymentsRes.value.payments.map((payment) => ({
+          id: payment.orderCode,
+          userName: payment.userName || 'Unknown user',
+          userEmail: payment.userEmail || 'Unknown email',
+          planName: payment.tierTarget,
+          amount: new Intl.NumberFormat('vi-VN', { style: 'currency', currency: payment.currency || 'VND' }).format(Number(payment.amount)),
+          method: payment.paymentMethod || 'VietQR',
+          status: payment.status
+        })));
+      }
+      if (auditRes.status === 'fulfilled' && auditRes.value?.logs) {
+        setAuditLogs(auditRes.value.logs.map((log) => ({
+          id: log.id,
+          to: log.actorEmail || 'system',
+          subject: `${log.actionType}: ${log.targetType}`,
+          status: 'AUDITED',
+          type: 'ADMIN_AUDIT',
+          timestamp: log.createdAt,
+          sentAt: new Date(log.createdAt).toLocaleString()
+        })));
+      }
+
+      const rejectedResults = results.filter((result) => (
+        result.status === 'rejected' && result.reason?.name !== 'AbortError'
+      ));
+      if (rejectedResults.length === results.length) {
+        const firstError = rejectedResults[0]?.reason;
+        setLoadError(firstError?.message || 'Không thể kết nối dữ liệu quản trị.');
+      } else {
+        if (rejectedResults.length > 0) {
+          setLoadError(`Đồng bộ một phần: ${rejectedResults.length}/${results.length} nguồn dữ liệu chưa phản hồi.`);
+        }
+        setLastSyncedAt(
+          analyticsRes.status === 'fulfilled' && analyticsRes.value?.generatedAt
+            ? analyticsRes.value.generatedAt
+            : overviewRes.status === 'fulfilled' && overviewRes.value?.generatedAt
+              ? overviewRes.value.generatedAt
+              : new Date().toISOString()
+        );
+      }
     } catch (error) {
-      setLoadError(error.message);
+      if (error.name !== 'AbortError' && requestGateRef.current.isCurrent(requestId)) {
+        setLoadError(error.message);
+      }
     } finally {
-      setLoading(false);
+      if (requestGateRef.current.isCurrent(requestId)) setLoading(false);
+      if (requestControllerRef.current === controller) requestControllerRef.current = null;
     }
-  };
+  }, [adminUserId, daysRange]);
 
   useEffect(() => {
+    requestGateRef.current.invalidate();
+    setOverview(null);
+    setAnalytics(null);
+    setUsers([]);
+    setTransactions([]);
+    setAuditLogs([]);
+    setLastSyncedAt(null);
+    if (!adminUserId) return undefined;
+
     loadAdminData();
-  }, [daysRange]);
+    const refreshVisibleDashboard = () => {
+      if (document.visibilityState === 'visible') loadAdminData({ background: true });
+    };
+    const intervalId = window.setInterval(refreshVisibleDashboard, ADMIN_DASHBOARD_REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', refreshVisibleDashboard);
+    document.addEventListener('visibilitychange', refreshVisibleDashboard);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshVisibleDashboard);
+      document.removeEventListener('visibilitychange', refreshVisibleDashboard);
+      requestControllerRef.current?.abort();
+      requestControllerRef.current = null;
+      requestGateRef.current.invalidate();
+    };
+  }, [adminUserId, loadAdminData]);
 
   const showNotice = (msg) => {
     setActionNotice(msg);
@@ -133,7 +214,12 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
 
   const maxChartValue = Math.max(
     1,
-    ...(analytics?.dailyActivity || []).map(d => Math.max(d.newUsers || 0, d.scansCount || 0, d.vulnsFound || 0))
+    ...(analytics?.dailyActivity || []).map(d => Math.max(
+      d.newUsers || 0,
+      d.loginCount || 0,
+      d.scansCount || 0,
+      d.vulnsFound || 0
+    ))
   );
 
   return (
@@ -155,7 +241,9 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
               <span className="badge badge-purple" style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Crown size={14} color="#f59e0b" /> SYSTEM ADMIN DASHBOARD
               </span>
-              <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 'bold' }}>● LIVE OPERATIONAL</span>
+              <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 'bold' }}>
+                ● LIVE · tự đồng bộ {ADMIN_DASHBOARD_REFRESH_INTERVAL_MS / 1000}s
+              </span>
             </div>
             <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: '2rem', fontWeight: '800', color: '#ffffff' }}>
               Bảng Quản Trị & Cấp Quyền Người Dùng Lunar.dev
@@ -167,7 +255,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
 
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button
-              onClick={loadAdminData}
+              onClick={() => loadAdminData()}
               disabled={loading}
               className="btn btn-secondary btn-sm"
               style={{ fontSize: '0.8rem' }}
@@ -175,6 +263,9 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
               <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
               Đồng Bộ Dữ Liệu
             </button>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'right' }}>
+              {lastSyncedAt ? `Cập nhật ${new Date(lastSyncedAt).toLocaleTimeString()}` : 'Đang chờ dữ liệu mới'}
+            </div>
             <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--border-subtle)', textAlign: 'right' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Admin Trực Tiếp</div>
               <div style={{ fontSize: '0.92rem', fontWeight: '700', color: '#38bdf8' }}>{currentUser?.name || 'Root Administrator'}</div>
@@ -225,12 +316,12 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
 
         <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid #38bdf8' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '8px' }}>
-            <span>Tổng Người Dùng Đã Vào</span>
+            <span>Lượt Đăng Nhập Hôm Nay</span>
             <Users size={18} color="#38bdf8" />
           </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>{users.length}</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#ffffff' }}>{overview?.metrics?.loginEventsToday || 0}</div>
           <div style={{ fontSize: '0.78rem', color: '#38bdf8', marginTop: '4px' }}>
-            {users.filter(u => u.tier === 'PRO').length} Pro · {users.filter(u => u.tier === 'ENTERPRISE').length} Enterprise
+            {overview?.metrics?.totalUsers || users.length} tài khoản · cập nhật theo phiên đăng nhập
           </div>
         </div>
 
@@ -348,7 +439,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                   <Activity size={20} color="#10b981" /> Biểu Đồ Truy Cập & Quét Mã Nguồn ({daysRange} Ngày Qua)
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>
-                  Thống kê số lượng đăng ký mới, số bài quét mã nguồn và lỗi được phát hiện.
+                  Thống kê đăng ký, từng phiên đăng nhập, lượt quét mã nguồn và lỗi được phát hiện.
                 </p>
               </div>
 
@@ -369,6 +460,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
             <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '24px 16px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', fontSize: '0.78rem', marginBottom: '16px' }}>
                 <span style={{ color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>● Lượt đăng ký mới</span>
+                <span style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px' }}>● Lượt đăng nhập</span>
                 <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px' }}>● Lượt quét code</span>
                 <span style={{ color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>● Lỗi phát hiện</span>
               </div>
@@ -376,6 +468,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '180px', paddingBottom: '24px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                 {(analytics?.dailyActivity || []).map((item, idx) => {
                   const usersH = Math.max(8, Math.round(((item.newUsers || 0) / maxChartValue) * 140));
+                  const loginsH = Math.max(8, Math.round(((item.loginCount || 0) / maxChartValue) * 140));
                   const scansH = Math.max(8, Math.round(((item.scansCount || 0) / maxChartValue) * 140));
                   const vulnsH = Math.max(8, Math.round(((item.vulnsFound || 0) / maxChartValue) * 140));
                   const dateLabel = new Date(item.date).toLocaleDateString('vi-VN', { month: 'numeric', day: 'numeric' });
@@ -384,6 +477,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                     <div key={idx} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', height: '100%', justifyContent: 'flex-end' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', width: '100%', justifyContent: 'center' }}>
                         <div title={`Tài khoản mới: ${item.newUsers}`} style={{ width: '8px', height: `${usersH}px`, background: '#38bdf8', borderRadius: '4px 4px 0 0', transition: 'height 0.3s ease' }} />
+                        <div title={`Lượt đăng nhập: ${item.loginCount}`} style={{ width: '8px', height: `${loginsH}px`, background: '#f59e0b', borderRadius: '4px 4px 0 0', transition: 'height 0.3s ease' }} />
                         <div title={`Lượt quét: ${item.scansCount}`} style={{ width: '8px', height: `${scansH}px`, background: '#10b981', borderRadius: '4px 4px 0 0', transition: 'height 0.3s ease' }} />
                         <div title={`Lỗi phát hiện: ${item.vulnsFound}`} style={{ width: '8px', height: `${vulnsH}px`, background: '#f87171', borderRadius: '4px 4px 0 0', transition: 'height 0.3s ease' }} />
                       </div>
@@ -415,7 +509,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                 </thead>
                 <tbody>
                   {(analytics?.recentLogins || []).map((u) => (
-                    <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <tr key={u.loginEventId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td style={{ padding: '12px 10px', fontWeight: '700', color: '#ffffff' }}>
                         {u.name || u.nickname}
                       </td>
@@ -427,7 +521,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                       </td>
                       <td style={{ padding: '12px 10px' }}>{u.dailyScansUsed} scans</td>
                       <td style={{ padding: '12px 10px', color: '#34d399' }}>
-                        {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Vừa vào'}
+                        {u.loginAt ? new Date(u.loginAt).toLocaleString() : 'Vừa vào'} · {u.authMethod || 'PASSWORD'}
                       </td>
                       <td style={{ padding: '12px 10px', textAlign: 'right' }}>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>

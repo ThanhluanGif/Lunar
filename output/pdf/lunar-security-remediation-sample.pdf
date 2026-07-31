@@ -1,0 +1,325 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 4808 >>
+stream
+0.04 0.07 0.14 rg
+0 748 612 44 re
+f
+0.13 0.82 0.86 RG
+1.5 w
+46 743 m
+566 743 l
+S
+BT
+/F2 8 Tf
+1 1 1 rg
+1 0 0 1 46 765 Tm
+(LUNAR.DEV - VERIFIED SECURITY AUDIT) Tj
+ET
+BT
+/F2 18 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 710 Tm
+(SECURITY AUDIT REPORT) Tj
+ET
+BT
+/F2 12 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 682 Tm
+(Project: QA Project) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 662 Tm
+(Scan ID: not available) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 650 Tm
+(Scanned: not available) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 638 Tm
+(Generated: 2026-07-31T06:33:31.658Z) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 626 Tm
+() Tj
+ET
+BT
+/F2 12 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 618 Tm
+(Executive summary) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 598 Tm
+(Risk: CRITICAL | Security score: 9 / 100) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 584 Tm
+(Maximum CVSS: 9.1 / 10.0) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 570 Tm
+(Critical: 1 | High: 0 | Medium: 0 | Low: 0 | Total: 1) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 556 Tm
+(Engine: lunar-client-sast + AI remediation) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 544 Tm
+() Tj
+ET
+BT
+/F2 12 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 536 Tm
+(How to use this remediation report) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 516 Tm
+(Process findings in severity order. For every item, confirm source, sink, inherited middleware) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 502 Tm
+(and runtime reachability before changing code. Apply the smallest safe fix, run the listed) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 488 Tm
+(validation steps, then rescan before marking the item verified.) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 474 Tm
+(Triage status is preserved. NEEDS_REVIEW is not proof of exploitability. Secret-like values are redacted in) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 462 Tm
+(this portable file.) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 450 Tm
+() Tj
+ET
+BT
+/F2 12 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 442 Tm
+(Prioritized remediation index) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 422 Tm
+(1. [CRITICAL] server/config.js:12 - Hardcoded credential) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 410 Tm
+() Tj
+ET
+BT
+/F2 12 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 402 Tm
+(Detailed findings and fix playbooks) Tj
+ET
+BT
+/F2 10 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 382 Tm
+(001. [CRITICAL] LUNAR-001 / CWE-798 - Hardcoded credential) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 366 Tm
+(Location: server/config.js:12 | CVSS: 9.1 | Triage: TRUE_POSITIVE | Confidence: UNSPECIFIED) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 354 Tm
+(Why this finding exists: The credential is embedded in executable configuration.) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 340 Tm
+(Root cause: Credential duoc nhung truc tiep trong source/deployment thay vi secret store va quy) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 326 Tm
+(trinh rotation.) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 312 Tm
+(Evidence: const password = "[REDACTED]";) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 298 Tm
+(Impact: Neu exploit path duoc xac nhan, CWE-798 co the anh huong tinh bi mat, toan ven hoac san) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 284 Tm
+(sang cua he thong.) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 270 Tm
+(Fix strategy: Loai bo source-to-sink path khong an toan, ap dung validation/authorization o) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 256 Tm
+(server va giu thay doi o pham vi toi thieu.) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 242 Tm
+(Implementation steps:) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 228 Tm
+(1. Xac minh source, sink, middleware ke thua va dieu kien de exploit path co the chay.) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 216 Tm
+(2. Loai bo source-to-sink path khong an toan, ap dung validation/authorization o server va giu thay doi o) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 204 Tm
+(pham vi toi thieu.) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 192 Tm
+(3. Bo sung regression test truoc khi danh dau patch la verified.) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 180 Tm
+(Before: const password = "[REDACTED]";) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 166 Tm
+(Patch status: unavailable - Khong co ban va da duoc xac thuc.) Tj
+ET
+BT
+/F1 9 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 154 Tm
+(Validation checklist:) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 140 Tm
+(1. Start without the secret and confirm fail-closed behavior.) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 128 Tm
+(Reference: https://cwe.mitre.org/data/definitions/798.html) Tj
+ET
+BT
+/F1 8 Tf
+0.06 0.08 0.12 rg
+1 0 0 1 46 116 Tm
+() Tj
+ET
+0.75 0.78 0.82 RG
+0.5 w
+46 48 m
+566 48 l
+S
+BT
+/F1 8 Tf
+0.35 0.39 0.45 rg
+1 0 0 1 46 32 Tm
+(Page 1 of 1 - Evidence may contain redacted values) Tj
+ET
+endstream
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000266 00000 n 
+0000000402 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+5262
+%%EOF

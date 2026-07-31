@@ -87,6 +87,7 @@ router.get('/overview', async (req, res) => {
            (SELECT COUNT(*)::int FROM users WHERE status = 'ACTIVE') AS active_users,
            (SELECT COUNT(*)::int FROM users WHERE role = 'ADMIN') AS admins,
            (SELECT COUNT(*)::int FROM users WHERE created_at >= NOW() - INTERVAL '30 days') AS new_users_30d,
+           (SELECT COUNT(*)::int FROM user_login_events WHERE created_at >= CURRENT_DATE) AS login_events_today,
            (SELECT COUNT(*)::int FROM projects) AS total_projects,
            (SELECT COUNT(*)::int FROM scans) AS total_scans,
            (SELECT COUNT(*)::int FROM scans WHERE created_at >= NOW() - INTERVAL '30 days') AS scans_30d,
@@ -155,12 +156,14 @@ router.get('/overview', async (req, res) => {
     return res.json({
       success: true,
       source: 'postgresql',
+      scope: 'SYSTEM',
       generatedAt: new Date().toISOString(),
       metrics: {
         totalUsers: metrics.total_users,
         activeUsers: metrics.active_users,
         admins: metrics.admins,
         newUsers30d: metrics.new_users_30d,
+        loginEventsToday: metrics.login_events_today,
         totalProjects: metrics.total_projects,
         totalScans: metrics.total_scans,
         scans30d: metrics.scans_30d,
@@ -516,6 +519,7 @@ router.get('/analytics', async (req, res) => {
         `SELECT
            day::date AS date,
            (SELECT COUNT(*)::int FROM users WHERE created_at >= day AND created_at < day + INTERVAL '1 day') AS "newUsers",
+           (SELECT COUNT(*)::int FROM user_login_events WHERE created_at >= day AND created_at < day + INTERVAL '1 day') AS "loginCount",
            (SELECT COUNT(*)::int FROM scans WHERE created_at >= day AND created_at < day + INTERVAL '1 day') AS "scansCount",
            (SELECT COUNT(*)::int FROM vulnerabilities WHERE created_at >= day AND created_at < day + INTERVAL '1 day') AS "vulnsFound",
            (SELECT COUNT(*)::int FROM vulnerabilities WHERE status = 'patched' AND created_at >= day AND created_at < day + INTERVAL '1 day') AS "vulnsPatched"
@@ -529,12 +533,15 @@ router.get('/analytics', async (req, res) => {
       ),
       pool.query(
         `SELECT
-           id, nickname, name, email, tier, role, status,
-           daily_scans_used AS "dailyScansUsed",
-           last_login_at AS "lastLoginAt",
-           created_at AS "createdAt"
-         FROM users
-         ORDER BY COALESCE(last_login_at, created_at) DESC
+           e.id AS "loginEventId",
+           u.id, u.nickname, u.name, u.email, u.tier, u.role, u.status,
+           u.daily_scans_used AS "dailyScansUsed",
+           e.auth_method AS "authMethod",
+           e.created_at AS "loginAt",
+           u.created_at AS "createdAt"
+         FROM user_login_events e
+         JOIN users u ON u.id = e.user_id
+         ORDER BY e.created_at DESC
          LIMIT 30`
       ),
       pool.query(
@@ -546,6 +553,8 @@ router.get('/analytics', async (req, res) => {
 
     return res.json({
       success: true,
+      scope: 'SYSTEM',
+      generatedAt: new Date().toISOString(),
       rangeDays: days,
       dailyActivity: activityResult.rows,
       recentLogins: recentLoginsResult.rows,
@@ -558,4 +567,3 @@ router.get('/analytics', async (req, res) => {
 });
 
 module.exports = router;
-

@@ -1,4 +1,5 @@
 import { analyzeJavaScriptAst, findJavaScriptNonExecutableRanges } from './astParser.js';
+import { unavailableAutoPatch } from './autoPatchPolicy.js';
 
 /**
  * Deterministic multi-language SAST engine.
@@ -168,14 +169,24 @@ function isContainedInRange(start, end, ranges) {
 }
 
 function reviewOnlyRemediation(rule) {
+  const unavailable = unavailableAutoPatch(
+    ['CWE-285', 'CWE-639', 'CWE-862'].includes(rule.cwe)
+      ? 'Authorization/IDOR cần bằng chứng policy và ownership trước khi tạo patch.'
+      : 'Finding mới được phát hiện; chưa có patch qua validation và rescan.'
+  );
   return {
+    ...unavailable,
+    lifecycleStatus: 'detected',
     patchAvailable: false,
-    patchValidated: false,
-    patchCode: '',
+    patchCode: null,
     defenseStrategy: rule.recommendation,
     stepByStepGuide: [
       '1. Xác minh source, sink và middleware kế thừa trong toàn bộ luồng dữ liệu.',
       '2. Chỉ tạo bản vá sau khi có test hồi quy chứng minh exploit path đã bị đóng.'
+    ],
+    validationSteps: [
+      'Tạo negative test tái hiện đúng source-to-sink path.',
+      'Chạy test liên quan và rescan mà không tắt security rule.'
     ]
   };
 }
@@ -217,6 +228,8 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
         confidence: 'MEDIUM',
         aiConfidence: null,
         aiReason: 'Deterministic pattern match with direct source evidence.',
+        whyThisIsValid: `Rule ${currentRule.id} khớp source trực tiếp tại ${filePath}:${index + 1}; exploitability vẫn cần xác minh reachability và middleware.`,
+        rootCause: `Security-sensitive pattern ${currentRule.cwe} đang xuất hiện trong luồng xử lý mà chưa có đủ control được chứng minh tại vị trí này.`,
         evidence: {
           type: 'deterministic-pattern',
           scope: 'file-local',
@@ -225,8 +238,9 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
         description: currentRule.title,
         impact: `Potential ${currentRule.cwe} weakness.`,
         originalCode: safeLine(lineText),
+        ...reviewOnlyRemediation(currentRule),
         patchAvailable: false,
-        patchedCode: '',
+        patchedCode: null,
         remediation: reviewOnlyRemediation(currentRule),
         recommendation: currentRule.recommendation
       });
@@ -245,6 +259,8 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
         category: item.cwe,
         description: item.title,
         impact: `Potential ${item.cwe} weakness.`,
+        whyThisIsValid: `AST xác nhận security-sensitive syntax node tại ${filePath}:${item.line}; cần tiếp tục xác minh input reachability.`,
+        rootCause: `Security-sensitive JavaScript syntax cho ${item.cwe} được gọi trực tiếp thay vì cơ chế an toàn chuyên biệt.`,
         triageStatus: 'NEEDS_REVIEW',
         confidence: 'HIGH',
         evidence: {
@@ -252,8 +268,9 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
           scope: 'syntax-node',
           matchedSource: safeLine(item.originalCode)
         },
+        ...reviewOnlyRemediation(rule),
         patchAvailable: false,
-        patchedCode: '',
+        patchedCode: null,
         remediation: reviewOnlyRemediation(rule)
       };
     }));

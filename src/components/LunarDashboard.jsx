@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { 
   Moon, Search, Sparkles, Shield, AlertTriangle, Activity, Wrench, 
   CheckCircle2, XCircle, Clock, ChevronDown, Bell, Settings, Filter, 
@@ -7,6 +7,11 @@ import {
   ArrowLeft, RefreshCw, Zap, User, Database, CreditCard
 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
+import {
+  USER_DASHBOARD_REFRESH_INTERVAL_MS,
+  createLatestRequestGate,
+  isDashboardResponseForUser
+} from '../services/dashboardSync';
 
 export default function LunarDashboard({ 
   onBackToSite, 
@@ -21,19 +26,49 @@ export default function LunarDashboard({
   const [selectedRepoFilter, setSelectedRepoFilter] = useState('ALL');
   const [dashboard, setDashboard] = useState(null);
   const [loadError, setLoadError] = useState('');
+  const requestGateRef = useRef(createLatestRequestGate());
+  const userId = currentUser?.id || null;
+
+  const loadDashboard = useCallback(async ({ background = false } = {}) => {
+    if (!userId) return;
+    const requestId = requestGateRef.current.start();
+    if (!background) setDashboard(null);
+    setLoadError('');
+    try {
+      const data = await lunarApi.getDashboardOverview(28);
+      if (!requestGateRef.current.isCurrent(requestId)) return;
+      if (!isDashboardResponseForUser(data, userId)) {
+        throw new Error('Dashboard response does not belong to the active account.');
+      }
+      setDashboard(data);
+    } catch (error) {
+      if (requestGateRef.current.isCurrent(requestId)) {
+        setLoadError(error.message || 'Không thể tải dữ liệu dashboard.');
+      }
+    }
+  }, [userId]);
 
   useEffect(() => {
-    let mounted = true;
-    if (!currentUser) {
-      setDashboard(null);
-      return () => { mounted = false; };
-    }
+    requestGateRef.current.invalidate();
+    setDashboard(null);
     setLoadError('');
-    lunarApi.getDashboardOverview(28)
-      .then((data) => { if (mounted) setDashboard(data); })
-      .catch((error) => { if (mounted) setLoadError(error.message); });
-    return () => { mounted = false; };
-  }, [currentUser]);
+    if (!userId) return undefined;
+
+    loadDashboard();
+    const refreshVisibleDashboard = () => {
+      if (document.visibilityState === 'visible') loadDashboard({ background: true });
+    };
+    const intervalId = window.setInterval(refreshVisibleDashboard, USER_DASHBOARD_REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', refreshVisibleDashboard);
+    document.addEventListener('visibilitychange', refreshVisibleDashboard);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshVisibleDashboard);
+      document.removeEventListener('visibilitychange', refreshVisibleDashboard);
+      requestGateRef.current.invalidate();
+    };
+  }, [loadDashboard, userId]);
 
   const liveRepos = dashboard?.repositories?.map((repo) => {
     const score = Number(repo.securityScore || 0);

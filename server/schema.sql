@@ -46,6 +46,23 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname);
 CREATE INDEX IF NOT EXISTS idx_users_role_status ON users(role, status);
 
+-- Successful authentication events are append-only so repeated logins from
+-- different devices remain visible to operational analytics.
+CREATE TABLE IF NOT EXISTS user_login_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    auth_method VARCHAR(20) NOT NULL CHECK (auth_method IN ('PASSWORD', 'GITHUB')),
+    ip_address VARCHAR(64),
+    user_agent TEXT,
+    correlation_id VARCHAR(128),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_login_events_created
+    ON user_login_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_login_events_user_created
+    ON user_login_events(user_id, created_at DESC);
+
 -- 2. Projects Table
 CREATE TABLE IF NOT EXISTS projects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

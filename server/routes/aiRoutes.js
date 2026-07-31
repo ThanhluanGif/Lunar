@@ -33,13 +33,15 @@ const REVIEW_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['title', 'severity', 'cwe', 'line', 'explanation', 'suggestedPatch', 'hackerAttackVector', 'remediation'],
+        required: ['title', 'severity', 'cwe', 'line', 'explanation', 'rootCause', 'whyThisIsValid', 'suggestedPatch', 'hackerAttackVector', 'remediation'],
         properties: {
           title: { type: 'string' },
           severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'info'] },
           cwe: { type: 'string' },
           line: { type: 'integer', minimum: 0 },
           explanation: { type: 'string' },
+          rootCause: { type: 'string' },
+          whyThisIsValid: { type: 'string' },
           suggestedPatch: { type: 'string' },
           hackerAttackVector: {
             type: 'object',
@@ -55,10 +57,11 @@ const REVIEW_SCHEMA = {
           remediation: {
             type: 'object',
             additionalProperties: false,
-            required: ['defenseStrategy', 'stepByStepGuide', 'patchCode'],
+            required: ['defenseStrategy', 'stepByStepGuide', 'validationSteps', 'patchCode'],
             properties: {
               defenseStrategy: { type: 'string' },
               stepByStepGuide: { type: 'array', items: { type: 'string' } },
+              validationSteps: { type: 'array', items: { type: 'string' } },
               patchCode: { type: 'string' }
             }
           }
@@ -98,6 +101,8 @@ const PROJECT_ATTACK_SIMULATION_SCHEMA = {
           'affectedFiles',
           'relatedCwes',
           'evidence',
+          'rootCause',
+          'whyThisIsValid',
           'hackerAttackVector',
           'remediation'
         ],
@@ -109,6 +114,8 @@ const PROJECT_ATTACK_SIMULATION_SCHEMA = {
           affectedFiles: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 12 },
           relatedCwes: { type: 'array', items: { type: 'string' }, maxItems: 12 },
           evidence: { type: 'string' },
+          rootCause: { type: 'string' },
+          whyThisIsValid: { type: 'string' },
           hackerAttackVector: {
             type: 'object',
             additionalProperties: false,
@@ -123,10 +130,11 @@ const PROJECT_ATTACK_SIMULATION_SCHEMA = {
           remediation: {
             type: 'object',
             additionalProperties: false,
-            required: ['defenseStrategy', 'stepByStepGuide', 'patchCode'],
+            required: ['defenseStrategy', 'stepByStepGuide', 'validationSteps', 'patchCode'],
             properties: {
               defenseStrategy: { type: 'string' },
               stepByStepGuide: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 12 },
+              validationSteps: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 12 },
               patchCode: { type: 'string' }
             }
           }
@@ -164,8 +172,9 @@ function buildPrompt({ code, filename, language, operation, customPolicies }) {
     '2. Provide a realistic sample exploit payload or HTTP request that an attacker would use (exploitPayload).',
     '3. Describe the severe real-world breach impact if exploited (breachImpact).',
     '4. Set threatLevel (CRITICAL, HIGH, MEDIUM, LOW).',
-    '5. Provide a step-by-step defense guide in Vietnamese (remediation.stepByStepGuide & defenseStrategy).',
-    '6. Provide a complete, drop-in 1-Click secure patch code (suggestedPatch & remediation.patchCode).',
+    '5. State the concrete root cause and why the recorded evidence supports this finding without inventing reachability.',
+    '6. Provide a step-by-step defense guide and a separate validation/rescan checklist in Vietnamese.',
+    '7. Provide remediation guidance only; generated code is a proposal and must never be described as validated.',
     'Explain all text descriptions in clear, professional Vietnamese.',
     '--- SOURCE CODE START ---',
     code,
@@ -226,7 +235,7 @@ function buildProjectPrompt({ projectFiles, repositoryName }) {
     `Repository: ${repositoryName}.`,
     'Analyze cross-file data flow between routes, authentication/authorization middleware, controllers and database access.',
     'Prioritize broken access control, injection, secret exposure, unsafe deserialization, SSRF and command execution.',
-    'For each supported finding, include evidence, affected files, a defensive attack chain, breach impact and a complete drop-in patch.',
+    'For each supported finding, include evidence, root cause, why the evidence supports the finding, affected files, a defensive attack chain, breach impact, implementation steps and validation/rescan steps.',
     'Write explanations and remediation steps in clear professional Vietnamese.',
     fileContext
   ].join('\n');
@@ -344,27 +353,45 @@ function threatLevelFor(severity) {
   return 'MEDIUM';
 }
 
-function safePatchForFinding(finding) {
-  if (finding.cwe === 'CWE-89') {
-    return [
-      '// Thay nối chuỗi SQL bằng truy vấn tham số hóa.',
-      'const result = await db.query(',
-      "  'SELECT * FROM users WHERE id = $1',",
-      '  [req.params.id]',
-      ');'
-    ].join('\n');
+function patchUnavailableReason(finding) {
+  const cwes = new Set([finding?.cwe, ...(finding?.relatedCwes || [])]);
+  if (['CWE-285', 'CWE-639', 'CWE-862'].some((cwe) => cwes.has(cwe))) {
+    return 'Authorization/IDOR patch is unavailable until ownership and policy evidence are supplied.';
   }
-  if (finding.cwe === 'CWE-798') {
-    return [
-      '// Đọc bí mật từ secret store hoặc biến môi trường được kiểm soát.',
-      'const apiKey = process.env.SERVICE_API_KEY;',
-      "if (!apiKey) throw new Error('SERVICE_API_KEY is required');"
-    ].join('\n');
-  }
-  return [
-    `// ${finding.recommendation}`,
-    '// Validate input, enforce least privilege, and keep the security control server-side.'
-  ].join('\n');
+  return 'Generated remediation has not passed repository containment, conflict validation and rescan.';
+}
+
+function withUnavailablePatch(finding) {
+  const reasonUnavailable = patchUnavailableReason(finding);
+  return {
+    ...finding,
+    suggestedPatch: null,
+    available: false,
+    patchValidated: false,
+    before: null,
+    after: null,
+    unifiedDiff: null,
+    reasonUnavailable,
+    lifecycleStatus: 'triaged',
+    remediation: {
+      ...(finding.remediation || {}),
+      patchCode: null,
+      available: false,
+      patchValidated: false,
+      before: null,
+      after: null,
+      unifiedDiff: null,
+      reasonUnavailable,
+      lifecycleStatus: 'triaged'
+    }
+  };
+}
+
+function normalizePatchContracts(result) {
+  return {
+    ...result,
+    findings: (result?.findings || []).map(withUnavailablePatch)
+  };
 }
 
 function nativeProjectSimulation(projectFiles, repositoryName) {
@@ -390,6 +417,8 @@ function nativeProjectSimulation(projectFiles, repositoryName) {
       affectedFiles: connectedFiles.length ? connectedFiles : [unauthenticatedRoute.path],
       relatedCwes: ['CWE-862', 'CWE-285'],
       evidence: `${unauthenticatedRoute.path} khai báo route nhưng không có middleware xác thực/phân quyền trong chuỗi xử lý.`,
+      rootCause: 'Route nhạy cảm không kế thừa middleware xác thực/phân quyền và controller chưa chứng minh ownership check.',
+      whyThisIsValid: 'Source cho thấy route handler tồn tại nhưng không có auth middleware trong cùng file; finding vẫn cần đối chiếu parent router trước khi kết luận True Positive.',
       hackerAttackVector: {
         attackChain: [
           'Kiểm thử viên gửi request tới route trong môi trường cô lập bằng tài khoản quyền thấp.',
@@ -408,7 +437,12 @@ function nativeProjectSimulation(projectFiles, repositoryName) {
           'Kiểm tra quyền sở hữu tài nguyên trong controller và ghi audit log.',
           'Thêm integration test cho anonymous, quyền thấp và quyền hợp lệ.'
         ],
-        patchCode: `router.get('/admin/resource', verifyToken, requireRole('ADMIN'), controller);`
+        validationSteps: [
+          'Chạy test anonymous và xác nhận bị từ chối trước controller.',
+          'Chạy test non-owner/cross-tenant và xác nhận không lộ resource.',
+          'Chạy test owner/admin hợp lệ và kiểm tra audit log.'
+        ],
+        patchCode: null
       }
     });
   }
@@ -423,6 +457,8 @@ function nativeProjectSimulation(projectFiles, repositoryName) {
       affectedFiles: [finding.filePath],
       relatedCwes: [finding.cwe],
       evidence: `${finding.filePath}:${finding.line} — ${finding.codeSnippet}`,
+      rootCause: `Security-sensitive pattern ${finding.ruleId} xuất hiện tại sink trong ${finding.filePath}.`,
+      whyThisIsValid: `Finding dựa trên source evidence trực tiếp tại dòng ${finding.line}; cần xác minh input reachability và runtime control trước khi nâng triage lên True Positive.`,
       hackerAttackVector: {
         attackChain: [
           'Kiểm thử viên xác định đầu vào đi tới sink được đánh dấu trong môi trường local.',
@@ -440,7 +476,12 @@ function nativeProjectSimulation(projectFiles, repositoryName) {
           finding.recommendation,
           'Bổ sung regression test và chạy lại SAST trước khi merge.'
         ],
-        patchCode: safePatchForFinding(finding)
+        validationSteps: [
+          'Tạo negative test tái hiện source-to-sink path.',
+          'Chạy unit/integration test sau thay đổi.',
+          'Rescan và chỉ đánh dấu verified khi finding không còn xuất hiện.'
+        ],
+        patchCode: null
       }
     });
   });
@@ -478,7 +519,13 @@ function assertProjectSimulation(result) {
   for (const finding of result.findings) {
     if (
       !finding?.hackerAttackVector?.exploitPayload
-      || !finding?.remediation?.patchCode
+      || !finding.rootCause
+      || !finding.whyThisIsValid
+      || !Array.isArray(finding?.remediation?.validationSteps)
+      || finding.available !== false
+      || finding.after !== null
+      || finding.unifiedDiff !== null
+      || !finding.reasonUnavailable
       || !['CRITICAL', 'HIGH', 'MEDIUM'].includes(finding?.hackerAttackVector?.threatLevel)
     ) {
       const error = new Error('AI provider returned an incomplete attack simulation finding.');
@@ -501,8 +548,25 @@ async function enforceQuota(user, pool) {
   if (usage.rows[0].count >= limit) {
     const error = new Error(`Daily AI review quota reached (${limit}).`);
     error.status = 429;
+    error.quotaExceeded = true;
+    error.quotaType = 'AI_REVIEW';
+    error.limit = limit;
+    error.remaining = 0;
+    error.tier = user.tier;
     throw error;
   }
+}
+
+function quotaExceededResponse(error) {
+  return {
+    success: false,
+    quotaExceeded: true,
+    quotaType: error.quotaType,
+    limit: error.limit,
+    remaining: error.remaining,
+    tier: error.tier,
+    error: `Bạn đã dùng hết ${error.limit} lượt AI review của gói ${error.tier} hôm nay.`
+  };
 }
 
 async function handleReview(req, res) {
@@ -552,16 +616,20 @@ async function handleReview(req, res) {
        VALUES ($1, $2, $3, $4, $5)`,
       [req.user.id, provider, output.model, operation, code.length]
     );
+    const review = normalizePatchContracts(output.result);
     return res.json({
       success: true,
       provider,
       model: output.model,
       latencyMs: Date.now() - startedAt,
-      review: output.result
+      review
     });
   } catch (error) {
     const status = [400, 429, 503].includes(error.status) ? error.status : 502;
     req.log?.error('AI review failed.', error, status);
+    if (error.quotaExceeded) {
+      return res.status(429).json(quotaExceededResponse(error));
+    }
     return res.status(status).json({
       success: false,
       error: status === 503
@@ -617,7 +685,8 @@ async function handleProjectAttackSimulation(req, res) {
           'lunar_project_attack_simulation',
           { correlationId: req.correlationId }
         );
-    assertProjectSimulation(output.result);
+    const simulation = normalizePatchContracts(output.result);
+    assertProjectSimulation(simulation);
     const inputCharacters = files.reduce((total, file) => total + file.content.length, 0);
     await pool.query(
       `INSERT INTO ai_usage_logs (user_id, provider, model, operation, input_characters)
@@ -629,11 +698,14 @@ async function handleProjectAttackSimulation(req, res) {
       provider: selectedProvider,
       model: output.model,
       latencyMs: Date.now() - startedAt,
-      simulation: output.result
+      simulation
     });
   } catch (error) {
     const status = [400, 429, 503].includes(error.status) ? error.status : 502;
     req.log?.error('Project attack simulation failed.', error, status);
+    if (error.quotaExceeded) {
+      return res.status(429).json(quotaExceededResponse(error));
+    }
     return res.status(status).json({
       success: false,
       error: status === 503

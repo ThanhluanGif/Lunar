@@ -3,11 +3,12 @@ import { X, Github, Sparkles, Loader2, Code, ShieldCheck, AlertCircle } from 'lu
 import { fetchGitHubRepoDetails } from '../services/githubService';
 import { scanRepository } from '../services/repoScanner';
 import { lunarApi } from '../services/lunarApi';
+import { getUpgradeQuotaContext } from '../services/quotaUpgrade';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 const MAX_LOCAL_FILE_BYTES = 512000;
 
-export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser }) {
+export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExceeded, currentUser }) {
   const [githubUrl, setGithubUrl] = useState('');
   const [customCode, setCustomCode] = useState('');
   const [activeMode, setActiveMode] = useState('github'); // 'github' | 'snippet' | 'local'
@@ -134,6 +135,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser
           cvssScore: preview.stats.maxCvss,
           files: rawProjectData.files.map((file) => ({ ...file, annotations: [] }))
         });
+        window.dispatchEvent(new CustomEvent('lunar_scan_completed'));
         setLoading(false);
         onClose();
         return;
@@ -154,10 +156,17 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, currentUser
       };
 
       onAddProject(analyzedProject);
+      window.dispatchEvent(new CustomEvent('lunar_scan_completed'));
       setLoading(false);
       onClose();
     } catch (err) {
       setLoading(false);
+      const quota = getUpgradeQuotaContext(err, currentUser?.tier, 'AI_REVIEW');
+      if (quota && onQuotaExceeded) {
+        onClose();
+        onQuotaExceeded(quota);
+        return;
+      }
       setErrorMsg(err.message || 'Đã có lỗi xảy ra trong quá trình AI Code Review.');
     }
   };

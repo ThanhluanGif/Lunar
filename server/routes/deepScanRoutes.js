@@ -18,6 +18,7 @@ const MAX_FILE_BYTES = Number.parseInt(process.env.DEEP_SCAN_MAX_FILE_BYTES, 10)
 const MAX_TOTAL_BYTES = Number.parseInt(process.env.DEEP_SCAN_MAX_TOTAL_BYTES, 10) || 5000000;
 const CONCURRENCY = Math.min(Number.parseInt(process.env.DEEP_SCAN_CONCURRENCY, 10) || 5, 10);
 const MAX_PERSISTED_FINDINGS = 1000;
+const FREE_DAILY_SCAN_LIMIT = 5;
 const IGNORED_PARTS = new Set([
   '.git', 'node_modules', 'dist', 'build', 'vendor', 'coverage', '.next',
   'target', 'bin', 'obj', '__pycache__', '.venv', 'venv'
@@ -152,9 +153,14 @@ async function reserveScanQuota(pool, userId) {
     const resetDue = !quota.last_scan_reset_at
       || new Date(quota.last_scan_reset_at).toDateString() !== new Date().toDateString();
     const scansUsed = resetDue ? 0 : Number(quota.daily_scans_used || 0);
-    if (quota.tier === 'FREE' && scansUsed >= 5) {
+    if (quota.tier === 'FREE' && scansUsed >= FREE_DAILY_SCAN_LIMIT) {
       await client.query('ROLLBACK');
-      return { allowed: false };
+      return {
+        allowed: false,
+        tier: quota.tier,
+        limit: FREE_DAILY_SCAN_LIMIT,
+        remaining: 0
+      };
     }
     if (quota.tier === 'FREE') {
       await client.query(
@@ -220,7 +226,15 @@ router.post('/repository', verifyToken, deepScanRateLimiter, async (req, res) =>
     const token = decryptToken(connection.rows[0].access_token_encrypted);
     const quotaReservation = await reserveScanQuota(pool, req.user.id);
     if (!quotaReservation.allowed) {
-      return res.status(429).json({ success: false, error: 'FREE daily scan quota reached.' });
+      return res.status(429).json({
+        success: false,
+        quotaExceeded: true,
+        quotaType: 'VERIFIED_SCAN',
+        tier: quotaReservation.tier,
+        limit: quotaReservation.limit,
+        remaining: quotaReservation.remaining,
+        error: `FREE tier daily quota of ${quotaReservation.limit} verified scans has been reached.`
+      });
     }
     quotaReserved = quotaReservation.reserved;
     const repo = await githubRequest(`/repos/${repository}`, token, req.correlationId);

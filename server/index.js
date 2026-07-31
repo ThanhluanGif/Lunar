@@ -107,8 +107,8 @@ app.use(inputSanitizer);
 // 5. Global Rate Limiter for general public endpoints
 app.use('/api/v1/public', publicApiRateLimiter);
 
-// Session responses must never be reused across login/logout transitions.
-app.use('/api/v1/auth', (req, res, next) => {
+// Identity-scoped responses must never be reused across accounts or roles.
+app.use(['/api/v1/auth', '/api/v1/dashboard', '/api/v1/admin'], (req, res, next) => {
   res.set('Cache-Control', 'no-store, private');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');

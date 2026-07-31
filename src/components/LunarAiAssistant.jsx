@@ -2,28 +2,33 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Bot,
   ChevronDown,
+  CheckCircle2,
   LockKeyhole,
+  Mail,
   MessageCircle,
+  MessageSquare,
+  Phone,
   RotateCcw,
   Send,
   ShieldCheck,
   Sparkles,
   Trash2,
-  User
+  User,
+  ExternalLink
 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
 
 const STARTER_MESSAGE = {
   id: 'starter',
   role: 'assistant',
-  content: 'Chào bạn, mình là Lunar AI. Mình có thể hướng dẫn sử dụng website, giải thích kết quả quét và giúp bạn lên thứ tự sửa lỗi an toàn.'
+  content: 'Chào bạn, mình là Lunar AI. Mình có thể hướng dẫn sử dụng website, giải thích kết quả quét, giúp bạn sửa lỗi an toàn, hoặc chuyển thông tin liên hệ tới Email (nluan5517@gmail.com) & Zalo (0969822591).'
 };
 
 const QUICK_PROMPTS = [
   'Tóm tắt rủi ro dự án đang mở',
   'Hướng dẫn quét code',
-  'Cách kết nối GitHub',
-  'Cách quét repository GitHub'
+  'Liên hệ Email nluan5517@gmail.com',
+  'Kênh hỗ trợ Zalo / SĐT 0969822591'
 ];
 
 function messageId(role) {
@@ -36,6 +41,7 @@ export default function LunarAiAssistant({
   onOpenAuth
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('chat'); // 'chat' | 'contact_form'
   const [messages, setMessages] = useState([STARTER_MESSAGE]);
   const [conversationId, setConversationId] = useState(null);
   const [input, setInput] = useState('');
@@ -48,6 +54,19 @@ export default function LunarAiAssistant({
     provider: 'Lunar Native',
     conversationHistory: false
   });
+
+  // Contact Form State
+  const [contactForm, setContactForm] = useState({
+    name: currentUser?.name || '',
+    email: currentUser?.email || '',
+    phone: '',
+    subject: 'Cần hỗ trợ từ Lunar.dev',
+    message: ''
+  });
+  const [contactSubmitting, setContactSubmitting] = useState(false);
+  const [contactSuccess, setContactSuccess] = useState('');
+  const [contactError, setContactError] = useState('');
+
   const scrollAnchorRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -59,6 +78,16 @@ export default function LunarAiAssistant({
     setInitializedFor(null);
     setError('');
   }, [identityKey]);
+
+  useEffect(() => {
+    if (currentUser) {
+      setContactForm((prev) => ({
+        ...prev,
+        name: prev.name || currentUser.name || '',
+        email: prev.email || currentUser.email || ''
+      }));
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     if (!isOpen || initializedFor === identityKey) return undefined;
@@ -99,15 +128,15 @@ export default function LunarAiAssistant({
   }, [isOpen, initializedFor, identityKey, currentUser]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || activeTab !== 'chat') return;
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [isOpen, messages, loading]);
+  }, [isOpen, messages, loading, activeTab]);
 
   useEffect(() => {
-    if (isOpen && !initializing) {
+    if (isOpen && !initializing && activeTab === 'chat') {
       window.setTimeout(() => inputRef.current?.focus(), 120);
     }
-  }, [isOpen, initializing]);
+  }, [isOpen, initializing, activeTab]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -121,6 +150,10 @@ export default function LunarAiAssistant({
   const sendMessage = async (text = input) => {
     const cleaned = text.trim();
     if (!cleaned || loading) return;
+
+    if (activeTab !== 'chat') {
+      setActiveTab('chat');
+    }
 
     const userMessage = {
       id: messageId('user'),
@@ -158,6 +191,33 @@ export default function LunarAiAssistant({
       setInput(cleaned);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleContactSubmit = async (e) => {
+    e.preventDefault();
+    if (!contactForm.message.trim()) {
+      setContactError('Vui lòng nhập nội dung hỗ trợ.');
+      return;
+    }
+    setContactSubmitting(true);
+    setContactError('');
+    setContactSuccess('');
+
+    try {
+      const res = await lunarApi.sendSupportContact({
+        name: contactForm.name,
+        email: contactForm.email,
+        phone: contactForm.phone,
+        subject: contactForm.subject,
+        message: contactForm.message
+      });
+      setContactSuccess(res.message || 'Gửi yêu cầu thành công tới nluan5517@gmail.com!');
+      setContactForm((prev) => ({ ...prev, message: '' }));
+    } catch (err) {
+      setContactError(err.message || 'Không thể gửi email lúc này. Vui lòng nhắn qua Zalo 0969822591.');
+    } finally {
+      setContactSubmitting(false);
     }
   };
 
@@ -199,7 +259,7 @@ export default function LunarAiAssistant({
                     {status.mode === 'gateway' ? 'AI nâng cao' : 'Nội bộ'}
                   </span>
                 </div>
-                <small>Trợ lý bảo mật phòng thủ</small>
+                <small>Trợ lý bảo mật & Hỗ trợ</small>
               </div>
             </div>
             <div className="lunar-assistant-header-actions">
@@ -224,6 +284,46 @@ export default function LunarAiAssistant({
             </div>
           </header>
 
+          {/* Quick Contact Action Bar */}
+          <div className="lunar-assistant-quick-contacts">
+            <button
+              type="button"
+              className={`lunar-assistant-contact-badge ${activeTab === 'chat' ? 'zalo' : ''}`}
+              onClick={() => setActiveTab('chat')}
+              style={{ background: activeTab === 'chat' ? '#2563eb' : '#1e293b', color: '#fff' }}
+            >
+              <MessageSquare size={13} />
+              Chat AI
+            </button>
+            <button
+              type="button"
+              className={`lunar-assistant-contact-badge mail`}
+              onClick={() => setActiveTab(activeTab === 'contact_form' ? 'chat' : 'contact_form')}
+            >
+              <Mail size={13} />
+              Form Mail
+            </button>
+            <a
+              href="https://zalo.me/0969822591"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="lunar-assistant-contact-badge zalo"
+              title="Chat Zalo 0969822591"
+            >
+              <MessageCircle size={13} />
+              Zalo
+              <ExternalLink size={10} />
+            </a>
+            <a
+              href="tel:0969822591"
+              className="lunar-assistant-contact-badge phone"
+              title="Gọi hotline 0969822591"
+            >
+              <Phone size={13} />
+              0969822591
+            </a>
+          </div>
+
           {!currentUser && (
             <div className="lunar-assistant-guest-note">
               <LockKeyhole size={15} />
@@ -232,102 +332,185 @@ export default function LunarAiAssistant({
             </div>
           )}
 
-          <div
-            className="lunar-assistant-messages"
-            aria-live="polite"
-            aria-busy={loading || initializing}
-          >
-            {initializing ? (
-              <div className="lunar-assistant-loading-history">
-                <RotateCcw size={16} className="lunar-assistant-spin" />
-                Đang tải hội thoại…
-              </div>
-            ) : (
-              <>
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`lunar-assistant-message-row ${message.role}`}
-                  >
-                    <span className="lunar-assistant-avatar" aria-hidden="true">
-                      {message.role === 'assistant' ? <Bot size={15} /> : <User size={15} />}
-                    </span>
-                    <div className="lunar-assistant-bubble">{message.content}</div>
-                  </div>
-                ))}
+          {activeTab === 'contact_form' ? (
+            <div className="lunar-assistant-contact-form-panel">
+              <h4>
+                <Mail size={16} style={{ color: '#c084fc' }} />
+                Gửi Mail Hỗ Trợ tới nluan5517@gmail.com
+              </h4>
+              <p style={{ fontSize: '0.73rem', color: '#94a3b8', margin: 0 }}>
+                Nhập thông tin bên dưới để gửi email trực tiếp cho chuyên gia tư vấn bảo mật của Lunar.
+              </p>
 
-                {messages.length <= 1 && (
-                  <div className="lunar-assistant-prompts" aria-label="Câu hỏi gợi ý">
-                    {QUICK_PROMPTS.map((prompt) => (
-                      <button
-                        type="button"
-                        key={prompt}
-                        onClick={() => sendMessage(prompt)}
-                        disabled={loading}
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                )}
+              {contactSuccess && (
+                <div className="lunar-assistant-contact-success">
+                  <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <CheckCircle2 size={15} />
+                    {contactSuccess}
+                  </span>
+                  <span>Hotline / Zalo hỗ trợ tức thì: <strong>0969822591</strong></span>
+                </div>
+              )}
 
-                {loading && (
-                  <div className="lunar-assistant-message-row assistant">
-                    <span className="lunar-assistant-avatar" aria-hidden="true">
-                      <Bot size={15} />
-                    </span>
-                    <div className="lunar-assistant-typing" aria-label="Lunar AI đang trả lời">
-                      <i />
-                      <i />
-                      <i />
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-            <div ref={scrollAnchorRef} />
-          </div>
+              {contactError && (
+                <div className="lunar-assistant-error">
+                  {contactError}
+                </div>
+              )}
 
-          {error && (
-            <div className="lunar-assistant-error" role="alert">
-              {error}
+              <form onSubmit={handleContactSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="lunar-assistant-form-group">
+                  <label htmlFor="contact-name">Họ & Tên</label>
+                  <input
+                    id="contact-name"
+                    type="text"
+                    placeholder="Nhập họ tên của bạn"
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="lunar-assistant-form-group">
+                  <label htmlFor="contact-email">Email / Số điện thoại</label>
+                  <input
+                    id="contact-email"
+                    type="text"
+                    placeholder="Nhập email hoặc SĐT để phản hồi"
+                    value={contactForm.email}
+                    onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                  />
+                </div>
+                <div className="lunar-assistant-form-group">
+                  <label htmlFor="contact-subject">Chủ đề cần tư vấn</label>
+                  <input
+                    id="contact-subject"
+                    type="text"
+                    placeholder="Ví dụ: Tư vấn vá lỗi SAST / Báo giá gói Enterprise"
+                    value={contactForm.subject}
+                    onChange={(e) => setContactForm({ ...contactForm, subject: e.target.value })}
+                  />
+                </div>
+                <div className="lunar-assistant-form-group">
+                  <label htmlFor="contact-message">Nội dung chi tiết</label>
+                  <textarea
+                    id="contact-message"
+                    rows={4}
+                    placeholder="Mô tả nội dung hoặc câu hỏi bạn cần hỗ trợ..."
+                    value={contactForm.message}
+                    onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="lunar-assistant-form-submit"
+                  disabled={contactSubmitting}
+                >
+                  {contactSubmitting ? <RotateCcw size={15} className="lunar-assistant-spin" /> : <Send size={15} />}
+                  {contactSubmitting ? 'Đang gửi mail...' : 'Gửi tới nluan5517@gmail.com'}
+                </button>
+              </form>
             </div>
-          )}
+          ) : (
+            <>
+              <div
+                className="lunar-assistant-messages"
+                aria-live="polite"
+                aria-busy={loading || initializing}
+              >
+                {initializing ? (
+                  <div className="lunar-assistant-loading-history">
+                    <RotateCcw size={16} className="lunar-assistant-spin" />
+                    Đang tải hội thoại…
+                  </div>
+                ) : (
+                  <>
+                    {messages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`lunar-assistant-message-row ${message.role}`}
+                      >
+                        <span className="lunar-assistant-avatar" aria-hidden="true">
+                          {message.role === 'assistant' ? <Bot size={15} /> : <User size={15} />}
+                        </span>
+                        <div className="lunar-assistant-bubble" style={{ whiteSpace: 'pre-wrap' }}>
+                          {message.content}
+                        </div>
+                      </div>
+                    ))}
 
-          <form
-            className="lunar-assistant-composer"
-            onSubmit={(event) => {
-              event.preventDefault();
-              sendMessage();
-            }}
-          >
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(event) => setInput(event.target.value.slice(0, 4000))}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
+                    {messages.length <= 1 && (
+                      <div className="lunar-assistant-prompts" aria-label="Câu hỏi gợi ý">
+                        {QUICK_PROMPTS.map((prompt) => (
+                          <button
+                            type="button"
+                            key={prompt}
+                            onClick={() => sendMessage(prompt)}
+                            disabled={loading}
+                          >
+                            {prompt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {loading && (
+                      <div className="lunar-assistant-message-row assistant">
+                        <span className="lunar-assistant-avatar" aria-hidden="true">
+                          <Bot size={15} />
+                        </span>
+                        <div className="lunar-assistant-typing" aria-label="Lunar AI đang trả lời">
+                          <i />
+                          <i />
+                          <i />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div ref={scrollAnchorRef} />
+              </div>
+
+              {error && (
+                <div className="lunar-assistant-error" role="alert">
+                  {error}
+                </div>
+              )}
+
+              <form
+                className="lunar-assistant-composer"
+                onSubmit={(event) => {
                   event.preventDefault();
                   sendMessage();
-                }
-              }}
-              rows={1}
-              maxLength={4000}
-              placeholder="Hỏi Lunar AI về bảo mật…"
-              aria-label="Tin nhắn cho Lunar AI"
-              disabled={loading || initializing}
-            />
-            <button
-              type="submit"
-              aria-label="Gửi tin nhắn"
-              disabled={!input.trim() || loading || initializing}
-            >
-              <Send size={17} />
-            </button>
-          </form>
-          <div className="lunar-assistant-disclaimer">
-            Không gửi mật khẩu, token hoặc dữ liệu bí mật.
-          </div>
+                }}
+              >
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(event) => setInput(event.target.value.slice(0, 4000))}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  rows={1}
+                  maxLength={4000}
+                  placeholder="Hỏi AI hoặc gõ 'liên hệ' để lấy SĐT / Zalo / Mail…"
+                  aria-label="Tin nhắn cho Lunar AI"
+                  disabled={loading || initializing}
+                />
+                <button
+                  type="submit"
+                  aria-label="Gửi tin nhắn"
+                  disabled={!input.trim() || loading || initializing}
+                >
+                  <Send size={17} />
+                </button>
+              </form>
+              <div className="lunar-assistant-disclaimer">
+                Không gửi mật khẩu hay token. Email hỗ trợ: <strong>nluan5517@gmail.com</strong>
+              </div>
+            </>
+          )}
         </section>
       )}
 

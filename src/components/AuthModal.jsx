@@ -244,7 +244,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
             {activeTab === 'github' && authMode !== 'forgot' && authMode !== 'reset'
               ? 'Đăng nhập Lunar và đồng bộ repository chỉ trong một bước.'
-              : 'Dùng email và mật khẩu để truy cập tài khoản Lunar.'}
+              : 'Dùng email hoặc nickname và mật khẩu để truy cập tài khoản Lunar.'}
           </p>
         </div>
 
@@ -430,10 +430,11 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
             )}
 
             {authMode !== 'reset' && <div className="input-group">
-              <label className="input-label">Email</label>
+              <label className="input-label">{authMode === 'login' ? 'Email hoặc nickname' : 'Email'}</label>
               <input
-                type="email"
-                placeholder="developer@lunar.dev"
+                type={authMode === 'login' ? 'text' : 'email'}
+                placeholder={authMode === 'login' ? 'developer@lunar.dev hoặc @developer' : 'developer@lunar.dev'}
+                autoComplete={authMode === 'login' ? 'username' : 'email'}
                 className="input-control"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}

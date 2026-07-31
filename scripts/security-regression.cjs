@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { MemoryStore } = require('express-rate-limit');
 const {
   REDACTED,
   REDACTED_PII,
@@ -11,11 +12,18 @@ const {
   correlationIdFromRequest,
   serializeLogEntry
 } = require('../server/middleware/logger');
-const { createAuditReportCsv, sanitizeCsvField } = require('../server/services/reportService');
+const {
+  createAuditReportCsv,
+  loadOwnedScanSummary,
+  sanitizeCsvField
+} = require('../server/services/reportService');
+const { createCookieOptions } = require('../server/services/cookiePolicy');
+const { requireRole } = require('../server/middleware/auth');
 const { providerFetch, providerPolicy } = require('../server/services/providerHttp');
 const { readRuntimeSecret } = require('../server/services/runtimeSecrets');
 const {
   authIdentifierKey,
+  normalizedAuthIdentifier,
   validateRateLimitDeployment
 } = require('../server/middleware/rateLimiter');
 const { webhookTimestampIsFresh } = require('../server/services/paymentWebhookPolicy');
@@ -66,6 +74,59 @@ const identifierKey = authIdentifierKey({
 });
 assert.match(identifierKey, /^identifier:[a-f0-9]{64}$/);
 assert.equal(identifierKey.includes('security.user@example.com'), false);
+assert.equal(normalizedAuthIdentifier({ body: { username: 'Security.User' } }), '@security.user');
+assert.equal(
+  normalizedAuthIdentifier({ body: { email: 'Security.User', token: 'Security.User' } }),
+  '@security.user'
+);
+assert.equal(normalizedAuthIdentifier({ body: { token: 'One-Time-Token' } }), 'one-time-token');
+assert.equal(
+  authIdentifierKey({ body: { username: 'Security.User' }, ip: '203.0.113.11' }),
+  authIdentifierKey({ body: { email: '@security.user' }, ip: '203.0.113.12' })
+);
+assert.equal(
+  authIdentifierKey({ body: {}, ip: '127.0.0.1', headers: { 'x-forwarded-for': '198.51.100.10' } }),
+  authIdentifierKey({ body: {}, ip: '127.0.0.1', headers: { 'x-forwarded-for': '203.0.113.99' } }),
+  'Identifier throttling must use Express-resolved req.ip, not a raw forwarding header.'
+);
+
+assert.deepEqual(createCookieOptions({ env: { NODE_ENV: 'development' } }), {
+  httpOnly: true,
+  secure: false,
+  sameSite: 'strict',
+  path: '/'
+});
+assert.deepEqual(createCookieOptions({ env: { NODE_ENV: 'production' } }), {
+  httpOnly: true,
+  secure: true,
+  sameSite: 'strict',
+  path: '/'
+});
+assert.throws(
+  () => createCookieOptions({ env: { NODE_ENV: 'development', COOKIE_SAME_SITE: 'none' } }),
+  /requires COOKIE_SECURE=true/
+);
+
+function middlewareResponse() {
+  return {
+    statusCode: 200,
+    payload: null,
+    status(code) { this.statusCode = code; return this; },
+    json(payload) { this.payload = payload; return this; }
+  };
+}
+let nextCalled = false;
+let middlewareRes = middlewareResponse();
+requireRole('ADMIN')({ user: null }, middlewareRes, () => { nextCalled = true; });
+assert.equal(middlewareRes.statusCode, 401);
+assert.equal(nextCalled, false);
+middlewareRes = middlewareResponse();
+requireRole('ADMIN')({ user: { role: 'USER' } }, middlewareRes, () => { nextCalled = true; });
+assert.equal(middlewareRes.statusCode, 403);
+nextCalled = false;
+middlewareRes = middlewareResponse();
+requireRole('ADMIN')({ user: { role: 'ADMIN' } }, middlewareRes, () => { nextCalled = true; });
+assert.equal(nextCalled, true);
 
 const webhookNow = Date.now();
 assert.equal(webhookTimestampIsFresh(new Date(webhookNow).toISOString(), { now: webhookNow }), true);
@@ -155,8 +216,58 @@ for (const modalFile of modalFiles) {
   assert.match(source, /aria-labelledby=/);
   assert.match(source, /tabIndex=\{-1\}/);
 }
+const authModalSource = fs.readFileSync('src/components/AuthModal.jsx', 'utf8');
+assert.match(authModalSource, /Email hoặc nickname/);
+assert.match(authModalSource, /autoComplete=\{authMode === 'login' \? 'username' : 'email'\}/);
+const appSource = fs.readFileSync('src/App.jsx', 'utf8');
+assert.match(appSource, /let logoutWarning = ''/);
+assert.match(appSource, /Đã đăng xuất trên thiết bị này/);
 
 async function verifyProviderContracts() {
+  const store = new MemoryStore();
+  store.init({ windowMs: 40 });
+  const firstHit = await store.increment('reset-window');
+  assert.equal(firstHit.totalHits, 1);
+  await new Promise((resolve) => setTimeout(resolve, 70));
+  const resetHit = await store.increment('reset-window');
+  assert.equal(resetHit.totalHits, 1, 'Rate-limit counter must reset after its window.');
+  store.shutdown?.();
+
+  const ownerId = '00000000-0000-4000-8000-000000000001';
+  const scanId = '00000000-0000-4000-8000-000000000002';
+  const ownedPool = {
+    async query(sql, params) {
+      if (sql.includes('FROM scans s')) {
+        return {
+          rows: params[0] === scanId && params[1] === ownerId ? [{
+            id: scanId,
+            project_name: 'Owned project',
+            score: 90,
+            ai_model_used: 'regression',
+            created_at: new Date(0),
+            total: 0,
+            critical_count: 0,
+            high_count: 0,
+            medium_count: 0,
+            low_count: 0,
+            maximum_cvss: 0
+          }] : []
+        };
+      }
+      return { rows: [] };
+    }
+  };
+  assert.ok(await loadOwnedScanSummary(ownedPool, scanId, ownerId));
+  assert.equal(
+    await loadOwnedScanSummary(ownedPool, scanId, '00000000-0000-4000-8000-000000000003'),
+    null,
+    'Authenticated non-owner/other tenant must receive resource-not-found semantics.'
+  );
+  assert.equal(
+    await loadOwnedScanSummary(ownedPool, '00000000-0000-4000-8000-000000000004', ownerId),
+    null
+  );
+
   let attempts = 0;
   let propagatedCorrelationId;
   const retriedResponse = await providerFetch('https://provider.example/resource', {}, {
@@ -409,6 +520,20 @@ async function run() {
     }
     assert.ok(identifierThrottleResponse.headers.get('retry-after'));
 
+    let usernameThrottleResponse;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      usernameThrottleResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-forwarded-for': `198.51.100.${attempt + 40}`
+        },
+        body: JSON.stringify({ username: 'distributed.nickname', password: 'StrongPass123!' })
+      });
+      assert.equal(usernameThrottleResponse.status, attempt < 5 ? 503 : 429);
+    }
+    assert.ok(usernameThrottleResponse.headers.get('retry-after'));
+
     let ipThrottleResponse;
     for (let attempt = 0; attempt < 6; attempt += 1) {
       ipThrottleResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
@@ -425,6 +550,18 @@ async function run() {
       assert.equal(ipThrottleResponse.status, attempt < 5 ? 503 : 429);
     }
     assert.ok(ipThrottleResponse.headers.get('retry-after'));
+
+    const logoutResponse = await expectStatus('/api/v1/auth/logout', { method: 'POST' }, 200);
+    const clearedSessionCookie = logoutResponse.headers.get('set-cookie') || '';
+    if (
+      !/access_token=;/i.test(clearedSessionCookie)
+      || !/HttpOnly/i.test(clearedSessionCookie)
+      || !/Secure/i.test(clearedSessionCookie)
+      || !/SameSite=Strict/i.test(clearedSessionCookie)
+      || !/no-store/i.test(logoutResponse.headers.get('cache-control') || '')
+    ) {
+      throw new Error('Logout did not clear the production session cookie with matching secure attributes.');
+    }
 
     let deeplyNested = { value: 'bounded' };
     for (let depth = 0; depth < 70; depth += 1) deeplyNested = { child: deeplyNested };
@@ -581,6 +718,12 @@ async function run() {
       githubWebhookSignatureGuard: 'PASS',
       paymentWebhookFreshnessGuard: 'PASS',
       authIpAndIdentifierThrottling: 'PASS',
+      usernameIdentifierThrottling: 'PASS',
+      authRateLimitResetWindow: 'PASS',
+      authProxySpoofingBoundary: 'PASS',
+      sessionCookieDevelopmentProductionAndLogout: 'PASS',
+      ownerNonOwnerAndResourceNotFoundAuthorization: 'PASS',
+      adminRoleGuard: 'PASS',
       runtimeSecretFileSupport: 'PASS',
       multiInstanceRateLimitFailClosed: 'PASS',
       reportAuthenticationGuard: 'PASS',
