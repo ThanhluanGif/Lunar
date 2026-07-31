@@ -164,10 +164,12 @@ router.get('/overview', verifyToken, async (req, res) => {
       source: 'postgresql',
       generatedAt: new Date().toISOString(),
       rangeDays: days,
+      scope: 'OWN_ACCOUNT',
       identity: {
+        userId: req.user.id,
         role: req.user.role,
         tier: req.user.tier,
-        access: ACCESS_PROFILES[req.user.role === 'ADMIN' ? 'ADMIN' : req.user.tier]
+        access: ACCESS_PROFILES[req.user.tier] || ACCESS_PROFILES.FREE
       },
       summary: summaryResult.rows[0],
       repositories: repositoriesResult.rows,
@@ -176,7 +178,7 @@ router.get('/overview', verifyToken, async (req, res) => {
       recentScans: recentResult.rows
     });
   } catch (error) {
-    console.error('Dashboard overview query failed:', error);
+    req.log?.error('Dashboard overview query failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to load verified dashboard data.' });
   }
 });

@@ -27,6 +27,7 @@ pnpm-debug.log*
 *.keystore
 credentials.json
 secrets.json
+.secrets/
 
 # Operating System Files
 .DS_Store

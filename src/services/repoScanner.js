@@ -101,7 +101,8 @@ export async function scanLocalFiles(files, {
     } catch (error) {
       projectAttackSimulationError = {
         status: error.status || null,
-        message: error.message
+        message: error.message,
+        payload: error.payload || null
       };
     }
   }

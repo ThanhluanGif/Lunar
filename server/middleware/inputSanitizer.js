@@ -4,21 +4,34 @@
  */
 
 const BLOCKED_OBJECT_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const MAX_INPUT_DEPTH = 64;
+const MAX_INPUT_NODES = 20000;
 
 function sanitizeValue(value) {
-  if (typeof value === 'string') {
-    // Payload limits belong to the route that understands the field. Silently
-    // truncating source code here bypasses route-specific 100KB/500KB checks.
-    // Express already enforces the global 10MB request-body ceiling.
-    return value.replace(/\0/g, '');
-  }
-  if (typeof value === 'object' && value !== null) {
-    for (const key of Object.keys(value)) {
+  if (typeof value !== 'object' || value === null) return value;
+
+  const stack = [{ value, depth: 0 }];
+  let visited = 0;
+  while (stack.length) {
+    const current = stack.pop();
+    visited += 1;
+    if (visited > MAX_INPUT_NODES || current.depth > MAX_INPUT_DEPTH) {
+      const error = new Error('Request input is too deeply nested or complex.');
+      error.code = 'INPUT_COMPLEXITY_LIMIT';
+      throw error;
+    }
+
+    for (const key of Object.keys(current.value)) {
       if (BLOCKED_OBJECT_KEYS.has(key)) {
-        delete value[key];
+        delete current.value[key];
         continue;
       }
-      value[key] = sanitizeValue(value[key]);
+      const child = current.value[key];
+      if (typeof child === 'string') {
+        current.value[key] = child.replace(/\0/g, '');
+      } else if (typeof child === 'object' && child !== null) {
+        stack.push({ value: child, depth: current.depth + 1 });
+      }
     }
   }
   return value;
@@ -35,10 +48,15 @@ function inputSanitizerMiddleware(req, res, next) {
     if (req.query) sanitizeValue(req.query);
     if (req.params) sanitizeValue(req.params);
 
-    next();
+    return next();
   } catch (err) {
-    console.error('Error in inputSanitizerMiddleware:', err);
-    next();
+    if (err.code !== 'INPUT_COMPLEXITY_LIMIT') {
+      req.log?.error('Input sanitizer failed.', err, 400);
+    }
+    return res.status(400).json({
+      success: false,
+      error: 'Request input is too deeply nested or invalid.'
+    });
   }
 }
 

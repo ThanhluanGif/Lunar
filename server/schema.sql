@@ -46,6 +46,23 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_nickname ON users(nickname);
 CREATE INDEX IF NOT EXISTS idx_users_role_status ON users(role, status);
 
+-- Successful authentication events are append-only so repeated logins from
+-- different devices remain visible to operational analytics.
+CREATE TABLE IF NOT EXISTS user_login_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    auth_method VARCHAR(20) NOT NULL CHECK (auth_method IN ('PASSWORD', 'GITHUB')),
+    ip_address VARCHAR(64),
+    user_agent TEXT,
+    correlation_id VARCHAR(128),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_login_events_created
+    ON user_login_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_login_events_user_created
+    ON user_login_events(user_id, created_at DESC);
+
 -- 2. Projects Table
 CREATE TABLE IF NOT EXISTS projects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -72,11 +89,17 @@ CREATE TABLE IF NOT EXISTS scans (
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     score INT NOT NULL,
     issues_count INT DEFAULT 0,
+    lines_scanned INT DEFAULT 0,
+    duration_ms INT DEFAULT 0,
     ai_model_used VARCHAR(50) DEFAULT 'lunar-ai-v3',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE scans ADD COLUMN IF NOT EXISTS lines_scanned INT DEFAULT 0;
+ALTER TABLE scans ADD COLUMN IF NOT EXISTS duration_ms INT DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id);
+
 
 -- 4. Vulnerabilities Table
 CREATE TABLE IF NOT EXISTS vulnerabilities (
@@ -146,8 +169,10 @@ CREATE TABLE IF NOT EXISTS admin_action_logs (
     after_state JSONB,
     ip_address VARCHAR(64),
     user_agent TEXT,
+    correlation_id VARCHAR(128),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE admin_action_logs ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(128);
 ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS file_path TEXT;
 ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS rule_id VARCHAR(80);
 ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS source_severity VARCHAR(20);
@@ -155,6 +180,7 @@ ALTER TABLE vulnerabilities ADD COLUMN IF NOT EXISTS cvss NUMERIC(3, 1);
 
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_created_at ON admin_action_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_action_logs_actor ON admin_action_logs(actor_user_id);
+CREATE INDEX IF NOT EXISTS idx_admin_action_logs_correlation ON admin_action_logs(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_vulnerabilities_scan_rule
     ON vulnerabilities(scan_id, rule_id);
 
@@ -218,8 +244,10 @@ CREATE TABLE IF NOT EXISTS payment_webhook_events (
     order_code VARCHAR(100),
     payload_hash CHAR(64) NOT NULL,
     status VARCHAR(30) NOT NULL,
+    correlation_id VARCHAR(128),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE payment_webhook_events ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(128);
 
 -- 13. Durable GitHub webhook replay protection and processing receipts
 CREATE TABLE IF NOT EXISTS github_webhook_deliveries (
@@ -229,12 +257,18 @@ CREATE TABLE IF NOT EXISTS github_webhook_deliveries (
     repository VARCHAR(255),
     payload_hash CHAR(64) NOT NULL,
     status VARCHAR(30) NOT NULL CHECK (status IN ('RECEIVED', 'PROCESSED', 'IGNORED', 'FAILED')),
+    correlation_id VARCHAR(128),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP WITH TIME ZONE
 );
+ALTER TABLE github_webhook_deliveries ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(128);
 
 CREATE INDEX IF NOT EXISTS idx_github_webhook_deliveries_created
     ON github_webhook_deliveries(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_github_webhook_deliveries_correlation
+    ON github_webhook_deliveries(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_payment_webhook_events_correlation
+    ON payment_webhook_events(correlation_id);
 
 -- 14. Per-user Lunar AI assistant conversation history
 CREATE TABLE IF NOT EXISTS assistant_conversations (
@@ -265,3 +299,18 @@ ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS sequence_id BIGSERIAL;
 
 CREATE INDEX IF NOT EXISTS idx_assistant_messages_conversation_created
     ON assistant_messages(conversation_id, sequence_id ASC);
+
+-- 15. Real User Experiences and Reviews
+CREATE TABLE IF NOT EXISTS user_reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    user_name VARCHAR(255) NOT NULL,
+    user_role VARCHAR(255) DEFAULT 'Developer',
+    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT NOT NULL,
+    is_approved BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_reviews_approved_created
+    ON user_reviews(is_approved, created_at DESC);

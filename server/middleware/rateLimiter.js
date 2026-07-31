@@ -1,14 +1,72 @@
-const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+
+const AUTH_WINDOW_MS = 60 * 1000;
+
+function configuredInstanceCount(env = process.env) {
+  const value = Number.parseInt(env.WEB_CONCURRENCY || env.LUNAR_INSTANCE_COUNT || '1', 10);
+  return Number.isInteger(value) && value > 0 ? value : 1;
+}
+
+function validateRateLimitDeployment(env = process.env) {
+  if (env.NODE_ENV === 'production' && configuredInstanceCount(env) > 1) {
+    throw new Error(
+      'Multi-instance production requires a shared rate-limit store; run one instance until one is configured.'
+    );
+  }
+}
+
+function normalizedAuthIdentifier(req) {
+  const body = req.body || {};
+  const bodyCandidate = [
+    ['email', body.email],
+    ['username', body.username],
+    ['nickname', body.nickname],
+    ['token', body.token]
+  ].find(([, value]) => typeof value === 'string' && value.trim());
+  const [kind, candidate] = bodyCandidate
+    || (typeof req.user?.email === 'string' && req.user.email.trim()
+      ? ['email', req.user.email]
+      : ['userId', req.user?.id || '']);
+  if (typeof candidate !== 'string') return '';
+
+  const normalized = candidate.trim().toLowerCase().slice(0, 512);
+  if (!normalized || kind === 'token' || kind === 'userId') return normalized;
+  if (normalized.startsWith('@') || normalized.includes('@')) return normalized;
+  return `@${normalized}`;
+}
+
+function authIdentifierKey(req) {
+  const identifier = normalizedAuthIdentifier(req);
+  if (!identifier) return `missing:${ipKeyGenerator(req.ip)}`;
+  return `identifier:${crypto.createHash('sha256').update(identifier).digest('hex')}`;
+}
+
+validateRateLimitDeployment();
 
 // 1. Auth Rate Limiter - Chống Brute-Force Password & Enumeration (Max 5 req / 1 phút)
 const authRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 phút
+  windowMs: AUTH_WINDOW_MS,
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
     error: 'TOO_MANY_REQUESTS: Quá nhiều lần thử đăng nhập/đăng ký. Vui lòng thử lại sau 1 phút.'
+  }
+});
+
+// Keep the IP and account limits separate so distributed guessing against one
+// identifier cannot bypass the normal per-IP brute-force protection.
+const authIdentifierRateLimiter = rateLimit({
+  windowMs: AUTH_WINDOW_MS,
+  max: 5,
+  keyGenerator: authIdentifierKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Quá nhiều lần thử cho thông tin đăng nhập này. Vui lòng thử lại sau 1 phút.'
   }
 });
 
@@ -23,6 +81,18 @@ const accountRecoveryRateLimiter = rateLimit({
   }
 });
 
+const accountRecoveryIdentifierRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: authIdentifierKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu khôi phục cho định danh này.'
+  }
+});
+
 const accountMutationRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -31,6 +101,28 @@ const accountMutationRateLimiter = rateLimit({
   message: {
     success: false,
     error: 'TOO_MANY_REQUESTS: Quá nhiều thay đổi bảo mật tài khoản.'
+  }
+});
+
+const githubAuthStartRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu bắt đầu đăng nhập GitHub.'
+  }
+});
+
+const githubAuthPollRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu kiểm tra xác thực GitHub.'
   }
 });
 
@@ -116,9 +208,15 @@ const aiRateLimiter = rateLimit({
 });
 
 module.exports = {
+  AUTH_WINDOW_MS,
+  authIdentifierKey,
   authRateLimiter,
+  authIdentifierRateLimiter,
   accountRecoveryRateLimiter,
+  accountRecoveryIdentifierRateLimiter,
   accountMutationRateLimiter,
+  githubAuthStartRateLimiter,
+  githubAuthPollRateLimiter,
   paymentRateLimiter,
   publicApiRateLimiter,
   assistantRateLimiter,
@@ -126,5 +224,8 @@ module.exports = {
   scanRateLimiter,
   deepScanRateLimiter,
   reportRateLimiter,
-  aiRateLimiter
+  aiRateLimiter,
+  configuredInstanceCount,
+  normalizedAuthIdentifier,
+  validateRateLimitDeployment
 };

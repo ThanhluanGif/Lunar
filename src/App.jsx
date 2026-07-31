@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Navbar from './components/Navbar';
 import FigmaLunarLanding from './components/FigmaLunarLanding';
 import SecurityDashboard from './components/SecurityDashboard';
@@ -19,6 +19,7 @@ import AdminDashboard from './components/AdminDashboard';
 import LunarDashboard from './components/LunarDashboard';
 import { SECURITY_PROJECTS_MOCK } from './data/cveDatabase';
 import { scanCodeForSecurityVulnerabilities } from './services/securityScannerEngine';
+import { applyValidatedPatchToProject, unavailableAutoPatch } from './services/autoPatchPolicy';
 import { lunarApi } from './services/lunarApi';
 import { Moon, ShieldCheck, Wrench, Users, Bot, Package, ArrowRight, Star, GitFork, Terminal, Award, Sparkles, Activity, Lock, CheckCircle2, Github, RefreshCw } from 'lucide-react';
 
@@ -29,12 +30,14 @@ export default function App() {
   const [projects, setProjects] = useState(SECURITY_PROJECTS_MOCK);
   const [activeTab, setActiveTab] = useState('explore'); // 'explore' | 'dashboard' | 'detail' | 'admin'
   const [selectedProject, setSelectedProject] = useState(SECURITY_PROJECTS_MOCK[0]);
+  const selectedProjectRef = useRef(selectedProject);
   const [searchQuery, setSearchQuery] = useState('');
   
   const [currentUser, setCurrentUser] = useState(null);
   const [currentTier, setCurrentTier] = useState('FREE');
   const [githubAuthToast, setGithubAuthToast] = useState(''); // '' | 'success' | 'failed'
   const [accountToast, setAccountToast] = useState('');
+  const [accountError, setAccountError] = useState('');
   const [resetToken, setResetToken] = useState('');
   
   // Modals
@@ -44,8 +47,12 @@ export default function App() {
   const [selectedPricingPlan, setSelectedPricingPlan] = useState('PRO');
   const [isGitBotOpen, setIsGitBotOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
-  const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
+  const [quotaExceededContext, setQuotaExceededContext] = useState(null);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    selectedProjectRef.current = selectedProject;
+  }, [selectedProject]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -88,6 +95,17 @@ export default function App() {
     setIsPricingOpen(true);
   };
 
+  const handleQuotaExceeded = (quota) => {
+    if (!currentUser) {
+      setIsAuthOpen(true);
+      return;
+    }
+    setQuotaExceededContext({
+      ...quota,
+      tier: quota?.tier || currentTier
+    });
+  };
+
   // TASK-01: Handle GitHub OAuth redirect result (?github_auth=success|failed)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -117,6 +135,18 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Strict Security & Business Rule Protection:
+  // 1. Non-admin users can never access or view activeTab === 'admin'
+  // 2. Admin users only have Landing & Admin tabs (activeTab === 'dashboard' redirects to 'admin')
+  useEffect(() => {
+    if (activeTab === 'admin' && currentUser?.role !== 'ADMIN') {
+      setActiveTab('explore');
+    }
+    if (activeTab === 'dashboard' && currentUser?.role === 'ADMIN') {
+      setActiveTab('admin');
+    }
+  }, [activeTab, currentUser]);
+
   // The Lunar backend is authoritative for identity, tier and role.
   useEffect(() => {
     let mounted = true;
@@ -134,6 +164,7 @@ export default function App() {
     return () => { mounted = false; };
   }, []);
 
+
   // Scan every project file so cross-file and local-folder findings reach the repair UI.
   const scanResult = useMemo(() => {
     if (selectedProject?.guestPreview) {
@@ -144,25 +175,32 @@ export default function App() {
     }
     const fileScans = (selectedProject?.files || []).map((file) => {
       const deterministic = scanCodeForSecurityVulnerabilities(file.content, file.path, file.language);
-      const backendFindings = (file.securityFindings || []).map((finding, index) => ({
-        id: finding.id || `${finding.ruleId || 'DEEP'}-${finding.line || index + 1}`,
-        ruleId: finding.ruleId,
-        line: finding.line || 0,
-        filePath: file.path,
-        language: file.language,
-        cwe: finding.cwe || 'CWE-UNKNOWN',
-        category: finding.cwe || 'Deep Scan',
-        title: finding.title,
-        severity: String(finding.severity || 'MEDIUM').toUpperCase(),
-        cvss: finding.severity === 'critical' ? 9.1 : finding.severity === 'high' ? 7.5 : 5.0,
-        aiVerdict: 'Requires review',
-        aiReason: finding.evidence || 'Backend SAST finding with direct repository evidence.',
-        description: finding.title,
-        impact: `Potential ${finding.cwe || 'security'} weakness.`,
-        originalCode: finding.codeSnippet || '',
-        patchedCode: '',
-        recommendation: finding.recommendation || ''
-      }));
+      const backendFindings = (file.securityFindings || []).map((finding, index) => {
+        const unavailable = unavailableAutoPatch(
+          'Backend SAST finding chưa có patch qua validation và rescan.'
+        );
+        return {
+          id: finding.id || `${finding.ruleId || 'DEEP'}-${finding.line || index + 1}`,
+          ruleId: finding.ruleId,
+          line: finding.line || 0,
+          filePath: file.path,
+          language: file.language,
+          cwe: finding.cwe || 'CWE-UNKNOWN',
+          category: finding.cwe || 'Deep Scan',
+          title: finding.title,
+          severity: String(finding.severity || 'MEDIUM').toUpperCase(),
+          cvss: finding.severity === 'critical' ? 9.1 : finding.severity === 'high' ? 7.5 : 5.0,
+          aiVerdict: 'Requires review',
+          aiReason: finding.evidence || 'Backend SAST finding with direct repository evidence.',
+          description: finding.title,
+          impact: `Potential ${finding.cwe || 'security'} weakness.`,
+          originalCode: finding.codeSnippet || '',
+          patchedCode: null,
+          recommendation: finding.recommendation || '',
+          ...unavailable,
+          remediation: { ...unavailable, patchCode: null }
+        };
+      });
       return {
         ...deterministic,
         vulnerabilities: [...deterministic.vulnerabilities, ...backendFindings]
@@ -209,30 +247,28 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleApplyPatch = ({ filePath, patchedCode }) => {
-    if (!filePath || !patchedCode) return;
-    const applyToProject = (project) => ({
-      ...project,
-      files: (project.files || []).map((file) => (
-        file.path === filePath ? { ...file, content: patchedCode, securityFindings: [] } : file
-      )),
-      projectAttackSimulation: project.projectAttackSimulation ? {
-        ...project.projectAttackSimulation,
-        findings: (project.projectAttackSimulation.findings || []).filter((finding) => (
-          !finding.affectedFiles?.includes(filePath)
-        ))
-      } : null
-    });
-    setSelectedProject((current) => {
-      if (!current) return current;
-      return applyToProject(current);
-    });
+  const handleApplyPatch = ({ finding }) => {
+    const currentProject = selectedProjectRef.current;
+    if (!currentProject || !finding) {
+      return { ok: false, status: 'triaged', reason: 'Không có project hoặc finding để áp dụng.' };
+    }
+    const result = applyValidatedPatchToProject(
+      currentProject,
+      finding,
+      scanCodeForSecurityVulnerabilities
+    );
+    if (!result.ok) return result;
+
+    selectedProjectRef.current = result.project;
+    setSelectedProject(result.project);
     setProjects((current) => current.map((project) => (
-      project.id === selectedProject?.id ? applyToProject(project) : project
+      project.id === currentProject.id ? result.project : project
     )));
+    return result;
   };
 
   const handleLoginSuccess = (user, notice = '') => {
+    setAccountError('');
     setCurrentUser(user);
     setCurrentTier(user.tier || 'FREE');
     if (notice) {
@@ -242,14 +278,17 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    let logoutWarning = '';
     try {
       await lunarApi.logout();
     } catch (error) {
-      console.warn('Logout request failed:', error);
+      logoutWarning = 'Đã đăng xuất trên thiết bị này, nhưng Lunar API chưa xác nhận xóa phiên máy chủ.';
     }
+    setAccountError(logoutWarning);
     setCurrentUser(null);
     setCurrentTier('FREE');
     if (activeTab === 'admin') setActiveTab('explore');
+    if (logoutWarning) window.setTimeout(() => setAccountError(''), 6000);
   };
 
   const handleUpgradeSuccess = (newTier) => {
@@ -325,6 +364,18 @@ export default function App() {
               {accountToast}
             </div>
           )}
+          {accountError && (
+            <div role="alert" style={{
+              background: 'rgba(220, 38, 38, 0.15)',
+              borderBottom: '1px solid rgba(220,38,38,.55)',
+              padding: '10px 24px',
+              textAlign: 'center',
+              fontSize: '0.86rem',
+              color: '#fca5a5'
+            }}>
+              {accountError}
+            </div>
+          )}
         </>
       )}
 
@@ -341,22 +392,25 @@ export default function App() {
               onOpenGitBot={() => setIsGitBotOpen(true)}
               onSelectDemoProject={handleSelectProject}
               onOpenPricing={handleOpenPricing}
-              onOpenDashboard={() => setActiveTab('dashboard')}
+              onOpenDashboard={() => setActiveTab(currentUser?.role === 'ADMIN' ? 'admin' : 'dashboard')}
               quickScanSection={(
                 <UserGitHubWorkspace
                   currentUser={currentUser}
+                  currentTier={currentTier}
                   onSelectProject={handleSelectProject}
                   onOpenGitHubAuth={() => setIsAuthOpen(true)}
+                  onQuotaExceeded={handleQuotaExceeded}
                 />
               )}
             />
           </>
         )}
 
-        {/* Authenticated account dashboard */}
-        {activeTab === 'dashboard' && (
+        {/* Authenticated account dashboard (non-admin only) */}
+        {activeTab === 'dashboard' && currentUser?.role !== 'ADMIN' && (
           <div style={{ margin: '-0px -24px -60px -24px' }}>
             <LunarDashboard
+              key={`account-dashboard:${currentUser?.id || 'guest'}`}
               onBackToSite={() => setActiveTab('explore')}
               onSelectProject={handleSelectProject}
               currentUser={currentUser}
@@ -365,20 +419,15 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: ADMIN MANAGEMENT DASHBOARD */}
+        {/* TAB 4: ADMIN MANAGEMENT DASHBOARD (Strict Admin Role Required) */}
         {activeTab === 'admin' && currentUser?.role === 'ADMIN' && (
           <AdminDashboard
+            key={`admin-dashboard:${currentUser.id}`}
             currentUser={currentUser}
             onUpgradeUserTier={handleUpgradeSuccess}
           />
         )}
-        {activeTab === 'admin' && currentUser?.role !== 'ADMIN' && (
-          <div className="glass-panel" style={{ maxWidth: '680px', margin: '48px auto', padding: '32px', textAlign: 'center' }}>
-            <Lock size={36} color="#f87171" />
-            <h2 style={{ marginTop: '14px' }}>Admin access required</h2>
-            <p style={{ color: 'var(--text-secondary)' }}>Backend chỉ cung cấp dữ liệu quản trị khi tài khoản có vai trò ADMIN.</p>
-          </div>
-        )}
+
 
         {/* TAB 3: PROJECT DETAIL & REPAIR WORKBENCH */}
         {activeTab === 'detail' && selectedProject && (
@@ -461,6 +510,8 @@ export default function App() {
                 projectAttackSimulation={selectedProject.projectAttackSimulation}
                 repoUrl={selectedProject.githubUrl}
                 onApplyPatch={handleApplyPatch}
+                currentTier={currentTier}
+                onQuotaExceeded={handleQuotaExceeded}
               />
             </PaywallGate>
 
@@ -474,6 +525,7 @@ export default function App() {
         isOpen={isSubmitOpen}
         onClose={() => setIsSubmitOpen(false)}
         onAddProject={handleAddProject}
+        onQuotaExceeded={handleQuotaExceeded}
         currentUser={currentUser}
       />
 
@@ -516,12 +568,13 @@ export default function App() {
         onUserUpdated={handleLoginSuccess}
       />
 
-      {isQuotaModalOpen && (
+      {quotaExceededContext && (
           <QuotaDepletedModal
-            isOpen={isQuotaModalOpen}
-            onClose={() => setIsQuotaModalOpen(false)}
-            onOpenPricing={() => setIsPricingOpen(true)}
+            isOpen={Boolean(quotaExceededContext)}
+            onClose={() => setQuotaExceededContext(null)}
+            onOpenPricing={handleOpenPricing}
             currentUser={currentUser}
+            quota={quotaExceededContext}
         />
       )}
 

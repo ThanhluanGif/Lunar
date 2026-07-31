@@ -7,9 +7,16 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "qa": "npm run build && node scripts/qa-smoke.cjs",
-    "qa:security": "node scripts/security-regression.cjs && node scripts/sast-regression.cjs && node scripts/sast-self-audit.cjs",
-    "qa:sast": "node scripts/sast-regression.cjs && node scripts/sast-self-audit.cjs",
+    "qa": "npm run build && npm run qa:dashboard && npm run qa:quota && npm run qa:remediation-report && node scripts/qa-smoke.cjs",
+    "qa:a11y": "npm run build && node scripts/accessibility-regression.cjs",
+    "qa:security": "node scripts/security-regression.cjs && node scripts/production-routing-regression.mjs && node scripts/sast-regression.cjs && node scripts/auto-patch-regression.mjs && node scripts/remediation-report-regression.mjs && node scripts/sast-self-audit.cjs",
+    "qa:production-routing": "node scripts/production-routing-regression.mjs",
+    "qa:production-routing:browser": "node scripts/production-routing-browser.cjs",
+    "qa:auth-lifecycle:browser": "node scripts/auth-lifecycle-browser.cjs",
+    "qa:dashboard": "node scripts/dashboard-sync-regression.mjs",
+    "qa:quota": "node scripts/quota-upgrade-regression.mjs",
+    "qa:remediation-report": "node scripts/remediation-report-regression.mjs",
+    "qa:sast": "node scripts/sast-regression.cjs && node scripts/auto-patch-regression.mjs && node scripts/sast-self-audit.cjs",
     "qa:docker": "node scripts/qa-docker.cjs",
     "qa:ui:mac": "node scripts/ui-smoke-mac.mjs"
   },
@@ -36,6 +43,8 @@
     "@types/react": "^18.2.56",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^6.0.4",
+    "axe-core": "^4.12.1",
+    "puppeteer-core": "^24.43.1",
     "vite": "^8.1.5"
   }
 }

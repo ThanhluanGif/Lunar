@@ -2,12 +2,14 @@
 # Override every LUNAR_* development default before using this file in production.
 services:
   app:
+    image: ${LUNAR_IMAGE_TAG:-lunar:local-qa}
     build:
       context: .
       dockerfile: Dockerfile
       args:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        PUBLIC_SUPABASE_ANON_TOKEN: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
     networks:
       - lunar_internal
     ports:
@@ -16,12 +18,18 @@ services:
     environment:
       PORT: 5000
       NODE_ENV: production
+      LOG_LEVEL: ${LUNAR_LOG_LEVEL:-INFO}
+      TRUST_PROXY: ${LUNAR_TRUST_PROXY:-}
+      PROVIDER_TIMEOUT_MS: ${LUNAR_PROVIDER_TIMEOUT_MS:-15000}
+      PROVIDER_MAX_RETRIES: ${LUNAR_PROVIDER_MAX_RETRIES:-1}
       JWT_SECRET: ${LUNAR_JWT_SECRET:?Set LUNAR_JWT_SECRET to a strong random value}
-      DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:-lunar_local_password}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
+      DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD to a strong random value}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
       DATABASE_SSL: ${LUNAR_DATABASE_SSL:-false}
       CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5050,http://127.0.0.1:5050,http://localhost:3000,http://127.0.0.1:3000}
+      PUBLIC_APP_URL: ${LUNAR_PUBLIC_APP_URL:-}
       # An empty secret disables webhook confirmation with HTTP 503; never use a public default.
       PAYMENT_WEBHOOK_SECRET: ${LUNAR_PAYMENT_WEBHOOK_SECRET:-}
+      PAYMENT_WEBHOOK_MAX_AGE_MS: ${LUNAR_PAYMENT_WEBHOOK_MAX_AGE_MS:-300000}
       # The app stays available without beneficiary details; order creation fails closed with HTTP 503.
       PAYMENT_BANK_ID: ${LUNAR_PAYMENT_BANK_ID:-}
       PAYMENT_ACCOUNT_NO: ${LUNAR_PAYMENT_ACCOUNT_NO:-}
@@ -29,6 +37,7 @@ services:
       ADMIN_BOOTSTRAP_TOKEN: ${LUNAR_ADMIN_BOOTSTRAP_TOKEN:-}
       # localhost uses HTTP; set true behind HTTPS in production.
       COOKIE_SECURE: ${LUNAR_COOKIE_SECURE:-false}
+      COOKIE_SAME_SITE: ${LUNAR_COOKIE_SAME_SITE:-strict}
       GITHUB_CLIENT_ID: ${LUNAR_GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${LUNAR_GITHUB_CLIENT_SECRET:-}
       GITHUB_OAUTH_CALLBACK_URL: ${LUNAR_GITHUB_OAUTH_CALLBACK_URL:-http://localhost:5050/api/v1/auth/github/callback}
@@ -51,8 +60,12 @@ services:
       AI_GATEWAY_FALLBACK_MODELS: ${LUNAR_AI_GATEWAY_FALLBACK_MODELS:-openai/gpt-5.6-terra,anthropic/claude-sonnet-5}
       AUTH_EMAIL_SMTP_URL: ${LUNAR_AUTH_EMAIL_SMTP_URL:-}
       AUTH_EMAIL_FROM: ${LUNAR_AUTH_EMAIL_FROM:-Lunar Security <no-reply@example.com>}
-      AUTH_EMAIL_BASE_URL: ${LUNAR_AUTH_EMAIL_BASE_URL:-http://localhost:5050}
+      AUTH_EMAIL_BASE_URL: ${LUNAR_AUTH_EMAIL_BASE_URL:-}
       AUTH_EMAIL_DRY_RUN: ${LUNAR_AUTH_EMAIL_DRY_RUN:-false}
+      AUTH_EMAIL_ALLOW_INSECURE_BASE_URL: ${LUNAR_AUTH_EMAIL_ALLOW_INSECURE_BASE_URL:-false}
+      AUTH_EMAIL_CONNECTION_TIMEOUT_MS: ${LUNAR_AUTH_EMAIL_CONNECTION_TIMEOUT_MS:-10000}
+      AUTH_EMAIL_GREETING_TIMEOUT_MS: ${LUNAR_AUTH_EMAIL_GREETING_TIMEOUT_MS:-10000}
+      AUTH_EMAIL_SOCKET_TIMEOUT_MS: ${LUNAR_AUTH_EMAIL_SOCKET_TIMEOUT_MS:-20000}
       DEEP_SCAN_MAX_FILES: ${LUNAR_DEEP_SCAN_MAX_FILES:-250}
       DEEP_SCAN_MAX_FILE_BYTES: ${LUNAR_DEEP_SCAN_MAX_FILE_BYTES:-512000}
       DEEP_SCAN_MAX_TOTAL_BYTES: ${LUNAR_DEEP_SCAN_MAX_TOTAL_BYTES:-5000000}
@@ -61,6 +74,14 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     mem_limit: 768m
     cpus: 1.0
     pids_limit: 256
@@ -70,6 +91,11 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
 
   db:
     image: postgres:16-alpine
@@ -78,7 +104,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${LUNAR_POSTGRES_USER:-lunar_admin}
-      POSTGRES_PASSWORD: ${LUNAR_POSTGRES_PASSWORD:-lunar_local_password}
+      POSTGRES_PASSWORD: ${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD to a strong random value}
       POSTGRES_DB: ${LUNAR_POSTGRES_DB:-lunar_db}
     ports:
       - "127.0.0.1:${LUNAR_POSTGRES_PORT:-5433}:5432"
@@ -94,6 +120,11 @@ services:
     mem_limit: 512m
     cpus: 1.0
     pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
 
 volumes:
   postgres_data:

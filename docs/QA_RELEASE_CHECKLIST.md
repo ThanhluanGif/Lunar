@@ -3,6 +3,20 @@
 Checklist này chỉ chứa các kiểm tra còn dùng cho mỗi lần merge/release. Trạng
 thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md).
 
+## 0. Bằng chứng tự động gần nhất (2026-07-31)
+
+- [x] `npm run qa:a11y`: axe WCAG AA, dialog/focus trap/restore và zoom 200% đạt.
+- [x] `npm run qa:security`: security contract đạt; SAST quét 84 file, 0 finding.
+- [x] `npm run qa:docker`: integration đạt, 555 SAST signatures và webhook correlation đạt.
+- [x] `npm run qa:sast` và `npm run qa:ui:mac`: đạt trên stack QA cô lập.
+- [x] Cả hai lệnh `npm audit` ở threshold High: 0 vulnerability.
+- [x] Image `lunar:production-readiness-qa-20260731`: Docker Scout báo `0C/0H/0M/0L`.
+- [x] Compose QA dùng `--env-file /dev/null`, app/db healthy, runtime non-root/read-only.
+- [x] `npm run qa:production-routing`: API origin, OAuth redirect và cross-site cookie policy đạt.
+- [x] `npm run qa:production-routing:browser`: frontend preview gọi đúng backend origin và CORS đạt.
+- [x] `npm run qa:auth-lifecycle:browser`: register, logout, session clear và re-login qua CORS đạt.
+- [ ] Đây chưa phải production sign-off; các mục browser/screen reader/provider/ops thủ công bên dưới vẫn bắt buộc.
+
 ## 1. Điều kiện trước test
 
 - [ ] Checkout sạch, không dùng `.env` cá nhân làm fixture.
@@ -10,6 +24,7 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 - [ ] Có seed user Guest/Free/Pro/Enterprise/Admin và repo GitHub sandbox.
 - [ ] Provider ngoài dùng sandbox hoặc mock contract được kiểm soát.
 - [ ] Secret test chỉ inject qua CI secret; không in vào log.
+- [ ] `AUTH_EMAIL_ALLOW_INSECURE_BASE_URL=false` ở mọi môi trường ngoài dry-run QA cục bộ.
 - [ ] Chạy trên ít nhất Chrome, Firefox, Safari/WebKit và mobile viewport.
 
 ## 2. Build, dependency và startup
@@ -19,9 +34,11 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 - [ ] `npm audit --omit=dev` không có High/Critical chưa xử lý.
 - [ ] Server fail-fast khi production thiếu JWT/encryption secret bắt buộc.
 - [ ] Thiếu payment beneficiary/webhook secret không làm app ngừng chạy; API payment tương ứng trả `503`.
-- [ ] `/health` trả 200 khi process sống.
-- [ ] `/ready` trả 503 khi DB mất và 200 sau reconnect/restart theo thiết kế.
+- [ ] `/api/v1/health` trả 200 khi process sống.
+- [ ] `/api/v1/ready` trả 503 khi DB mất và 200 sau reconnect/restart theo thiết kế.
 - [ ] Static app và 404 route hoạt động.
+- [ ] Production `/api/v1/health` trả JSON, không bị static host trả `index.html`.
+- [ ] `VITE_API_BASE_URL` được đặt trước build nếu frontend/backend khác origin.
 
 ## 3. Authentication
 
@@ -31,11 +48,15 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 - [ ] Login đúng/sai/unknown account không làm lộ enumeration quá mức.
 - [ ] Brute-force đạt rate limit; headers retry đúng.
 - [ ] Logout xóa cookie và session không dùng lại được.
+- [ ] Sau logout có thể đăng nhập lại bằng email mà không có failed fetch hoặc state form cũ.
+- [ ] Auth response có `Cache-Control: no-store` và không bị CDN trả session cũ.
 - [ ] JWT hết hạn, sai chữ ký, auth_version cũ, user bị xóa/suspend đều bị chặn.
 - [ ] Forgot-password luôn trả response trung tính.
 - [ ] Reset/verify token hết hạn, sai, đã dùng, gửi lặp bị từ chối.
 - [ ] Đổi password vô hiệu hóa session cũ trên các thiết bị theo policy.
 - [ ] GitHub OAuth kiểm tra state, callback error và replay.
+- [ ] GitHub OAuth start gọi đúng backend origin; callback redirect về đúng `PUBLIC_APP_URL`.
+- [ ] Cross-site session chỉ dùng `SameSite=None; Secure` với CORS origin chính xác.
 
 ## 4. Authorization/IDOR
 
@@ -118,7 +139,10 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 - [ ] Cascade delete được xác nhận với account deletion/retention policy.
 - [ ] Backup tự động chạy; restore vào môi trường mới pass consistency checks.
 - [ ] RPO/RTO đạt tiêu chí sản phẩm.
-- [ ] Log có correlation id, redaction và retention.
+- [ ] Log có correlation ID xuyên proxy/app/provider/webhook/audit record.
+- [ ] Direct client correlation ID bị thay thế; chỉ trusted proxy được chuyển ID hợp lệ.
+- [ ] Password/token/cookie/API key/payment/PII/body/payload bị redact trong log JSON.
+- [ ] Central log retention, encryption, access control và append-only audit đã cấu hình theo policy.
 
 ## 11. Responsive/accessibility
 
@@ -139,10 +163,16 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 - [ ] `npm run build`
 - [ ] `npm run qa:docker`
 - [ ] `npm run qa:security`
+- [ ] `npm run qa:production-routing`
+- [ ] `npm run qa:production-routing:browser`
+- [ ] `npm run qa:auth-lifecycle:browser`
 - [ ] `npm run qa:sast`
+- [ ] `npm run qa:a11y`
 - [ ] `npm run qa:ui:mac`
-- [ ] `npm audit --omit=dev`
-- [ ] `docker compose up -d --build` và cả app/db đều healthy.
+- [ ] `npm audit --audit-level=high`
+- [ ] `npm audit --omit=dev --audit-level=high`
+- [ ] `docker compose --env-file /dev/null -p <qa-project> up -d --no-build` và cả app/db đều healthy.
+- [ ] Docker Scout không còn Critical/High trong image runtime phát hành.
 
 - [ ] Unit: scanner, token, crypto, validation, serializers.
 - [ ] API integration: auth, RBAC, payment, scan, admin, report.

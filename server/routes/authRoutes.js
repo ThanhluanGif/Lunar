@@ -3,11 +3,14 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, verifyToken } = require('../middleware/auth');
-const { authRateLimiter } = require('../middleware/rateLimiter');
+const { authRateLimiter, authIdentifierRateLimiter } = require('../middleware/rateLimiter');
 const { queryDb, getIsPgConnected, getPool } = require('../db/connection');
 const { getAccountEmailConfiguration, sendEmailVerification } = require('../services/accountEmailService');
 const { PURPOSES, issueAccountToken } = require('../services/accountTokenService');
+const { createCookieOptions } = require('../services/cookiePolicy');
 const { serializeUser, tokenPayload } = require('../services/userSerializer');
+const { recordSuccessfulLogin } = require('../services/loginActivityService');
+const { addOrUpdateRealUser, recordRealLoginEvent } = require('../services/userStore');
 
 const router = express.Router();
 
@@ -15,34 +18,55 @@ const router = express.Router();
 // production, where authentication must fail closed if PostgreSQL is down.
 const usersDb = [];
 
-// Cookie security configuration (HttpOnly, Secure, SameSite=Strict)
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NICKNAME_PATTERN = /^[A-Za-z0-9_.-]{2,49}$/;
+
+const COOKIE_BASE_OPTIONS = createCookieOptions({ defaultSameSite: 'strict' });
 const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.COOKIE_SECURE !== undefined
-    ? process.env.COOKIE_SECURE === 'true'
-    : process.env.NODE_ENV === 'production',
-  sameSite: 'strict',
-  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
+  ...COOKIE_BASE_OPTIONS,
+  maxAge: 7 * 24 * 60 * 60 * 1000
 };
+
+function normalizeEmail(value) {
+  if (typeof value !== 'string') return '';
+  const email = value.trim().toLowerCase();
+  return email.length <= 254 && EMAIL_PATTERN.test(email) ? email : '';
+}
+
+function normalizeNickname(value) {
+  if (typeof value !== 'string') return '';
+  const nickname = value.trim().replace(/^@/, '');
+  return NICKNAME_PATTERN.test(nickname) ? `@${nickname}` : '';
+}
+
+function normalizeName(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value !== 'string') return '';
+  const name = value.trim();
+  return name.length >= 2 && name.length <= 120 ? name : '';
+}
 
 /**
  * POST /api/v1/auth/register
  * Zero-Trust Secured Registration Endpoint with Rate Limiter
  */
-router.post('/register', authRateLimiter, async (req, res) => {
+router.post('/register', authRateLimiter, authIdentifierRateLimiter, async (req, res) => {
   try {
     const { name, nickname, email, password } = req.body;
+    const cleanEmail = normalizeEmail(email);
+    const cleanNickname = normalizeNickname(nickname);
+    const cleanName = normalizeName(name, cleanNickname.replace('@', ''));
 
-    if (!email || !password || !nickname) {
-      return res.status(400).json({ success: false, error: 'Email, nickname và mật khẩu là bắt buộc.' });
+    if (!cleanEmail || !cleanNickname || !cleanName || typeof password !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Email, tên, nickname và mật khẩu hợp lệ là bắt buộc.'
+      });
     }
 
     if (password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
       return res.status(400).json({ success: false, error: 'Mật khẩu phải có tối thiểu 8 ký tự và tối đa 72 byte.' });
     }
-
-    const cleanNickname = nickname.startsWith('@') ? nickname : `@${nickname}`;
-    const cleanEmail = email.toLowerCase().trim();
 
     if (process.env.NODE_ENV === 'production' && !getIsPgConnected()) {
       return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
@@ -63,7 +87,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
          VALUES ($1, $2, $3, $4, 'FREE', $5)
          RETURNING id, nickname, name, email, email_verified_at, auth_version,
                    tier, role, status, daily_scans_used`,
-        [cleanNickname, name || cleanNickname.replace('@', ''), cleanEmail, passwordHash, 'USER']
+        [cleanNickname, cleanName, cleanEmail, passwordHash, 'USER']
       );
 
       const newUser = result.rows[0];
@@ -87,11 +111,12 @@ router.post('/register', authRateLimiter, async (req, res) => {
           await sendEmailVerification({
             email: newUser.email,
             name: newUser.name,
-            token: verificationToken
+            token: verificationToken,
+            correlationId: req.correlationId
           });
           verificationEmailSent = true;
         } catch (emailError) {
-          console.warn('Registration verification email failed:', emailError.message);
+          req.log?.warn('Registration verification email failed.', emailError);
         }
       }
 
@@ -114,7 +139,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
     const newUser = {
       id: `usr-${Date.now()}`,
       nickname: cleanNickname,
-      name: name || cleanNickname.replace('@', ''),
+      name: cleanName,
       email: cleanEmail,
       passwordHash,
       tier: 'FREE',
@@ -125,6 +150,14 @@ router.post('/register', authRateLimiter, async (req, res) => {
     };
 
     usersDb.push(newUser);
+    addOrUpdateRealUser(newUser);
+    recordRealLoginEvent({
+      userId: newUser.id,
+      authMethod: 'PASSWORD',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId
+    });
 
     const token = jwt.sign(
       tokenPayload(newUser),
@@ -140,7 +173,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
       user: serializeUser(newUser)
     });
   } catch (err) {
-    console.error('Error during registration:', err);
+    req.log?.error('Registration failed.', err, 500);
     res.status(500).json({ success: false, error: 'Lỗi hệ thống khi đăng ký tài khoản.' });
   }
 });
@@ -149,14 +182,25 @@ router.post('/register', authRateLimiter, async (req, res) => {
  * POST /api/v1/auth/login
  * Zero-Trust Secured Login Endpoint (Brute-Force Protected & Anti-Enumeration)
  */
-router.post('/login', authRateLimiter, async (req, res) => {
+router.post('/login', authRateLimiter, authIdentifierRateLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
+    const suppliedIdentifier = req.body?.email ?? req.body?.username;
+    const password = req.body?.password;
+
+    if (
+      typeof suppliedIdentifier !== 'string'
+      || typeof password !== 'string'
+      || password.length === 0
+      || Buffer.byteLength(password, 'utf8') > 72
+    ) {
       return res.status(400).json({ success: false, error: 'Vui lòng cung cấp email và mật khẩu.' });
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanEmail = normalizeEmail(suppliedIdentifier);
+    const cleanNickname = normalizeNickname(suppliedIdentifier);
+    if (!cleanEmail && !cleanNickname) {
+      return res.status(400).json({ success: false, error: 'Vui lòng cung cấp email hoặc nickname hợp lệ.' });
+    }
 
     if (process.env.NODE_ENV === 'production' && !getIsPgConnected()) {
       return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
@@ -167,17 +211,23 @@ router.post('/login', authRateLimiter, async (req, res) => {
         `SELECT u.*, gc.avatar_url
          FROM users u
          LEFT JOIN github_connections gc ON gc.user_id = u.id
-         WHERE u.email = $1`,
-        [cleanEmail]
+         WHERE u.email = $1 OR LOWER(u.nickname) = LOWER($2)`,
+        [cleanEmail || null, cleanNickname || null]
       );
       if (result && result.rows.length > 0) {
         const dbUser = result.rows[0];
-        if (dbUser.status === 'SUSPENDED') {
-          return res.status(403).json({ success: false, error: 'Tài khoản đã bị tạm khóa.' });
-        }
         const isMatch = await bcrypt.compare(password, dbUser.password_hash);
         if (isMatch) {
-          await queryDb('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [dbUser.id]);
+          if (dbUser.status === 'SUSPENDED') {
+            return res.status(403).json({ success: false, error: 'Tài khoản đã bị tạm khóa.' });
+          }
+          await recordSuccessfulLogin(getPool(), {
+            userId: dbUser.id,
+            authMethod: 'PASSWORD',
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+            correlationId: req.correlationId
+          });
           const token = jwt.sign(
             tokenPayload(dbUser),
             JWT_SECRET,
@@ -196,7 +246,10 @@ router.post('/login', authRateLimiter, async (req, res) => {
     }
 
     // In-memory fallback
-    const user = usersDb.find(u => u.email.toLowerCase() === cleanEmail);
+    const user = usersDb.find((candidate) => (
+      (cleanEmail && candidate.email.toLowerCase() === cleanEmail)
+      || (cleanNickname && candidate.nickname.toLowerCase() === cleanNickname.toLowerCase())
+    ));
     if (!user) {
       return res.status(401).json({ success: false, error: 'Email hoặc mật khẩu không chính xác.' });
     }
@@ -205,6 +258,18 @@ router.post('/login', authRateLimiter, async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({ success: false, error: 'Email hoặc mật khẩu không chính xác.' });
     }
+    if (user.status === 'SUSPENDED') {
+      return res.status(403).json({ success: false, error: 'Tài khoản đã bị tạm khóa.' });
+    }
+
+    addOrUpdateRealUser(user);
+    recordRealLoginEvent({
+      userId: user.id,
+      authMethod: 'PASSWORD',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId
+    });
 
     const token = jwt.sign(
       tokenPayload(user),
@@ -220,7 +285,7 @@ router.post('/login', authRateLimiter, async (req, res) => {
       user: serializeUser(user)
     });
   } catch (err) {
-    console.error('Error during login:', err);
+    req.log?.error('Login failed.', err, 500);
     res.status(500).json({ success: false, error: 'Lỗi máy chủ khi xác thực đăng nhập.' });
   }
 });
@@ -230,7 +295,7 @@ router.post('/login', authRateLimiter, async (req, res) => {
  * Đăng xuất và xóa HttpOnly Auth Cookie
  */
 router.post('/logout', (req, res) => {
-  res.clearCookie('access_token', COOKIE_OPTIONS);
+  res.clearCookie('access_token', COOKIE_BASE_OPTIONS);
   res.json({ success: true, message: 'Đã đăng xuất an toàn.' });
 });
 
@@ -281,15 +346,16 @@ router.post('/bootstrap-admin', verifyToken, async (req, res) => {
     await client.query(
       `INSERT INTO admin_action_logs (
          actor_user_id, target_user_id, action_type, target_type, target_id,
-         reason, before_state, after_state, ip_address, user_agent
-       ) VALUES ($1::uuid, $1::uuid, 'ADMIN_BOOTSTRAPPED', 'USER', $1::text, $2, $3, $4, $5, $6)`,
+         reason, before_state, after_state, ip_address, user_agent, correlation_id
+       ) VALUES ($1::uuid, $1::uuid, 'ADMIN_BOOTSTRAPPED', 'USER', $1::text, $2, $3, $4, $5, $6, $7)`,
       [
         req.user.id,
         'Initial administrator provisioned with one-time bootstrap token.',
         { role: 'USER' },
         { role: 'ADMIN' },
         req.ip,
-        req.get('user-agent') || null
+        req.get('user-agent') || null,
+        req.correlationId
       ]
     );
     await client.query('COMMIT');
@@ -303,7 +369,7 @@ router.post('/bootstrap-admin', verifyToken, async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Admin bootstrap failed:', error);
+    req.log?.error('Admin bootstrap failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to bootstrap administrator.' });
   } finally {
     client.release();

@@ -1,16 +1,18 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { getPool } = require('../db/connection');
+const { writeSystemLog } = require('./logger');
+const { readRuntimeSecret } = require('../services/runtimeSecrets');
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = readRuntimeSecret('JWT_SECRET');
 
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
   if (process.env.NODE_ENV === 'production') {
-    console.error('FATAL SECURITY ERROR: JWT_SECRET must be at least 32 characters in production.');
+    writeSystemLog('ERROR', 'JWT_SECRET must be at least 32 characters in production.');
     process.exit(1);
   }
-  console.warn('SECURITY NOTICE: JWT_SECRET is not configured for development; using a random process-local secret.');
+  writeSystemLog('WARN', 'JWT_SECRET is not configured for development; using a random process-local secret.');
 }
 
 // Never use a source-controlled fallback. Development sessions intentionally
@@ -79,7 +81,7 @@ async function verifyToken(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, EFFECTIVE_JWT_SECRET);
+    const decoded = jwt.verify(token, EFFECTIVE_JWT_SECRET, { algorithms: ['HS256'] });
     const currentUser = await resolveUserFromDatabase(decoded);
     if (!currentUser) {
       return res.status(401).json({ success: false, error: 'UNAUTHORIZED: Account no longer exists.' });
@@ -105,7 +107,7 @@ async function optionalToken(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, EFFECTIVE_JWT_SECRET);
+    const decoded = jwt.verify(token, EFFECTIVE_JWT_SECRET, { algorithms: ['HS256'] });
     const currentUser = await resolveUserFromDatabase(decoded);
     req.user = currentUser && currentUser.status !== 'SUSPENDED' ? currentUser : null;
   } catch {

@@ -24,8 +24,12 @@ const IGNORED_PARTS = new Set([
   'venv'
 ]);
 
-function trackedFiles() {
-  return execFileSync('git', ['ls-files'], { encoding: 'utf8' })
+function repositoryFiles() {
+  return execFileSync(
+    'git',
+    ['ls-files', '--cached', '--others', '--exclude-standard'],
+    { encoding: 'utf8' }
+  )
     .split(/\r?\n/)
     .filter(Boolean)
     .filter((filePath) => (
@@ -35,6 +39,26 @@ function trackedFiles() {
       && fs.statSync(filePath).size <= MAX_FILE_BYTES
     ))
     .slice(0, MAX_FILES);
+}
+
+function assertNoBrowserExposedSecrets(files) {
+  const allowedPublicVariables = new Set([
+    'VITE_SUPABASE_ANON_KEY',
+    'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'
+  ]);
+  const publicVariablePattern = /import\.meta\.env\.((?:VITE|NEXT_PUBLIC)_[A-Z0-9_]*(?:API_KEY|SECRET|TOKEN|PASSWORD|PRIVATE_KEY|KEY))\b/g;
+
+  for (const filePath of files) {
+    if (!/\.[cm]?[jt]sx?$/.test(filePath)) continue;
+    const source = fs.readFileSync(filePath, 'utf8');
+    for (const match of source.matchAll(publicVariablePattern)) {
+      if (!allowedPublicVariables.has(match[1])) {
+        throw new Error(
+          `Browser-exposed secret configuration detected: ${filePath} references ${match[1]}.`
+        );
+      }
+    }
+  }
 }
 
 function assertScannerPrecision() {
@@ -73,7 +97,8 @@ function assertScannerPrecision() {
 }
 
 assertScannerPrecision();
-const files = trackedFiles();
+const files = repositoryFiles();
+assertNoBrowserExposedSecrets(files);
 const findings = files.flatMap((filePath) => (
   scanFile(filePath, fs.readFileSync(filePath, 'utf8'))
 ));

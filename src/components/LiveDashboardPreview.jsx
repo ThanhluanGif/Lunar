@@ -101,7 +101,7 @@ export default function LiveDashboardPreview({
           <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }} />
           <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f97316' }} />
           <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e' }} />
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#5f678d', marginLeft: '8px' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#8c96bd', marginLeft: '8px' }}>
             lunar.app / dashboard
           </span>
         </div>
@@ -170,7 +170,7 @@ export default function LiveDashboardPreview({
         <div className="live-dashboard-grid">
           <aside className="live-dashboard-repositories">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '12px', padding: '0 8px' }}>
-              <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#5f678d' }}>
+              <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#8c96bd' }}>
                 Repositories
               </span>
               <span style={{ fontSize: '0.68rem', color: '#7880a0' }}>{repositories.length}</span>
@@ -235,7 +235,7 @@ export default function LiveDashboardPreview({
                 <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#e2e5f0', overflowWrap: 'anywhere' }}>
                   {selectedRepo?.name || 'Tổng quan tài khoản'}
                 </h3>
-                <p style={{ fontSize: '0.76rem', color: '#5f678d' }}>
+                <p style={{ fontSize: '0.76rem', color: '#8c96bd' }}>
                   {selectedRepo
                     ? `${selectedRepo.language || 'Không rõ ngôn ngữ'} · cập nhật ${formatDate(selectedRepo.lastScannedAt)}`
                     : 'Dữ liệu được xác minh từ PostgreSQL'}
@@ -284,7 +284,7 @@ export default function LiveDashboardPreview({
                 <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#6c8eef' }}>
                   {selectedRepo?.issuesCount ?? summary.openFindings ?? 0}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#5f678d' }}>
+                <div style={{ fontSize: '0.72rem', color: '#8c96bd' }}>
                   {selectedRepo ? 'Issues lần quét mới nhất' : 'Findings đang mở'}
                 </div>
               </div>
@@ -292,7 +292,7 @@ export default function LiveDashboardPreview({
                 <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#6c8eef' }}>
                   {selectedRepo?.scanCount ?? summary.scansInRange ?? 0}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#5f678d' }}>
+                <div style={{ fontSize: '0.72rem', color: '#8c96bd' }}>
                   {selectedRepo ? 'Lượt quét repository' : 'Lượt quét trong 28 ngày'}
                 </div>
               </div>
@@ -300,14 +300,14 @@ export default function LiveDashboardPreview({
                 <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#22d3ee' }}>
                   {selectedRepo?.securityScore ?? summary.averageScore ?? 0}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#5f678d' }}>
+                <div style={{ fontSize: '0.72rem', color: '#8c96bd' }}>
                   {selectedRepo ? 'Security score' : 'Điểm trung bình 28 ngày'}
                 </div>
               </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '10px' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#5f678d' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#8c96bd' }}>
                 Lượt quét gần đây
               </span>
               <button
@@ -324,13 +324,13 @@ export default function LiveDashboardPreview({
                 const passing = Number(scan.score) >= 80;
                 return (
                   <div key={scan.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', minWidth: 0 }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#5f678d' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#8c96bd' }}>
                       #{String(scan.id).slice(0, 6)}
                     </span>
                     <span style={{ fontSize: '0.78rem', color: '#8890b0', flex: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                       {scan.repository || 'Repository'} · {scan.issuesCount} issues
                     </span>
-                    <span style={{ fontSize: '0.72rem', color: '#5f678d', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#8c96bd', whiteSpace: 'nowrap' }}>
                       {formatDate(scan.createdAt)}
                     </span>
                     <span style={{ fontSize: '0.72rem', color: passing ? '#22c55e' : '#ef4444', whiteSpace: 'nowrap' }}>

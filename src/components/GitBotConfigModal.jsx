@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { X, Bot, Copy, Check, Download, Sparkles } from 'lucide-react';
 import { generateLunarGitHubActionYaml } from '../services/githubBotService';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
   const [copied, setCopied] = useState(false);
+  const dialogRef = useModalFocusTrap({ isOpen, onClose });
 
   if (!isOpen) return null;
 
@@ -37,10 +39,12 @@ export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
       padding: '20px'
     }}>
       <div
+        ref={dialogRef}
         className="glass-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="github-bot-dialog-title"
+        tabIndex={-1}
         style={{
         maxWidth: '640px',
         width: '100%',
@@ -88,7 +92,7 @@ export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
               Cấu Hình GitHub Security Bot & CI/CD Action
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              Tự động hóa việc quét mã nguồn và tự động tạo Pull Request khi có commit mới
+              Tự động hóa kiểm tra bảo mật và chặn thay đổi không đạt security gate
             </p>
           </div>
         </div>
@@ -102,7 +106,7 @@ export default function GitBotConfigModal({ isOpen, onClose, repoUrl }) {
             <li>Tạo file cấu hình <code style={{ color: 'var(--accent-cyan)' }}>.github/workflows/lunar-security.yml</code> trong kho GitHub.</li>
             <li>Repository cần có script <code style={{ color: 'var(--accent-cyan)' }}>qa:security</code>; workflow không tải CLI chưa được khóa phiên bản bằng <code>npx</code>.</li>
             <li>Mỗi khi lập trình viên Push Code hoặc mở Pull Request, <strong>Lunar Bot</strong> sẽ tự động quét lỗ hổng OWASP.</li>
-            <li>Nếu phát hiện lỗ hổng Critical, Bot sẽ tự động rẽ nhánh và tạo <strong>Pull Request chứa bản vá safe code</strong>.</li>
+            <li>Nếu dependency audit hoặc security gate thất bại, workflow sẽ chặn merge để đội phát triển review và vá lỗi trước.</li>
           </ol>
         </div>
 

@@ -1,12 +1,23 @@
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const { writeSystemLog } = require('../middleware/logger');
+const { readRuntimeSecret } = require('../services/runtimeSecrets');
 
-const connectionString = process.env.DATABASE_URL || [
+const configuredDatabaseUrl = readRuntimeSecret('DATABASE_URL');
+const configuredPassword = readRuntimeSecret('POSTGRES_PASSWORD');
+
+if (process.env.NODE_ENV === 'production' && !configuredDatabaseUrl && !configuredPassword) {
+  throw new Error(
+    'Production database credentials are required via DATABASE_URL(_FILE) or POSTGRES_PASSWORD(_FILE).'
+  );
+}
+
+const connectionString = configuredDatabaseUrl || [
   'postgresql://',
   encodeURIComponent(process.env.POSTGRES_USER || 'postgres'),
   ':',
-  encodeURIComponent(process.env.POSTGRES_PASSWORD || 'postgres'),
+  encodeURIComponent(configuredPassword),
   '@',
   process.env.POSTGRES_HOST || 'localhost',
   ':',
@@ -34,15 +45,15 @@ async function initPgDatabase() {
   try {
     client = await pool.connect();
     isPgConnected = true;
-    console.log('PostgreSQL database pool connected.');
+    writeSystemLog('INFO', 'PostgreSQL database pool connected.');
 
     const schemaSql = fs.readFileSync(path.join(__dirname, '../schema.sql'), 'utf8');
     await client.query(schemaSql);
 
-    console.log('PostgreSQL schema initialized and verified.');
+    writeSystemLog('INFO', 'PostgreSQL schema initialized and verified.');
   } catch (error) {
     isPgConnected = false;
-    console.warn('PostgreSQL initialization failed. Resilient DB mode enabled:', error.message);
+    writeSystemLog('WARN', 'PostgreSQL initialization failed; resilient database mode enabled.', error);
   } finally {
     client?.release();
   }
@@ -53,7 +64,7 @@ async function queryDb(text, params) {
   try {
     return await pool.query(text, params);
   } catch (error) {
-    console.error('SQL execution error:', error.message);
+    writeSystemLog('ERROR', 'SQL execution failed.', error);
     throw error;
   }
 }

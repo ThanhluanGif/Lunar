@@ -4,6 +4,7 @@ const { verifyToken } = require('../middleware/auth');
 const { paymentRateLimiter } = require('../middleware/rateLimiter');
 const { getPool } = require('../db/connection');
 const { getPlan, listPublicPlans } = require('../services/planCatalog');
+const { webhookTimestampIsFresh } = require('../services/paymentWebhookPolicy');
 
 const router = express.Router();
 
@@ -115,7 +116,7 @@ router.post('/create-order', verifyToken, paymentRateLimiter, async (req, res) =
           [userId, orderCode, amount, selectedPlan.id, method, transferContent, 'PENDING', qrUrl]
         );
       } catch (dbErr) {
-        console.error('Unable to persist payment order:', dbErr.message);
+        req.log?.error('Unable to persist payment order.', dbErr, 503);
         return res.status(503).json({ success: false, error: 'Unable to persist payment order.' });
       }
     }
@@ -127,7 +128,7 @@ router.post('/create-order', verifyToken, paymentRateLimiter, async (req, res) =
       order: paymentOrder
     });
   } catch (error) {
-    console.error('Error creating payment order:', error);
+    req.log?.error('Payment order creation failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Lỗi máy chủ khi tạo đơn hàng thanh toán.' });
   }
 });
@@ -163,7 +164,7 @@ router.get('/status/:orderCode', verifyToken, async (req, res) => {
           };
         }
       } catch (dbErr) {
-        console.warn('⚠️ Postgres select payment fallback to memory:', dbErr.message);
+        req.log?.warn('PostgreSQL payment lookup fallback activated.', dbErr);
       }
     }
 
@@ -183,7 +184,7 @@ router.get('/status/:orderCode', verifyToken, async (req, res) => {
       amount: order.amount
     });
   } catch (error) {
-    console.error('Error fetching payment status:', error);
+    req.log?.error('Payment status lookup failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Lỗi khi tra cứu trạng thái thanh toán.' });
   }
 });
@@ -202,6 +203,12 @@ router.post('/webhook', async (req, res) => {
   const suppliedSignature = req.get('x-lunar-signature') || req.get('x-webhook-signature');
   if (!signatureMatches(req.rawBody, suppliedSignature, secret)) {
     return res.status(401).json({ success: false, error: 'Invalid payment webhook signature.' });
+  }
+  if (!webhookTimestampIsFresh(req.body?.timestamp)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Payment webhook timestamp is missing, expired, or in the future.'
+    });
   }
 
   const orderCode = String(req.body?.orderCode || '').trim();
@@ -246,18 +253,18 @@ router.post('/webhook', async (req, res) => {
     const payment = paymentResult.rows[0];
     if (!payment) {
       await client.query(
-        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
-         VALUES ($1, $2, $3, 'ORDER_NOT_FOUND')`,
-        [eventId, orderCode, payloadHash]
+        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status, correlation_id)
+         VALUES ($1, $2, $3, 'ORDER_NOT_FOUND', $4)`,
+        [eventId, orderCode, payloadHash, req.correlationId]
       );
       await client.query('COMMIT');
       return res.status(404).json({ success: false, error: 'Đơn hàng không tồn tại.' });
     }
     if (Number(payment.amount) !== amount) {
       await client.query(
-        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
-         VALUES ($1, $2, $3, 'AMOUNT_MISMATCH')`,
-        [eventId, orderCode, payloadHash]
+        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status, correlation_id)
+         VALUES ($1, $2, $3, 'AMOUNT_MISMATCH', $4)`,
+        [eventId, orderCode, payloadHash, req.correlationId]
       );
       await client.query('COMMIT');
       return res.status(409).json({ success: false, error: 'Số tiền xác nhận không khớp đơn hàng.' });
@@ -265,9 +272,9 @@ router.post('/webhook', async (req, res) => {
 
     if (payment.status === 'SUCCESS') {
       await client.query(
-        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
-         VALUES ($1, $2, $3, 'SUCCESS')`,
-        [eventId, orderCode, payloadHash]
+        `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status, correlation_id)
+         VALUES ($1, $2, $3, 'SUCCESS', $4)`,
+        [eventId, orderCode, payloadHash, req.correlationId]
       );
       await client.query('COMMIT');
       return res.json({
@@ -302,9 +309,9 @@ router.post('/webhook', async (req, res) => {
       );
     }
     await client.query(
-      `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status)
-       VALUES ($1, $2, $3, $4)`,
-      [eventId, orderCode, payloadHash, status]
+      `INSERT INTO payment_webhook_events (event_id, order_code, payload_hash, status, correlation_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [eventId, orderCode, payloadHash, status, req.correlationId]
     );
     await client.query('COMMIT');
     paymentsMemory.set(orderCode, {
@@ -336,7 +343,7 @@ router.post('/webhook', async (req, res) => {
         error: 'Mã giao dịch gateway đã được dùng cho đơn hàng khác.'
       });
     }
-    console.error('Payment webhook processing failed:', error);
+    req.log?.error('Payment webhook processing failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Không thể xử lý xác nhận thanh toán.' });
   } finally {
     client.release();
@@ -406,7 +413,7 @@ router.post('/mock-webhook', async (req, res) => {
             [order.tierTarget, order.userId]
           );
         } catch (dbErr) {
-          console.warn('⚠️ Postgres update payment webhook fallback:', dbErr.message);
+          req.log?.warn('PostgreSQL payment webhook fallback activated.', dbErr);
         }
       }
     }
@@ -419,7 +426,7 @@ router.post('/mock-webhook', async (req, res) => {
       tierGranted: simulateSuccess ? order.tierTarget : null
     });
   } catch (error) {
-    console.error('Error handling mock webhook:', error);
+    req.log?.error('Mock payment webhook failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Lỗi khi xử lý mock webhook.' });
   }
 });
@@ -448,7 +455,7 @@ router.get('/subscription', verifyToken, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching subscription:', error);
+    req.log?.error('Subscription lookup failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Lỗi lấy thông tin gói cước.' });
   }
 });

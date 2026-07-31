@@ -1,6 +1,6 @@
 # Trạng thái dự án Lunar
 
-> Cập nhật: 2026-07-30  
+> Cập nhật: 2026-07-31
 > Baseline đã đồng bộ: `main` và `mac` tại commit `192429b`
 
 Đây là tài liệu tổng hợp duy nhất cho tiến độ, quyết định kỹ thuật, phần đã nghiệm
@@ -18,15 +18,24 @@ Các gate tự động đã đạt trên baseline:
 - `npm run build`
 - `npm run qa:docker`
 - `npm run qa:security`
+- `npm run qa:production-routing`
+- `npm run qa:production-routing:browser`
+- `npm run qa:auth-lifecycle:browser`
 - `npm run qa:sast`
+- `npm run qa:a11y`
 - `npm run qa:ui:mac`
+- `npm audit --audit-level=high`
 - `npm audit --omit=dev`
-- Docker production image build
+- Docker production-like image build và Docker Scout: `0C / 0H / 0M / 0L`
 - GitHub Actions `QA Gate`
 
 QA hiện kiểm tra auth/RBAC, PostgreSQL, scan, 555 rule signatures, dashboard,
 payment webhook, GitHub guard, report authorization, trợ lý AI và giao diện
 Chrome không có lỗi console/network.
+
+Đợt production-readiness ngày 2026-07-31 chỉ build và chạy stack QA cô lập ở
+port `5150/5544`; không deploy, thay thế container đang chạy hoặc gọi provider
+production. Tất cả kết quả kiểm thử đã được hợp nhất tại đây và `docs/QA_RELEASE_CHECKLIST.md`.
 
 ## 2. Chức năng đã triển khai
 
@@ -93,22 +102,48 @@ Chrome không có lỗi console/network.
 
 - React application error boundary.
 - Responsive CSS baseline, touch target và reduced-motion handling.
-- Docker health/readiness checks.
-- CI dựng PostgreSQL disposable, chạy QA, security regression và build image.
+- Axe WCAG AA tự động, accessible name/ARIA cho dialog, focus trap, Escape,
+  restore focus và kiểm tra layout ở effective zoom 200%.
+- Structured JSON logging có log level, redaction sâu, không log body/payload,
+  che IP và correlation ID xuyên request, provider, webhook và audit record.
+- Chỉ nhận correlation ID do trusted proxy chuyển tiếp; request trực tiếp luôn
+  được cấp ID mới để chống spoofing/log injection.
+- Provider HTTP có timeout, tối đa hai retry và chỉ retry phương thức an toàn;
+  mutation/token exchange không tự retry và provider sai credential fail-closed.
+- Docker health/readiness checks, runtime non-root/read-only, drop toàn bộ
+  capability, `no-new-privileges`, tmpfs và local log rotation.
+- Reverse proxy mẫu bỏ query string và địa chỉ client đầy đủ khỏi access log;
+  retention/redaction policy và provider runbook đã được tài liệu hóa.
+- Production frontend có `VITE_API_BASE_URL` riêng thay vì phụ thuộc Vite dev
+  proxy. GitHub OAuth start dùng đúng backend origin, callback có thể redirect
+  về `PUBLIC_APP_URL`, và cross-site session chỉ cho phép
+  `COOKIE_SAME_SITE=none` khi `COOKIE_SECURE=true`.
+- Auth API trả `Cache-Control: no-store`; modal reset credential/tab sau khi
+  đóng và UI chỉ chuyển sang trạng thái logout khi backend đã xóa session.
+- CI dựng PostgreSQL disposable, chạy QA, security regression, accessibility
+  browser gate và build image.
 
 ## 3. Việc còn lại trước production sign-off
 
 ### Bắt buộc
 
 1. Cấu hình secret production bằng secret manager; bật HTTPS,
-   `LUNAR_COOKIE_SECURE=true` và CORS allowlist theo domain thật.
+   `LUNAR_COOKIE_SECURE=true`, CORS allowlist và frontend/API origin theo
+   `docs/PRODUCTION_DEPLOYMENT.md`.
 2. Kiểm thử payment sandbox bằng tài khoản thụ hưởng và hợp đồng webhook thật.
 3. Chạy E2E OAuth thật cho GitHub; xác nhận callback, revoke và rate-limit.
 4. Nghiệm thu tạo PR trên repository sandbox có quyền ghi và kiểm tra retry,
    stale SHA, rollback, duplicate PR.
-5. Thêm migration versioning, backup/restore runbook và restore drill có RPO/RTO.
-6. Hoàn thành threat model, log redaction/retention và security review độc lập.
-7. Không tuyên bố OWASP ASVS Level 2 cho tới khi có checklist control-by-control
+5. Gửi email verification/reset tới người nhận thử nghiệm được phê duyệt và xác
+   nhận HTTPS link, expiry, single-use, correlation header và lỗi SMTP an toàn.
+6. Thực hiện live smoke được phê duyệt cho AI Gateway và payment sandbox; xác
+   nhận quota, timeout, idempotency và reconciliation theo runbook.
+7. Thêm migration versioning, backup/restore runbook và restore drill có RPO/RTO.
+8. Kết nối log platform tập trung, xác minh retention job/append-only audit và
+   cấu hình `TRUST_PROXY` theo CIDR thật của load balancer.
+9. Hoàn thành threat model và security review độc lập.
+10. Nghiệm thu thủ công Firefox, Safari, mobile và VoiceOver/NVDA theo checklist.
+11. Không tuyên bố OWASP ASVS Level 2 cho tới khi có checklist control-by-control
    cùng evidence.
 
 ### Cải tiến tiếp theo
@@ -116,9 +151,7 @@ Chrome không có lỗi console/network.
 - Scan diff thật trong GitHub webhook và queue/worker cho repository lớn.
 - Redis/shared store cho rate limit và quota trong triển khai nhiều instance.
 - Policy engine persistent có ownership/version và được áp dụng vào scan.
-- CSV export chống formula injection.
-- Chuẩn hóa modal focus trap/restore focus và kiểm thử Firefox/Safari/mobile.
-- Structured logging, correlation ID và central append-only security log.
+- Queue/worker và idempotency key bền vững cho job/provider mutation dài hạn.
 - Lazy loading và performance budget cho các bundle AST/Supabase lớn.
 
 ## 4. Quy tắc cập nhật tài liệu

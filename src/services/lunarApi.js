@@ -1,11 +1,35 @@
-const API_ROOT = '/api/v1';
+import { createApiUrl, normalizeApiBaseUrl } from './apiUrl';
+
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL, {
+  requireHttps: import.meta.env.PROD
+});
+
+function apiUrl(path) {
+  return createApiUrl(path, API_BASE_URL);
+}
+
+async function fetchApi(path, options) {
+  try {
+    return await fetch(apiUrl(path), options);
+  } catch (cause) {
+    if (cause?.name === 'AbortError') throw cause;
+    const error = new Error(
+      `Không thể kết nối Lunar API${API_BASE_URL ? ` tại ${API_BASE_URL}` : ''}. `
+      + 'Kiểm tra VITE_API_BASE_URL, HTTPS và CORS của backend production.'
+    );
+    error.status = 502;
+    error.payload = { error: error.message };
+    error.cause = cause;
+    throw error;
+  }
+}
 
 async function readJsonResponse(response) {
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.toLowerCase().includes('application/json')) {
     const error = new Error(
-      'Không kết nối được Lunar API. Hãy chạy backend Docker ở cổng 5050 '
-      + 'hoặc cấu hình VITE_API_PROXY_TARGET.'
+      'Lunar API trả về nội dung không hợp lệ. Trong production, hãy route `/api` '
+      + 'tới backend hoặc đặt VITE_API_BASE_URL thành origin HTTPS của backend.'
     );
     error.status = 502;
     error.payload = { error: error.message };
@@ -17,8 +41,9 @@ async function readJsonResponse(response) {
 
 async function request(path, options = {}) {
   const { acceptedStatuses = [], ...fetchOptions } = options;
-  const response = await fetch(`${API_ROOT}${path}`, {
+  const response = await fetchApi(path, {
     credentials: 'include',
+    cache: 'no-store',
     ...fetchOptions,
     headers: {
       ...(fetchOptions.body ? { 'Content-Type': 'application/json' } : {}),
@@ -36,8 +61,16 @@ async function request(path, options = {}) {
   return payload;
 }
 
-async function download(path) {
-  const response = await fetch(`${API_ROOT}${path}`, { credentials: 'include' });
+async function download(path, options = {}) {
+  const response = await fetchApi(path, {
+    credentials: 'include',
+    cache: 'no-store',
+    ...options,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {})
+    }
+  });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     const error = new Error(payload.error || `HTTP ${response.status}`);
@@ -51,6 +84,7 @@ async function download(path) {
 }
 
 export const lunarApi = {
+  getGitHubOAuthStartUrl: () => apiUrl('/auth/github/start'),
   getMe: () => request('/auth/me'),
   login: (email, password) => request('/auth/login', {
     method: 'POST',
@@ -100,11 +134,13 @@ export const lunarApi = {
     body: JSON.stringify(payload)
   }),
   getDashboardAccess: () => request('/dashboard/access'),
-  getDashboardOverview: (days = 28) => request(`/dashboard/overview?days=${days}`),
-  getAdminOverview: () => request('/admin/overview'),
-  getAdminUsers: () => request('/admin/users?limit=100'),
-  getAdminPayments: () => request('/admin/payments?limit=100'),
-  getAdminAuditLog: () => request('/admin/audit-log?limit=100'),
+  getDashboardOverview: (days = 28, options = {}) => request(`/dashboard/overview?days=${days}`, options),
+  getAdminOverview: (options = {}) => request('/admin/overview', options),
+  getAdminUsers: (options = {}) => request('/admin/users?limit=100', options),
+  getAdminPayments: (options = {}) => request('/admin/payments?limit=100', options),
+  getAdminAuditLog: (options = {}) => request('/admin/audit-log?limit=100', options),
+  getAdminAnalytics: (days = 14, options = {}) => request(`/admin/analytics?days=${days}`, options),
+
   getPaymentPlans: () => request('/payment/plans'),
   createPaymentOrder: (tier, paymentMethod = 'VIETQR') => request('/payment/create-order', {
     method: 'POST',
@@ -113,6 +149,12 @@ export const lunarApi = {
   getPaymentStatus: (orderCode) => request(`/payment/status/${encodeURIComponent(orderCode)}`),
   getSubscription: () => request('/payment/subscription'),
   downloadAuditReportPdf: (scanId) => download(`/reports/export/pdf/${encodeURIComponent(scanId)}`),
+  downloadAuditReportCsv: (scanId) => download(`/reports/export/csv/${encodeURIComponent(scanId)}`),
+  downloadAuditReportMarkdown: (scanId) => download(`/reports/export/markdown/${encodeURIComponent(scanId)}`),
+  downloadPortableRemediationReport: (format, payload) => download(
+    `/reports/export/portable/${encodeURIComponent(format)}`,
+    { method: 'POST', body: JSON.stringify(payload) }
+  ),
   getAiProviders: () => request('/ai/providers'),
   reviewCodeWithAi: (payload) => request('/ai/review', {
     method: 'POST',
@@ -151,6 +193,10 @@ export const lunarApi = {
     body: JSON.stringify({ status, reason })
   }),
   runGuestPreviewScan: (payload) => request('/scans/guest-preview', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
+  sendSupportContact: (payload) => request('/public/contact', {
     method: 'POST',
     body: JSON.stringify(payload)
   })

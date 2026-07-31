@@ -1,4 +1,5 @@
 import { analyzeJavaScriptAst, findJavaScriptNonExecutableRanges } from './astParser.js';
+import { unavailableAutoPatch } from './autoPatchPolicy.js';
 
 /**
  * Deterministic multi-language SAST engine.
@@ -120,6 +121,15 @@ function matchesRule(currentRule, lineText, index, code, lines) {
       ? match
       : null;
   }
+  if (currentRule.id === 'LUNAR-018') {
+    const match = firstPatternMatch(currentRule.pattern, lineText);
+    if (!match) return null;
+    const precedingCode = lines.slice(0, index + 1).join('\n');
+    if (/router\.use\s*\([^)]*\b(verifyToken|requireAuth|authenticate|requireRole)\b/is.test(precedingCode)) {
+      return null;
+    }
+    return match;
+  }
   if (currentRule.id === 'LUNAR-032') {
     return !/^\s*USER\s+\S+/im.test(code)
       ? firstPatternMatch(currentRule.pattern, lineText)
@@ -158,6 +168,29 @@ function isContainedInRange(start, end, ranges) {
   return ranges.some(([rangeStart, rangeEnd]) => start >= rangeStart && end <= rangeEnd);
 }
 
+function reviewOnlyRemediation(rule) {
+  const unavailable = unavailableAutoPatch(
+    ['CWE-285', 'CWE-639', 'CWE-862'].includes(rule.cwe)
+      ? 'Authorization/IDOR cần bằng chứng policy và ownership trước khi tạo patch.'
+      : 'Finding mới được phát hiện; chưa có patch qua validation và rescan.'
+  );
+  return {
+    ...unavailable,
+    lifecycleStatus: 'detected',
+    patchAvailable: false,
+    patchCode: null,
+    defenseStrategy: rule.recommendation,
+    stepByStepGuide: [
+      '1. Xác minh source, sink và middleware kế thừa trong toàn bộ luồng dữ liệu.',
+      '2. Chỉ tạo bản vá sau khi có test hồi quy chứng minh exploit path đã bị đóng.'
+    ],
+    validationSteps: [
+      'Tạo negative test tái hiện đúng source-to-sink path.',
+      'Chạy test liên quan và rescan mà không tắt security rule.'
+    ]
+  };
+}
+
 export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'server/index.js', language) {
   const code = String(fileContent || '').slice(0, 1000000);
   const detectedLanguage = language && language !== 'plaintext' ? language.toLowerCase() : languageFromPath(filePath);
@@ -178,6 +211,7 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
       const matchStart = lineOffsets[index] + match.index;
       const matchEnd = matchStart + match[0].length;
       if (isContainedInRange(matchStart, matchEnd, nonExecutableRanges)) return;
+
       vulnerabilities.push({
         id: `${currentRule.id}-${index + 1}`,
         ruleId: currentRule.id,
@@ -190,12 +224,24 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
         severity: currentRule.severity,
         cvss: currentRule.cvss,
         aiVerdict: 'Requires review',
+        triageStatus: 'NEEDS_REVIEW',
+        confidence: 'MEDIUM',
         aiConfidence: null,
         aiReason: 'Deterministic pattern match with direct source evidence.',
+        whyThisIsValid: `Rule ${currentRule.id} khớp source trực tiếp tại ${filePath}:${index + 1}; exploitability vẫn cần xác minh reachability và middleware.`,
+        rootCause: `Security-sensitive pattern ${currentRule.cwe} đang xuất hiện trong luồng xử lý mà chưa có đủ control được chứng minh tại vị trí này.`,
+        evidence: {
+          type: 'deterministic-pattern',
+          scope: 'file-local',
+          matchedSource: safeLine(lineText)
+        },
         description: currentRule.title,
         impact: `Potential ${currentRule.cwe} weakness.`,
         originalCode: safeLine(lineText),
-        patchedCode: '',
+        ...reviewOnlyRemediation(currentRule),
+        patchAvailable: false,
+        patchedCode: null,
+        remediation: reviewOnlyRemediation(currentRule),
         recommendation: currentRule.recommendation
       });
     });
@@ -203,16 +249,33 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
 
   if (JS.includes(detectedLanguage)) {
     const astResult = analyzeJavaScriptAst(code, filePath);
-    vulnerabilities.push(...astResult.findings.map((item) => ({
-      ...item,
-      id: `${item.ruleId}-${item.line}`,
-      filePath,
-      language: detectedLanguage,
-      category: item.cwe,
-      description: item.title,
-      impact: `Potential ${item.cwe} weakness.`
-    })));
+    vulnerabilities.push(...astResult.findings.map((item) => {
+      const rule = { recommendation: item.recommendation };
+      return {
+        ...item,
+        id: `${item.ruleId}-${item.line}`,
+        filePath,
+        language: detectedLanguage,
+        category: item.cwe,
+        description: item.title,
+        impact: `Potential ${item.cwe} weakness.`,
+        whyThisIsValid: `AST xác nhận security-sensitive syntax node tại ${filePath}:${item.line}; cần tiếp tục xác minh input reachability.`,
+        rootCause: `Security-sensitive JavaScript syntax cho ${item.cwe} được gọi trực tiếp thay vì cơ chế an toàn chuyên biệt.`,
+        triageStatus: 'NEEDS_REVIEW',
+        confidence: 'HIGH',
+        evidence: {
+          type: 'javascript-ast',
+          scope: 'syntax-node',
+          matchedSource: safeLine(item.originalCode)
+        },
+        ...reviewOnlyRemediation(rule),
+        patchAvailable: false,
+        patchedCode: null,
+        remediation: reviewOnlyRemediation(rule)
+      };
+    }));
   }
+
 
   const unique = Array.from(new Map(
     vulnerabilities.map((finding) => [`${finding.filePath}:${finding.line}:${finding.cwe}`, finding])
@@ -228,6 +291,8 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
     stats: {
       total: unique.length,
       maxCvss,
+      maxFindingCvss: maxCvss,
+      projectRiskScore: null,
       criticalCount: unique.filter((item) => item.severity === 'CRITICAL').length,
       highCount: unique.filter((item) => item.severity === 'HIGH').length,
       mediumCount: unique.filter((item) => item.severity === 'MEDIUM').length,

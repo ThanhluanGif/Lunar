@@ -12,6 +12,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialResetToken = '' }) {
   const [activeTab, setActiveTab] = useState('github');
@@ -29,6 +30,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
   const [deviceAuth, setDeviceAuth] = useState(null);
   const devicePollTimerRef = useRef(null);
   const deviceFlowActiveRef = useRef(false);
+  const dialogRef = useModalFocusTrap({ isOpen, onClose });
 
   useEffect(() => {
     if (!initialResetToken) return;
@@ -44,12 +46,20 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
       window.clearTimeout(devicePollTimerRef.current);
       setDeviceAuth(null);
       setLoading(false);
+      setActiveTab(initialResetToken ? 'email' : 'github');
+      setAuthMode(initialResetToken ? 'reset' : 'login');
+      setEmail('');
+      setPassword('');
+      setFullName('');
+      setConfirmPassword('');
+      setErrorMsg('');
+      setNoticeMsg('');
     }
     return () => {
       deviceFlowActiveRef.current = false;
       window.clearTimeout(devicePollTimerRef.current);
     };
-  }, [isOpen]);
+  }, [isOpen, initialResetToken]);
 
   if (!isOpen) return null;
 
@@ -105,7 +115,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
         window.open(authorization.verificationUri, '_blank', 'noopener,noreferrer');
         return;
       }
-      window.location.assign('/api/v1/auth/github/start');
+      window.location.assign(lunarApi.getGitHubOAuthStartUrl());
     } catch (error) {
       setLoading(false);
       setErrorMsg(error.message || 'Không thể khởi tạo kết nối GitHub.');
@@ -175,11 +185,13 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
       padding: '20px'
     }}>
       <div
+        ref={dialogRef}
         id="auth-modal"
         className="glass-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="auth-modal-title"
+        tabIndex={-1}
         style={{
         maxWidth: '480px',
         width: '100%',
@@ -232,7 +244,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
             {activeTab === 'github' && authMode !== 'forgot' && authMode !== 'reset'
               ? 'Đăng nhập Lunar và đồng bộ repository chỉ trong một bước.'
-              : 'Dùng email và mật khẩu để truy cập tài khoản Lunar.'}
+              : 'Dùng email hoặc nickname và mật khẩu để truy cập tài khoản Lunar.'}
           </p>
         </div>
 
@@ -418,10 +430,11 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
             )}
 
             {authMode !== 'reset' && <div className="input-group">
-              <label className="input-label">Email</label>
+              <label className="input-label">{authMode === 'login' ? 'Email hoặc nickname' : 'Email'}</label>
               <input
-                type="email"
-                placeholder="developer@lunar.dev"
+                type={authMode === 'login' ? 'text' : 'email'}
+                placeholder={authMode === 'login' ? 'developer@lunar.dev hoặc @developer' : 'developer@lunar.dev'}
+                autoComplete={authMode === 'login' ? 'username' : 'email'}
                 className="input-control"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}

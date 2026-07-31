@@ -1,5 +1,6 @@
 import { lunarApi } from './lunarApi';
 import { scanCodeForSecurityVulnerabilities } from './securityScannerEngine';
+import { unavailableAutoPatch } from './autoPatchPolicy';
 
 export const AI_PROVIDERS = [
   { id: 'gemini', name: 'Gemini', badge: 'Configured on server' },
@@ -47,16 +48,30 @@ export async function runMultiLlmAudit({
     scannedFilename: filename,
     securityScore: response.review.scores?.security ?? 0,
     maxCvss: findings.reduce((max, item) => Math.max(max, item.cvss || 0), 0),
-    vulnerabilities: findings.map((finding, index) => ({
-      id: `ai-${index}-${finding.line}`,
-      cwe: finding.cwe,
-      title: finding.title,
-      severity: String(finding.severity || 'info').toUpperCase(),
-      line: finding.line,
-      originalCode: '',
-      patchedCode: finding.suggestedPatch,
-      aiReason: finding.explanation
-    })),
+    vulnerabilities: findings.map((finding, index) => {
+      const unavailable = unavailableAutoPatch(
+        'Đề xuất từ AI chưa qua kiểm tra conflict, validation và rescan.'
+      );
+      return {
+        id: `ai-${index}-${finding.line}`,
+        cwe: finding.cwe,
+        title: finding.title,
+        severity: String(finding.severity || 'info').toUpperCase(),
+        line: finding.line,
+        originalCode: '',
+        patchedCode: null,
+        aiReason: finding.explanation,
+        rootCause: finding.rootCause,
+        whyThisIsValid: finding.whyThisIsValid,
+        hackerAttackVector: finding.hackerAttackVector,
+        ...unavailable,
+        remediation: {
+          ...(finding.remediation || {}),
+          ...unavailable,
+          patchCode: null
+        }
+      };
+    }),
     summary: response.review.summary
   };
 }

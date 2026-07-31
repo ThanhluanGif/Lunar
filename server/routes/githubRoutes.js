@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { getPool } = require('../db/connection');
 const { verifyToken, requireTier } = require('../middleware/auth');
+const { providerFetch } = require('../services/providerHttp');
 
 const router = express.Router();
 const SUPPORTED_PULL_REQUEST_ACTIONS = new Set(['opened', 'reopened', 'synchronize']);
@@ -34,7 +35,7 @@ function decryptAccessToken(value) {
 }
 
 async function githubRequest(path, token, options = {}) {
-  const response = await fetch(`${GITHUB_API}${path}`, {
+  const response = await providerFetch(`${GITHUB_API}${path}`, {
     method: options.method || 'GET',
     headers: {
       Accept: 'application/vnd.github+json',
@@ -44,6 +45,10 @@ async function githubRequest(path, token, options = {}) {
       ...(options.body ? { 'Content-Type': 'application/json' } : {})
     },
     body: options.body ? JSON.stringify(options.body) : undefined
+  }, {
+    correlationId: options.correlationId,
+    timeoutMs: 15000,
+    maxRetries: 1
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -93,12 +98,18 @@ router.post('/pull-requests', verifyToken, requireTier('ENTERPRISE'), async (req
   try {
     const token = decryptAccessToken(connection.rows[0].access_token_encrypted);
     const repositoryPath = `/repos/${repository}`;
-    const metadata = await githubRequest(repositoryPath, token);
+    const correlationId = req.correlationId;
+    const metadata = await githubRequest(repositoryPath, token, { correlationId });
     const baseBranch = metadata.default_branch;
-    const baseRef = await githubRequest(`${repositoryPath}/git/ref/heads/${encodeURIComponent(baseBranch)}`, token);
+    const baseRef = await githubRequest(
+      `${repositoryPath}/git/ref/heads/${encodeURIComponent(baseBranch)}`,
+      token,
+      { correlationId }
+    );
     const existingFile = await githubRequest(
       `${repositoryPath}/contents/${filePath.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(baseBranch)}`,
-      token
+      token,
+      { correlationId }
     );
     if (expectedBlobSha && existingFile.sha !== expectedBlobSha) {
       return res.status(409).json({
@@ -117,11 +128,13 @@ router.post('/pull-requests', verifyToken, requireTier('ENTERPRISE'), async (req
     const branchName = `lunar/security-fix-${crypto.randomBytes(5).toString('hex')}`;
     await githubRequest(`${repositoryPath}/git/refs`, token, {
       method: 'POST',
+      correlationId,
       body: { ref: `refs/heads/${branchName}`, sha: baseRef.object.sha }
     });
     const title = String(req.body?.title || 'Lunar security remediation').slice(0, 120);
     await githubRequest(`${repositoryPath}/contents/${filePath.split('/').map(encodeURIComponent).join('/')}`, token, {
       method: 'PUT',
+      correlationId,
       body: {
         message: title,
         content: Buffer.from(patchedCode, 'utf8').toString('base64'),
@@ -131,6 +144,7 @@ router.post('/pull-requests', verifyToken, requireTier('ENTERPRISE'), async (req
     });
     const pullRequest = await githubRequest(`${repositoryPath}/pulls`, token, {
       method: 'POST',
+      correlationId,
       body: {
         title,
         head: branchName,
@@ -146,7 +160,7 @@ router.post('/pull-requests', verifyToken, requireTier('ENTERPRISE'), async (req
       title: pullRequest.title
     });
   } catch (error) {
-    console.error('GitHub pull request creation failed:', error.message);
+    req.log?.error('GitHub pull request creation failed.', error, 500);
     const status = error.status === 401 || error.status === 403 ? 409 : 502;
     return res.status(status).json({
       success: false,
@@ -186,11 +200,11 @@ router.post('/webhook', async (req, res) => {
   try {
     const inserted = await pool.query(
       `INSERT INTO github_webhook_deliveries (
-         delivery_id, event_type, action, repository, payload_hash, status
-       ) VALUES ($1, $2, $3, $4, $5, 'RECEIVED')
+         delivery_id, event_type, action, repository, payload_hash, status, correlation_id
+       ) VALUES ($1, $2, $3, $4, $5, 'RECEIVED', $6)
        ON CONFLICT (delivery_id) DO NOTHING
        RETURNING delivery_id`,
-      [deliveryId, event, action, repository, payloadHash]
+      [deliveryId, event, action, repository, payloadHash, req.correlationId]
     );
     if (inserted.rows.length === 0) {
       return res.json({ success: true, idempotent: true, deliveryId });
@@ -230,7 +244,7 @@ router.post('/webhook', async (req, res) => {
       message: 'Pull request delivery accepted for security scanning.'
     });
   } catch (error) {
-    console.error('GitHub webhook receipt failed:', error.message);
+    req.log?.error('GitHub webhook receipt failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to record GitHub webhook delivery.' });
   }
 });

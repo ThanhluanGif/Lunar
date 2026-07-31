@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Github, Sparkles, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Bot, Code, Cpu, Eye, Activity, RefreshCw, Check, Moon, Layers, Terminal, ChevronRight, Play, Lock, UserCheck, HelpCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Github, Sparkles, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Bot, Code, Cpu, Eye, Activity, RefreshCw, Check, Moon, Layers, Terminal, ChevronRight, Play, Lock, UserCheck, HelpCircle, Star, MessageSquarePlus, Send, X } from 'lucide-react';
 import LiveDashboardPreview from './LiveDashboardPreview';
+import { fetchPublicStats, fetchPublicReviews, submitUserReview } from '../services/publicService';
 
 export default function FigmaLunarLanding({
   currentUser,
@@ -12,7 +13,84 @@ export default function FigmaLunarLanding({
   onOpenDashboard,
   quickScanSection
 }) {
+  // Real System Stats & User Experiences State
+  const [realStats, setRealStats] = useState({
+    linesReviewed: '0',
+    bugsFixed: '0',
+    avgReviewTime: '0.0 min'
+  });
+
+  const [realReviews, setRealReviews] = useState([]);
+  const [loadingPublicData, setLoadingPublicData] = useState(true);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [newReview, setNewReview] = useState({ name: '', role: '', rating: 5, comment: '' });
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewNotice, setReviewNotice] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadPublicMetrics() {
+      const [statsData, reviewsData] = await Promise.all([
+        fetchPublicStats(),
+        fetchPublicReviews()
+      ]);
+      if (isMounted) {
+        if (statsData) setRealStats(statsData);
+        if (reviewsData) setRealReviews(reviewsData);
+        setLoadingPublicData(false);
+      }
+    }
+    loadPublicMetrics();
+
+    // REAL-TIME UPDATES: Poll every 3 seconds & listen to scan/patch events
+    const intervalId = setInterval(loadPublicMetrics, 3000);
+    const handleUpdate = () => loadPublicMetrics();
+
+    window.addEventListener('lunar_audit_saved', handleUpdate);
+    window.addEventListener('lunar_scan_completed', handleUpdate);
+    window.addEventListener('lunar_vulnerability_patched', handleUpdate);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('lunar_audit_saved', handleUpdate);
+      window.removeEventListener('lunar_scan_completed', handleUpdate);
+      window.removeEventListener('lunar_vulnerability_patched', handleUpdate);
+    };
+  }, []);
+
+  const handleSendReview = async (e) => {
+    e.preventDefault();
+    if (!newReview.comment || newReview.comment.trim().length < 5) {
+      setReviewNotice('Vui lòng nhập nội dung nhận xét (tối thiểu 5 ký tự).');
+      return;
+    }
+    setSubmittingReview(true);
+    setReviewNotice('');
+    try {
+      const res = await submitUserReview({
+        name: newReview.name || (currentUser ? currentUser.name || currentUser.nickname : 'Người dùng'),
+        role: newReview.role || (currentUser ? `${currentUser.tier} Developer` : 'Software Engineer'),
+        rating: newReview.rating,
+        comment: newReview.comment
+      });
+      setReviewNotice(res.message || 'Cảm ơn bạn đã đóng góp trải nghiệm!');
+      setNewReview({ name: '', role: '', rating: 5, comment: '' });
+      const updatedReviews = await fetchPublicReviews();
+      setRealReviews(updatedReviews);
+      setTimeout(() => {
+        setShowReviewModal(false);
+        setReviewNotice('');
+      }, 1500);
+    } catch (err) {
+      setReviewNotice(err.message || 'Không thể gửi nhận xét.');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   // State for Interactive "Watch Lunar Work" Live Demo Editor
+
   const [demoState, setDemoState] = useState('before'); // 'before' | 'after'
   const [isAutoFixing, setIsAutoFixing] = useState(false);
   const [selectedIssueIdx, setSelectedIssueIdx] = useState(0);
@@ -300,7 +378,7 @@ export default function FigmaLunarLanding({
             </button>
           </div>
 
-          {/* 3 Metric Stat Cards */}
+          {/* 3 Metric Stat Cards (Real Database Metrics) */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
@@ -309,10 +387,11 @@ export default function FigmaLunarLanding({
             width: '100%'
           }}>
             {[
-              { val: '14.2M', label: 'Lines reviewed' },
-              { val: '98,000+', label: 'Bugs fixed' },
-              { val: '4.3 min', label: 'Avg review time' }
+              { val: realStats.linesReviewed ?? '0', label: 'Lines reviewed' },
+              { val: realStats.bugsFixed ?? '0', label: 'Bugs fixed' },
+              { val: realStats.avgReviewTime ?? '0.0 min', label: 'Avg review time' }
             ].map((stat, idx) => (
+
               <div key={idx} style={{
                 background: 'rgba(255, 255, 255, 0.025)',
                 border: '1px solid rgba(255, 255, 255, 0.07)',
@@ -323,12 +402,13 @@ export default function FigmaLunarLanding({
                 <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#e2e5f0', marginBottom: '4px' }}>
                   {stat.val}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#4a5070' }}>
+                <div style={{ fontSize: '0.75rem', color: '#8993b8' }}>
                   {stat.label}
                 </div>
               </div>
             ))}
           </div>
+
         </section>
 
         {quickScanSection && (
@@ -408,7 +488,7 @@ export default function FigmaLunarLanding({
                   {cap.title}
                 </h3>
 
-                <p style={{ fontSize: '0.88rem', color: '#6a7090', lineHeight: '1.6' }}>
+                <p style={{ fontSize: '0.88rem', color: '#929abd', lineHeight: '1.6' }}>
                   {cap.desc}
                 </p>
               </div>
@@ -472,7 +552,7 @@ export default function FigmaLunarLanding({
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }} />
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f97316' }} />
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e' }} />
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#3a3f60', marginLeft: '8px' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#8b94b8', marginLeft: '8px' }}>
                     userService.ts
                   </span>
                 </div>
@@ -486,7 +566,7 @@ export default function FigmaLunarLanding({
                       fontSize: '0.78rem',
                       fontWeight: '600',
                       background: demoState === 'before' ? 'rgba(108, 142, 239, 0.18)' : 'transparent',
-                      color: demoState === 'before' ? '#6c8eef' : '#3a3f60',
+                      color: demoState === 'before' ? '#6c8eef' : '#8b94b8',
                       border: 'none',
                       cursor: 'pointer'
                     }}
@@ -502,7 +582,7 @@ export default function FigmaLunarLanding({
                       fontSize: '0.78rem',
                       fontWeight: '600',
                       background: demoState === 'after' ? 'rgba(34, 197, 94, 0.18)' : 'transparent',
-                      color: demoState === 'after' ? '#86efac' : '#3a3f60',
+                      color: demoState === 'after' ? '#86efac' : '#8b94b8',
                       border: 'none',
                       cursor: 'pointer'
                     }}
@@ -521,7 +601,7 @@ export default function FigmaLunarLanding({
                   
                   return (
                     <div key={i} style={{ display: 'flex', gap: '16px', padding: '2px 20px', background: bg }}>
-                      <span style={{ width: '24px', textAlign: 'right', color: '#3a3f60', userSelect: 'none', shrink: 0 }}>
+                      <span style={{ width: '24px', textAlign: 'right', color: '#8b94b8', userSelect: 'none', shrink: 0 }}>
                         {line.num}
                       </span>
                       <span style={{ width: '12px', color: textColor, userSelect: 'none', shrink: 0 }}>
@@ -597,7 +677,7 @@ export default function FigmaLunarLanding({
                       <span style={{ fontSize: '0.82rem', fontWeight: '700', color: issue.color }}>
                         {issue.label}
                       </span>
-                      <span style={{ fontSize: '0.74rem', color: '#3a3f60', marginLeft: 'auto' }}>
+                      <span style={{ fontSize: '0.74rem', color: '#8b94b8', marginLeft: 'auto' }}>
                         line {issue.line}
                       </span>
                     </div>
@@ -716,7 +796,7 @@ export default function FigmaLunarLanding({
                 justifyContent: 'space-between'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Github size={16} color="#4a5070" />
+                  <Github size={16} color="#8993b8" />
                   <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#e2e5f0' }}>acme-corp</span>
                 </div>
                 <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '9999px', background: 'rgba(34, 197, 94, 0.12)', color: '#86efac' }}>
@@ -737,7 +817,7 @@ export default function FigmaLunarLanding({
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', fontWeight: '700', color: '#e2e5f0', marginBottom: '2px' }}>
                         {repo.name.split('/')[1]}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#3a3f60' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#8b94b8' }}>
                         {repo.lang} · <span style={{ color: repo.issues > 5 ? '#f97316' : '#7880a0' }}>{repo.issues} issues</span>
                       </div>
                     </div>
@@ -877,7 +957,7 @@ export default function FigmaLunarLanding({
                     <span style={{ fontSize: '2.4rem', fontWeight: '900', color: '#e2e5f0', letterSpacing: '-0.03em' }}>
                       {plan.displayPrice}
                     </span>
-                    <span style={{ fontSize: '0.88rem', color: '#4a5070' }}>{plan.period}</span>
+                    <span style={{ fontSize: '0.88rem', color: '#8993b8' }}>{plan.period}</span>
                   </div>
 
                   <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '32px' }}>
@@ -912,9 +992,9 @@ export default function FigmaLunarLanding({
           </div>
 
           <div style={{ marginTop: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
-            <span style={{ fontSize: '0.78rem', color: '#3a3f60' }}>Secured by</span>
+            <span style={{ fontSize: '0.78rem', color: '#8b94b8' }}>Secured by</span>
             {['Stripe', 'Visa', 'Mastercard', 'PayPal'].map((brand, idx) => (
-              <span key={idx} style={{ fontSize: '0.78rem', fontWeight: '700', color: '#3a3f60' }}>
+              <span key={idx} style={{ fontSize: '0.78rem', fontWeight: '700', color: '#8b94b8' }}>
                 {brand}
               </span>
             ))}
@@ -923,10 +1003,10 @@ export default function FigmaLunarLanding({
 
 
         {/* ---------------------------------------------------- */}
-        {/* SECTION 7: TESTIMONIALS */}
+        {/* SECTION 7: REAL USER EXPERIENCES & REVIEWS */}
         {/* ---------------------------------------------------- */}
         <section style={{ padding: '100px 0' }}>
-          <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
             <span style={{
               display: 'inline-block',
               padding: '4px 14px',
@@ -938,12 +1018,40 @@ export default function FigmaLunarLanding({
               border: '1px solid rgba(108, 142, 239, 0.25)',
               marginBottom: '16px'
             }}>
-              Testimonials
+              Trải Nghiệm Thật Từ Người Dùng
             </span>
 
-            <h2 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#e2e5f0', letterSpacing: '-0.02em' }}>
-              Trusted by engineering teams
+            <h2 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#e2e5f0', letterSpacing: '-0.02em', marginBottom: '12px' }}>
+              Cảm Nhận Thực Tế Từ Các Developer & Team Tích Hợp
             </h2>
+
+            <p style={{ fontSize: '0.95rem', color: '#8890b0', maxWidth: '600px', margin: '0 auto 24px' }}>
+              Các con số và phản hồi được lưu trữ minh bạch trực tiếp trên hệ thống cơ sở dữ liệu Lunar Code Review.
+            </p>
+
+            <button
+              onClick={() => setShowReviewModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 22px',
+                borderRadius: '9999px',
+                background: 'linear-gradient(135deg, #6c8eef 0%, #9d6ef5 100%)',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: '700',
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                boxShadow: '0 4px 20px rgba(108, 142, 239, 0.35)',
+                transition: 'transform 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <MessageSquarePlus size={16} />
+              Chia Sẻ Trải Nghiệm Của Bạn
+            </button>
           </div>
 
           <div style={{
@@ -951,50 +1059,275 @@ export default function FigmaLunarLanding({
             gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
             gap: '20px'
           }}>
-            {testimonials.map((test, idx) => (
-              <div key={idx} style={{
-                background: 'rgba(255, 255, 255, 0.02)',
-                border: '1px solid rgba(255, 255, 255, 0.06)',
-                borderRadius: '16px',
-                padding: '28px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between'
-              }}>
-                <div>
-                  <div style={{ fontSize: '2rem', color: test.color, marginBottom: '16px', lineHeight: 1 }}>
-                    ❝
-                  </div>
-                  <p style={{ fontSize: '0.9rem', color: '#8890b0', lineHeight: '1.65', marginBottom: '24px' }}>
-                    {test.quote}
-                  </p>
-                </div>
+            {(realReviews.length > 0 ? realReviews : testimonials).map((test, idx) => {
+              const name = test.userName || test.name || 'Developer';
+              const role = test.userRole || test.role || 'Software Engineer';
+              const comment = test.comment || test.quote || '';
+              const rating = test.rating || 5;
+              const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'US';
+              const color = ['#6c8eef', '#9d6ef5', '#4fc3f7', '#34d399'][idx % 4];
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '50%',
-                    background: `${test.color}20`,
-                    color: test.color,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.8rem',
-                    fontWeight: '800'
-                  }}>
-                    {test.avatar}
-                  </div>
-
+              return (
+                <div key={test.id || idx} style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  borderRadius: '16px',
+                  padding: '28px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  transition: 'border-color 0.2s ease'
+                }}>
                   <div>
-                    <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#e2e5f0' }}>{test.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#3a3f60' }}>{test.role}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {Array.from({ length: 5 }).map((_, sIdx) => (
+                          <Star
+                            key={sIdx}
+                            size={15}
+                            fill={sIdx < rating ? '#fbbf24' : 'none'}
+                            color={sIdx < rating ? '#fbbf24' : '#4b5563'}
+                          />
+                        ))}
+                      </div>
+                      <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
+                        Verified User
+                      </span>
+                    </div>
+
+                    <p style={{ fontSize: '0.9rem', color: '#cbd5e1', lineHeight: '1.65', marginBottom: '24px', fontStyle: 'italic' }}>
+                      "{comment}"
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                      width: '38px',
+                      height: '38px',
+                      borderRadius: '50%',
+                      background: `${color}25`,
+                      color: color,
+                      border: `1px solid ${color}40`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.82rem',
+                      fontWeight: '800'
+                    }}>
+                      {initials}
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#e2e5f0' }}>{name}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#8b94b8' }}>{role}</div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
+
+        {/* REVIEW SUBMISSION MODAL */}
+        {showReviewModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}>
+            <div style={{
+              background: '#0d111d',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '20px',
+              padding: '32px',
+              maxWidth: '520px',
+              width: '100%',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
+              position: 'relative'
+            }}>
+              <button
+                onClick={() => setShowReviewModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: '20px',
+                  right: '20px',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={20} />
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <MessageSquarePlus color="#6c8eef" size={24} />
+                <h3 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#ffffff' }}>
+                  Gửi Nhận Xét Trải Nghiệm Thực Tế
+                </h3>
+              </div>
+              <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginBottom: '24px' }}>
+                Chia sẻ ý kiến đánh giá của bạn sau khi quét hoặc sử dụng các tính năng của Lunar.
+              </p>
+
+              {reviewNotice && (
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  marginBottom: '18px',
+                  fontSize: '0.84rem',
+                  background: reviewNotice.includes('Cảm ơn') ? 'rgba(52, 211, 153, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  border: reviewNotice.includes('Cảm ơn') ? '1px solid rgba(52, 211, 153, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                  color: reviewNotice.includes('Cảm ơn') ? '#34d399' : '#f87171'
+                }}>
+                  {reviewNotice}
+                </div>
+              )}
+
+              <form onSubmit={handleSendReview}>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#cbd5e1', marginBottom: '6px' }}>
+                    Họ tên hoặc NICKNAME:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={currentUser ? currentUser.name || currentUser.nickname : 'Ví dụ: Nguyễn Văn A'}
+                    value={newReview.name}
+                    onChange={(e) => setNewReview({ ...newReview, name: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#ffffff',
+                      fontSize: '0.88rem'
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#cbd5e1', marginBottom: '6px' }}>
+                    Chức danh / Công ty (Tùy chọn):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: Fullstack Developer @ Startup / Tech Lead"
+                    value={newReview.role}
+                    onChange={(e) => setNewReview({ ...newReview, role: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#ffffff',
+                      fontSize: '0.88rem'
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#cbd5e1', marginBottom: '6px' }}>
+                    Đánh giá chất lượng:
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setNewReview({ ...newReview, rating: star })}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px'
+                        }}
+                      >
+                        <Star
+                          size={24}
+                          fill={star <= newReview.rating ? '#fbbf24' : 'none'}
+                          color={star <= newReview.rating ? '#fbbf24' : '#4b5563'}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '24px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#cbd5e1', marginBottom: '6px' }}>
+                    Nội dung nhận xét trải nghiệm: *
+                  </label>
+                  <textarea
+                    rows={4}
+                    required
+                    placeholder="Cảm nhận thực tế của bạn khi sử dụng các tính năng Code Review, Auto-Fix, hoặc báo cáo an toàn mã nguồn của Lunar..."
+                    value={newReview.comment}
+                    onChange={(e) => setNewReview({ ...newReview, comment: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#ffffff',
+                      fontSize: '0.88rem',
+                      resize: 'vertical'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowReviewModal(false)}
+                    style={{
+                      padding: '10px 18px',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingReview}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '10px 22px',
+                      borderRadius: '10px',
+                      background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontWeight: '700',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Send size={15} />
+                    {submittingReview ? 'Đang gửi...' : 'Gửi Nhận Xét'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
 
 
         {/* ---------------------------------------------------- */}
@@ -1009,14 +1342,14 @@ export default function FigmaLunarLanding({
                   <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)' }} />
                   <span style={{ fontSize: '1.1rem', fontWeight: '800', color: '#e2e5f0' }}>lunar</span>
                 </div>
-                <p style={{ fontSize: '0.84rem', color: '#3a3f60', maxWidth: '280px', lineHeight: '1.6' }}>
+                <p style={{ fontSize: '0.84rem', color: '#8b94b8', maxWidth: '280px', lineHeight: '1.6' }}>
                   AI-powered code review and auto-fix platform. Ship faster, break less.
                 </p>
               </div>
 
               <div>
-                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '16px' }}>Product</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#3a3f60' }}>
+                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#7f89ad', marginBottom: '16px' }}>Product</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#8b94b8' }}>
                   <span>Features</span>
                   <span>Pricing</span>
                   <span>Changelog</span>
@@ -1025,8 +1358,8 @@ export default function FigmaLunarLanding({
               </div>
 
               <div>
-                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '16px' }}>Docs</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#3a3f60' }}>
+                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#7f89ad', marginBottom: '16px' }}>Docs</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#8b94b8' }}>
                   <span>Getting started</span>
                   <span>API reference</span>
                   <span>GitHub App</span>
@@ -1035,8 +1368,8 @@ export default function FigmaLunarLanding({
               </div>
 
               <div>
-                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#2a3050', marginBottom: '16px' }}>Company</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#3a3f60' }}>
+                <h4 style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', tracking: '0.1em', color: '#7f89ad', marginBottom: '16px' }}>Company</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.84rem', color: '#8b94b8' }}>
                   <span>About</span>
                   <span>Blog</span>
                   <span>Careers</span>
@@ -1045,7 +1378,7 @@ export default function FigmaLunarLanding({
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.04)', paddingTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#2a3050' }}>
+            <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.04)', paddingTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#7f89ad' }}>
               <div>© 2025 Lunar Technologies, Inc. All rights reserved.</div>
               <div>Built for developers who care about quality.</div>
             </div>

@@ -8,36 +8,46 @@ const router = express.Router();
 const RULES = [
   {
     id: 'LUNAR-JS-EVAL',
+    cwe: 'CWE-95',
     title: 'Dynamic code execution with eval',
     severity: 'critical',
+    cvss: 9.1,
     pattern: /\beval\s*\(/g,
     patch: 'Replace eval with a strict parser or an allow-listed command map.'
   },
   {
     id: 'LUNAR-DOM-XSS',
+    cwe: 'CWE-79',
     title: 'Potential DOM XSS through innerHTML',
     severity: 'critical',
+    cvss: 9.1,
     pattern: /\.innerHTML\s*=/g,
     patch: 'Use textContent or sanitize trusted HTML with a maintained sanitizer.'
   },
   {
     id: 'LUNAR-SQL-TEMPLATE',
+    cwe: 'CWE-89',
     title: 'Potential SQL injection through string interpolation',
     severity: 'critical',
+    cvss: 9.1,
     pattern: /(SELECT|INSERT|UPDATE|DELETE)[\s\S]{0,120}(\$\{|['"]\s*\+)/gi,
     patch: 'Use parameterized SQL statements and pass user input as query parameters.'
   },
   {
     id: 'LUNAR-HARDCODED-SECRET',
+    cwe: 'CWE-798',
     title: 'Potential hard-coded credential',
     severity: 'warning',
+    cvss: 7.5,
     pattern: /(api[_-]?key|secret|password|token)\s*[:=]\s*['"][^'"]{8,}['"]/gi,
     patch: 'Move the credential to a secret manager or environment variable and rotate it.'
   },
   {
     id: 'LUNAR-INSECURE-RANDOM',
+    cwe: 'CWE-330',
     title: 'Security-sensitive use of Math.random',
     severity: 'warning',
+    cvss: 7.5,
     pattern: /Math\.random\s*\(/g,
     patch: 'Use crypto.randomUUID or crypto.getRandomValues for security-sensitive identifiers.'
   }
@@ -73,9 +83,12 @@ function analyzeCode(code) {
       const lineNumber = lineNumberAt(code, match.index);
       const line = code.split('\n')[lineNumber - 1] || '';
       findings.push({
-        cveId: rule.id,
+        ruleId: rule.id,
+        cwe: rule.cwe,
         title: rule.title,
         severity: rule.severity,
+        sourceSeverity: rule.severity === 'critical' ? 'critical' : 'high',
+        cvss: rule.cvss,
         lineNumber,
         codeSnippet: line.slice(0, 500),
         suggestedPatch: rule.patch
@@ -135,6 +148,9 @@ router.post('/run', verifyToken, scanRateLimiter, async (req, res) => {
       return res.status(429).json({
         success: false,
         quotaExceeded: true,
+        quotaType: 'VERIFIED_SCAN',
+        tier: quota.tier,
+        limit: 5,
         remaining: 0,
         error: 'FREE tier daily quota of 5 verified scans has been reached.'
       });
@@ -178,14 +194,19 @@ router.post('/run', verifyToken, scanRateLimiter, async (req, res) => {
     for (const finding of analysis.findings) {
       await client.query(
         `INSERT INTO vulnerabilities (
-           scan_id, cve_id, title, severity, line_number, code_snippet, suggested_patch
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+           scan_id, cve_id, rule_id, title, severity, source_severity, cvss,
+           line_number, file_path, code_snippet, suggested_patch
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           scan.id,
-          finding.cveId,
+          finding.cwe,
+          finding.ruleId,
           finding.title,
           finding.severity,
+          finding.sourceSeverity,
+          finding.cvss,
           finding.lineNumber,
+          String(filename).slice(0, 500),
           finding.codeSnippet,
           finding.suggestedPatch
         ]
@@ -225,7 +246,7 @@ router.post('/run', verifyToken, scanRateLimiter, async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Verified scan failed:', error);
+    req.log?.error('Verified scan failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Unable to persist verified scan.' });
   } finally {
     client.release();

@@ -15,6 +15,7 @@ import {
 import { fetchUserGitHubRepos, normalizeGitHubUsername } from '../services/githubService';
 import { lunarApi } from '../services/lunarApi';
 import { scanLocalFiles } from '../services/repoScanner';
+import { getUpgradeQuotaContext } from '../services/quotaUpgrade';
 import DeepScanProgress from './DeepScanProgress';
 import RepoTreeView from './RepoTreeView';
 import FolderDropZone from './FolderDropZone';
@@ -87,7 +88,13 @@ function projectFromDeepScan(result, repository) {
   };
 }
 
-export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOpenGitHubAuth }) {
+export default function UserGitHubWorkspace({
+  currentUser,
+  currentTier,
+  onSelectProject,
+  onOpenGitHubAuth,
+  onQuotaExceeded
+}) {
   const [scanMode, setScanMode] = useState('public');
   const [inputUsername, setInputUsername] = useState('');
   const [activeUsername, setActiveUsername] = useState('');
@@ -265,7 +272,7 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
         onOpenGitHubAuth();
         return;
       }
-      window.location.assign('/api/v1/auth/github/start');
+      window.location.assign(lunarApi.getGitHubOAuthStartUrl());
     } catch (error) {
       setScanError(error.message || 'Không thể khởi tạo kết nối GitHub.');
     }
@@ -297,6 +304,13 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
       setScanStage(`Hoàn tất: ${result.findings} findings trong ${result.filesScanned} files.`);
       onSelectProject?.(projectFromDeepScan(result, repository));
     } catch (error) {
+      const quota = getUpgradeQuotaContext(error, currentTier, 'VERIFIED_SCAN');
+      if (quota && onQuotaExceeded) {
+        setScanProgress(0);
+        setScanStage('');
+        onQuotaExceeded(quota);
+        return;
+      }
       setScanError(error.message || `Không thể quét ${repository.fullName}.`);
     } finally {
       setScanningRepoId(null);
@@ -321,6 +335,12 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
       setScanStage(result.projectAttackSimulation
         ? `Hoàn tất: ${result.findings.length} SAST findings, ${result.projectAttackSimulation.findings.length} attack chains.`
         : `Hoàn tất: ${result.findings.length} findings.`);
+      const quota = getUpgradeQuotaContext(
+        result.projectAttackSimulationError,
+        currentTier,
+        'AI_REVIEW'
+      );
+      if (quota && onQuotaExceeded) onQuotaExceeded(quota);
       onSelectProject?.({
         id: `local-${Date.now()}`,
         title: files[0]?.webkitRelativePath?.split('/')[0] || 'Local Project',

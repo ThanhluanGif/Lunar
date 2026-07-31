@@ -3,23 +3,43 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, optionalToken, verifyToken } = require('../middleware/auth');
+const {
+  githubAuthPollRateLimiter,
+  githubAuthStartRateLimiter
+} = require('../middleware/rateLimiter');
 const { getPool } = require('../db/connection');
+const {
+  UNVERIFIED_EMAIL_LINK_CODE,
+  githubEmailMatchesLunarAccount,
+  resolveVerifiedEmailAutoLink
+} = require('../services/githubAccountLinking');
 const { serializeUser, tokenPayload } = require('../services/userSerializer');
+const { recordSuccessfulLogin } = require('../services/loginActivityService');
+const { writeSystemLog } = require('../middleware/logger');
+const { createCookieOptions } = require('../services/cookiePolicy');
+const { providerFetch } = require('../services/providerHttp');
+const { createAppRedirectUrl, normalizePublicAppUrl } = require('../services/publicAppUrl');
 
 const router = express.Router();
 const GITHUB_API = 'https://api.github.com';
 const GITHUB_DEVICE_COOKIE = 'github_device_session';
 
-const cookieSecure = process.env.COOKIE_SECURE !== undefined
-  ? process.env.COOKIE_SECURE === 'true'
-  : process.env.NODE_ENV === 'production';
-
+const githubCookieOptions = createCookieOptions({ defaultSameSite: 'lax' });
+const oauthStateCookieOptions = {
+  ...githubCookieOptions,
+  sameSite: 'lax'
+};
 const authCookieOptions = {
-  httpOnly: true,
-  secure: cookieSecure,
-  sameSite: 'lax',
+  ...githubCookieOptions,
   maxAge: 7 * 24 * 60 * 60 * 1000
 };
+const publicAppUrl = normalizePublicAppUrl(process.env.PUBLIC_APP_URL, {
+  production: process.env.NODE_ENV === 'production'
+});
+
+function redirectToApp(res, status) {
+  return res.redirect(createAppRedirectUrl(status, publicAppUrl));
+}
 
 function getOAuthConfig() {
   const clientId = process.env.GITHUB_CLIENT_ID;
@@ -32,11 +52,11 @@ function getOAuthConfig() {
     return null;
   }
   if (!['device', 'web'].includes(authFlow)) {
-    console.error('GITHUB_AUTH_FLOW must be "device" or "web".');
+    writeSystemLog('ERROR', 'GITHUB_AUTH_FLOW must be "device" or "web".');
     return null;
   }
   if (!['registered', 'explicit'].includes(redirectMode)) {
-    console.error('GITHUB_OAUTH_REDIRECT_MODE must be "registered" or "explicit".');
+    writeSystemLog('ERROR', 'GITHUB_OAUTH_REDIRECT_MODE must be "registered" or "explicit".');
     return null;
   }
   return {
@@ -75,13 +95,17 @@ function decryptToken(value, key) {
   ]).toString('utf8');
 }
 
-async function githubRequest(path, token) {
-  const response = await fetch(`${GITHUB_API}${path}`, {
+async function githubRequest(path, token, correlationId) {
+  const response = await providerFetch(`${GITHUB_API}${path}`, {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
       'User-Agent': 'Lunar-Security-Dashboard'
     }
+  }, {
+    correlationId,
+    timeoutMs: 15000,
+    maxRetries: 1
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -90,8 +114,8 @@ async function githubRequest(path, token) {
   return payload;
 }
 
-async function fetchVerifiedEmail(token, profile) {
-  const emails = await githubRequest('/user/emails?per_page=100', token);
+async function fetchVerifiedEmail(token, profile, correlationId) {
+  const emails = await githubRequest('/user/emails?per_page=100', token, correlationId);
   const preferred = emails.find((email) => email.primary && email.verified)
     || emails.find((email) => email.verified);
   if (preferred?.email) return preferred.email.toLowerCase();
@@ -99,10 +123,11 @@ async function fetchVerifiedEmail(token, profile) {
   throw new Error('A verified GitHub email is required.');
 }
 
-async function fetchRepositories(token) {
+async function fetchRepositories(token, correlationId) {
   return githubRequest(
     '/user/repos?per_page=100&sort=updated&affiliation=owner%2Ccollaborator%2Corganization_member',
-    token
+    token,
+    correlationId
   );
 }
 
@@ -153,13 +178,16 @@ async function persistGitHubIdentity({
   config,
   accessToken,
   grantedScopes,
-  requestedUser
+  requestedUser,
+  correlationId,
+  ipAddress,
+  userAgent
 }) {
   const [profile, repositories] = await Promise.all([
-    githubRequest('/user', accessToken),
-    fetchRepositories(accessToken)
+    githubRequest('/user', accessToken, correlationId),
+    fetchRepositories(accessToken, correlationId)
   ]);
-  const githubEmail = await fetchVerifiedEmail(accessToken, profile);
+  const githubEmail = await fetchVerifiedEmail(accessToken, profile, correlationId);
   const client = await pool.connect();
   let committed = false;
 
@@ -180,8 +208,11 @@ async function persistGitHubIdentity({
 
     let userId = requestedUser?.id || existingConnection.rows[0]?.user_id;
     if (!userId) {
-      const emailUser = await client.query('SELECT id FROM users WHERE email = $1', [githubEmail]);
-      userId = emailUser.rows[0]?.id;
+      const emailUser = await client.query(
+        'SELECT id, email_verified_at FROM users WHERE email = $1',
+        [githubEmail]
+      );
+      userId = resolveVerifiedEmailAutoLink(emailUser.rows[0]);
     }
 
     if (!userId) {
@@ -201,12 +232,20 @@ async function persistGitHubIdentity({
       );
       userId = inserted.rows[0].id;
     } else {
+      const accountEmail = await client.query('SELECT email FROM users WHERE id = $1', [userId]);
+      const verifiesLocalEmail = githubEmailMatchesLunarAccount(
+        accountEmail.rows[0]?.email,
+        githubEmail
+      );
       await client.query(
         `UPDATE users
-         SET email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP),
+         SET email_verified_at = CASE
+               WHEN $2 THEN COALESCE(email_verified_at, CURRENT_TIMESTAMP)
+               ELSE email_verified_at
+             END,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1`,
-        [userId]
+        [userId, verifiesLocalEmail]
       );
     }
 
@@ -250,6 +289,16 @@ async function persistGitHubIdentity({
     if (!user) throw new Error('Unable to load the Lunar account after GitHub login.');
     if (user.status === 'SUSPENDED') throw new Error('This Lunar account is suspended.');
 
+    if (!requestedUser) {
+      await recordSuccessfulLogin(client, {
+        userId,
+        authMethod: 'GITHUB',
+        ipAddress,
+        userAgent,
+        correlationId
+      });
+    }
+
     await client.query('COMMIT');
     committed = true;
     return {
@@ -276,7 +325,7 @@ router.get('/config', (req, res) => {
   });
 });
 
-router.get('/start', (req, res) => {
+router.get('/start', githubAuthStartRateLimiter, (req, res) => {
   const config = getOAuthConfig();
   if (!config) {
     return res.status(503).json({
@@ -287,9 +336,7 @@ router.get('/start', (req, res) => {
 
   const state = crypto.randomBytes(32).toString('base64url');
   res.cookie('github_oauth_state', state, {
-    httpOnly: true,
-    secure: cookieSecure,
-    sameSite: 'lax',
+    ...oauthStateCookieOptions,
     maxAge: 10 * 60 * 1000
   });
 
@@ -305,7 +352,7 @@ router.get('/start', (req, res) => {
   return res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 });
 
-router.post('/device/start', async (req, res) => {
+router.post('/device/start', githubAuthStartRateLimiter, async (req, res) => {
   const config = getOAuthConfig();
   if (!config) {
     return res.status(503).json({
@@ -321,7 +368,7 @@ router.post('/device/start', async (req, res) => {
   }
 
   try {
-    const response = await fetch('https://github.com/login/device/code', {
+    const response = await providerFetch('https://github.com/login/device/code', {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -332,6 +379,10 @@ router.post('/device/start', async (req, res) => {
         client_id: config.clientId,
         scope: config.scopes.join(' ')
       })
+    }, {
+      correlationId: req.correlationId,
+      timeoutMs: 15000,
+      maxRetries: 0
     });
     const payload = await response.json().catch(() => ({}));
     if (
@@ -351,9 +402,7 @@ router.post('/device/start', async (req, res) => {
       interval
     }), config.encryptionKey);
     res.cookie(GITHUB_DEVICE_COOKIE, encryptedSession, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: 'lax',
+      ...githubCookieOptions,
       maxAge: expiresIn * 1000
     });
 
@@ -365,7 +414,7 @@ router.post('/device/start', async (req, res) => {
       interval
     });
   } catch (error) {
-    console.error('GitHub Device Flow start failed:', error.message);
+    req.log?.error('GitHub Device Flow start failed.', error, 500);
     return res.status(502).json({
       success: false,
       error: 'Không thể tạo mã xác thực GitHub. Hãy thử lại sau.'
@@ -373,7 +422,7 @@ router.post('/device/start', async (req, res) => {
   }
 });
 
-router.post('/device/poll', optionalToken, async (req, res) => {
+router.post('/device/poll', githubAuthPollRateLimiter, optionalToken, async (req, res) => {
   const config = getOAuthConfig();
   const pool = getPool();
   const encryptedSession = req.cookies?.[GITHUB_DEVICE_COOKIE];
@@ -401,11 +450,7 @@ router.post('/device/poll', optionalToken, async (req, res) => {
       throw new Error('Expired GitHub device session.');
     }
   } catch {
-    res.clearCookie(GITHUB_DEVICE_COOKIE, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: 'lax'
-    });
+    res.clearCookie(GITHUB_DEVICE_COOKIE, githubCookieOptions);
     return res.status(400).json({
       success: false,
       error: 'Phiên xác thực GitHub không hợp lệ hoặc đã hết hạn.'
@@ -413,7 +458,7 @@ router.post('/device/poll', optionalToken, async (req, res) => {
   }
 
   try {
-    const response = await fetch('https://github.com/login/oauth/access_token', {
+    const response = await providerFetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -425,6 +470,10 @@ router.post('/device/poll', optionalToken, async (req, res) => {
         device_code: deviceSession.deviceCode,
         grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
       })
+    }, {
+      correlationId: req.correlationId,
+      timeoutMs: 15000,
+      maxRetries: 0
     });
     const githubToken = await response.json().catch(() => ({}));
     if (
@@ -441,11 +490,7 @@ router.post('/device/poll', optionalToken, async (req, res) => {
       });
     }
     if (!response.ok || githubToken.error || !githubToken.access_token) {
-      res.clearCookie(GITHUB_DEVICE_COOKIE, {
-        httpOnly: true,
-        secure: cookieSecure,
-        sameSite: 'lax'
-      });
+      res.clearCookie(GITHUB_DEVICE_COOKIE, githubCookieOptions);
       return res.status(400).json({
         success: false,
         error: githubToken.error === 'access_denied'
@@ -459,15 +504,14 @@ router.post('/device/poll', optionalToken, async (req, res) => {
       config,
       accessToken: githubToken.access_token,
       grantedScopes: githubToken.scope,
-      requestedUser: req.user
+      requestedUser: req.user,
+      correlationId: req.correlationId,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
     });
     const token = jwt.sign(tokenPayload(result.user), JWT_SECRET, { expiresIn: '7d' });
     res.cookie('access_token', token, authCookieOptions);
-    res.clearCookie(GITHUB_DEVICE_COOKIE, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: 'lax'
-    });
+    res.clearCookie(GITHUB_DEVICE_COOKIE, githubCookieOptions);
     return res.json({
       success: true,
       connected: true,
@@ -481,7 +525,13 @@ router.post('/device/poll', optionalToken, async (req, res) => {
       repositories: result.repositories.map(publicRepository)
     });
   } catch (error) {
-    console.error('GitHub Device Flow completion failed:', error.message);
+    req.log?.error('GitHub Device Flow completion failed.', error, 500);
+    if (error.code === UNVERIFIED_EMAIL_LINK_CODE) {
+      return res.status(409).json({
+        success: false,
+        error: 'Email này đã có tài khoản Lunar chưa xác minh. Hãy đăng nhập và xác minh tài khoản đó trước khi kết nối GitHub.'
+      });
+    }
     return res.status(502).json({
       success: false,
       error: 'GitHub đã xác thực nhưng Lunar chưa thể lưu tài khoản hoặc repository.'
@@ -494,24 +544,20 @@ router.get('/callback', optionalToken, async (req, res) => {
   const pool = getPool();
   const suppliedState = String(req.query.state || '');
   const expectedState = String(req.cookies?.github_oauth_state || '');
-  res.clearCookie('github_oauth_state', {
-    httpOnly: true,
-    secure: cookieSecure,
-    sameSite: 'lax'
-  });
+  res.clearCookie('github_oauth_state', oauthStateCookieOptions);
 
-  if (!config || !pool) return res.redirect('/?github_auth=unavailable');
+  if (!config || !pool) return redirectToApp(res, 'unavailable');
   if (
     !suppliedState
     || suppliedState.length !== expectedState.length
     || !crypto.timingSafeEqual(Buffer.from(suppliedState), Buffer.from(expectedState))
   ) {
-    return res.redirect('/?github_auth=invalid_state');
+    return redirectToApp(res, 'invalid_state');
   }
-  if (!req.query.code) return res.redirect('/?github_auth=denied');
+  if (!req.query.code) return redirectToApp(res, 'denied');
 
   try {
-    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+    const tokenResponse = await providerFetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -524,6 +570,10 @@ router.get('/callback', optionalToken, async (req, res) => {
         code: req.query.code,
         ...(config.redirectMode === 'explicit' ? { redirect_uri: config.callbackUrl } : {})
       })
+    }, {
+      correlationId: req.correlationId,
+      timeoutMs: 15000,
+      maxRetries: 0
     });
     const githubToken = await tokenResponse.json();
     if (!tokenResponse.ok || !githubToken.access_token) {
@@ -535,14 +585,20 @@ router.get('/callback', optionalToken, async (req, res) => {
       config,
       accessToken: githubToken.access_token,
       grantedScopes: githubToken.scope,
-      requestedUser: req.user
+      requestedUser: req.user,
+      correlationId: req.correlationId,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
     });
     const token = jwt.sign(tokenPayload(result.user), JWT_SECRET, { expiresIn: '7d' });
     res.cookie('access_token', token, authCookieOptions);
-    return res.redirect('/?github_auth=success');
+    return redirectToApp(res, 'success');
   } catch (error) {
-    console.error('GitHub OAuth callback failed:', error.message);
-    return res.redirect('/?github_auth=failed');
+    req.log?.error('GitHub OAuth callback failed.', error, 500);
+    if (error.code === UNVERIFIED_EMAIL_LINK_CODE) {
+      return redirectToApp(res, 'link_required');
+    }
+    return redirectToApp(res, 'failed');
   }
 });
 
@@ -595,7 +651,7 @@ router.post('/sync', verifyToken, async (req, res) => {
 
   try {
     const token = decryptToken(connection.rows[0].access_token_encrypted, config.encryptionKey);
-    const repositories = await fetchRepositories(token);
+    const repositories = await fetchRepositories(token, req.correlationId);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -617,7 +673,7 @@ router.post('/sync', verifyToken, async (req, res) => {
       repositories: repositories.map(publicRepository)
     });
   } catch (error) {
-    console.error('GitHub repository sync failed:', error.message);
+    req.log?.error('GitHub repository sync failed.', error, 500);
     return res.status(502).json({ success: false, error: 'Unable to synchronize GitHub repositories.' });
   }
 });
