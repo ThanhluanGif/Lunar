@@ -3,7 +3,10 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import {
   buildFindingRemediationDetails,
-  buildPortableRemediationReport
+  buildPortableRemediationReport,
+  createLocalPortableRemediationDownload,
+  createPortableRemediationMarkdown,
+  createPortableRemediationPdf
 } from '../src/services/remediationReport.js';
 
 const require = createRequire(import.meta.url);
@@ -49,6 +52,25 @@ const clientPayload = buildPortableRemediationReport({
 assert.equal(clientPayload.findings.length, 1);
 assert.equal(clientPayload.findings[0].validationSteps.length, 1);
 
+const clientMarkdown = createPortableRemediationMarkdown(clientPayload);
+const clientPdfBlob = createPortableRemediationPdf(clientPayload);
+const clientPdfHeader = Buffer.from(await clientPdfBlob.arrayBuffer()).subarray(0, 8).toString('ascii');
+const localMarkdownDownload = createLocalPortableRemediationDownload('markdown', clientPayload);
+if (process.env.WRITE_REMEDIATION_FALLBACK_SAMPLE === '1') {
+  fs.mkdirSync('tmp/pdfs', { recursive: true });
+  fs.writeFileSync(
+    'tmp/pdfs/lunar-remediation-browser-fallback.pdf',
+    Buffer.from(await clientPdfBlob.arrayBuffer())
+  );
+}
+assert.equal(clientMarkdown.includes('Handoff Instructions For Developers And AI Agents'), true);
+assert.equal(clientMarkdown.includes('qa-super-secret'), false);
+assert.equal(clientMarkdown.includes('[REDACTED]'), true);
+assert.equal(clientPdfHeader.startsWith('%PDF-1.4'), true);
+assert.equal(clientPdfBlob.type, 'application/pdf');
+assert.equal(localMarkdownDownload.localFallback, true);
+assert.equal(localMarkdownDownload.contentDisposition.includes('.md"'), true);
+
 const report = normalizePortableReport(clientPayload);
 const reportSummary = {
   ...report.summary,
@@ -86,6 +108,8 @@ const patcherSource = fs.readFileSync('src/components/VulnerabilityPatcher.jsx',
 const routeSource = fs.readFileSync('server/routes/reportRoutes.js', 'utf8');
 const aiRouteSource = fs.readFileSync('server/routes/aiRoutes.js', 'utf8');
 assert.match(modalSource, /downloadPortableRemediationReport/);
+assert.match(modalSource, /\[404, 405\]\.includes\(error\.status\)/);
+assert.match(modalSource, /createLocalPortableRemediationDownload/);
 assert.match(modalSource, /Tải AI Fix Handoff \(README\.md\)/);
 assert.match(patcherSource, /Finding \{activeIndex \+ 1\}\/\{enrichedVulnerabilities\.length\}/);
 assert.match(patcherSource, /Definition of done \/ checklist rescan/);
@@ -100,5 +124,6 @@ console.log(JSON.stringify({
   professionalPdfContent: 'PASS',
   reportSecretRedaction: 'PASS',
   authenticatedPortableExportWiring: 'PASS',
+  staleBackendLocalExportFallback: 'PASS',
   slideNavigationAndValidationChecklist: 'PASS'
 }, null, 2));

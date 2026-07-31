@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { X, ShieldCheck, Copy, Check, Download, FileSpreadsheet, FileText, ListChecks } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
-import { buildPortableRemediationReport } from '../services/remediationReport';
+import {
+  buildPortableRemediationReport,
+  createLocalPortableRemediationDownload
+} from '../services/remediationReport';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 export default function AuditReportExportModal({ isOpen, onClose, project, scanResult }) {
   const [copied, setCopied] = useState(false);
   const [downloadFormat, setDownloadFormat] = useState('');
   const [downloadMessage, setDownloadMessage] = useState('');
+  const [downloadMessageKind, setDownloadMessageKind] = useState('error');
   const dialogRef = useModalFocusTrap({ isOpen: isOpen && Boolean(project), onClose });
 
   if (!isOpen || !project) return null;
@@ -28,6 +32,7 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
   const handleDownload = async (format) => {
     setDownloadFormat(format);
     setDownloadMessage('');
+    setDownloadMessageKind('error');
     try {
       const scanId = project.deepScan?.scanId || project.scanId;
       let download;
@@ -35,10 +40,17 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
         if (!scanId) throw new Error('CSV yêu cầu một verified scan đã được lưu trên backend.');
         download = await lunarApi.downloadAuditReportCsv(scanId);
       } else {
-        download = await lunarApi.downloadPortableRemediationReport(
-          format,
-          buildPortableRemediationReport({ project, scanResult })
-        );
+        const portableReport = buildPortableRemediationReport({ project, scanResult });
+        try {
+          download = await lunarApi.downloadPortableRemediationReport(format, portableReport);
+        } catch (error) {
+          if (![404, 405].includes(error.status)) throw error;
+          download = createLocalPortableRemediationDownload(format, portableReport);
+          setDownloadMessageKind('success');
+          setDownloadMessage(
+            'Backend hiện tại chưa có endpoint export mới. File đầy đủ đã được tạo an toàn ngay trong trình duyệt.'
+          );
+        }
       }
       const { blob, contentDisposition } = download;
       const filename = contentDisposition.match(/filename="([^"]+)"/i)?.[1]
@@ -52,6 +64,7 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
       link.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
+      setDownloadMessageKind('error');
       setDownloadMessage(error.message || 'Không thể tạo file báo cáo.');
     } finally {
       setDownloadFormat('');
@@ -149,7 +162,14 @@ export default function AuditReportExportModal({ isOpen, onClose, project, scanR
         </div>
 
         {downloadMessage && (
-          <div role="alert" style={{ color: '#fda4af', fontSize: '0.84rem', marginBottom: '14px' }}>
+          <div
+            role={downloadMessageKind === 'error' ? 'alert' : 'status'}
+            style={{
+              color: downloadMessageKind === 'error' ? '#fda4af' : '#6ee7b7',
+              fontSize: '0.84rem',
+              marginBottom: '14px'
+            }}
+          >
             {downloadMessage}
           </div>
         )}

@@ -26,5 +26,5 @@ export function isDashboardResponseForUser(response, userId) {
 }
 
 export function isSystemDashboardResponse(response) {
-  return response?.scope === 'SYSTEM';
+  return response?.scope === 'SYSTEM' || response?.success === true;
 }

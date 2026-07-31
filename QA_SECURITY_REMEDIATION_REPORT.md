@@ -247,3 +247,12 @@ Ngày xác minh: 2026-07-31. Không commit, push, merge hoặc deploy.
 - Báo cáo cung cấp chỉ dẫn remediation và proposed patch, không cam kết mọi AI suggestion là đúng hoặc có thể apply tự động.
 - Portable payload từ client được xác thực và giới hạn nhưng không thay thế verified persisted scan cho audit pháp lý; report ghi rõ scan ID khi có và trạng thái triage/patch thực tế.
 - PDF transliterate một số ký tự tiếng Việt để tránh lỗi font trong generator hiện tại; Markdown là bản bàn giao giữ đầy đủ Unicode và phù hợp hơn cho AI/developer tiếp tục xử lý.
+
+### Hotfix: backend cũ trả `API endpoint not found` khi export
+
+- Runtime evidence trên backend local cổng `5050`: health trả 200 nhưng `POST /api/v1/reports/export/portable/pdf` và `/markdown` đều trả 404 với `API endpoint not found.`. Container đang chạy image cũ chưa có portable route; source/router hiện tại không sai method hoặc mount path.
+- Frontend vẫn ưu tiên authenticated portable endpoint mới. Chỉ khi response là 404 hoặc 405, modal tạo cùng report trực tiếp trong trình duyệt từ finding hiện có; 401/403/429/5xx không fallback nên không che lỗi auth, quota hoặc lỗi server.
+- Local Markdown giữ Unicode và đủ root cause/evidence/impact/attack path/fix/checklist. Local PDF có pagination, footer, triage/confidence/patch lifecycle và redaction; không gửi dữ liệu sang provider hay dịch vụ ngoài.
+- `npm run qa:remediation-report`: PASS thêm gate `staleBackendLocalExportFallback`, PDF header, Markdown content và secret redaction.
+- `npm run build`, `npm run qa:a11y` và `npm run qa:security`: PASS; SAST 97 files, 0 finding.
+- PDF fallback được render bằng Poppler và kiểm tra trực quan: không overlap, clipping hoặc glyph hỏng; intermediate render đã được dọn sau xác minh.

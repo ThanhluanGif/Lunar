@@ -207,6 +207,7 @@ function reportSummary(report) {
     return Number.isFinite(number) ? Math.max(0, Math.min(maximum, number)) : 0;
   };
   return {
+    score: bounded(report?.metadata?.score, 100),
     maxCvss: bounded(stats.maxCvss, 10),
     criticalCount: bounded(stats.criticalCount),
     highCount: bounded(stats.highCount),
@@ -252,7 +253,7 @@ export function createPortableRemediationMarkdown(report) {
     `**Scan:** ${markdownText(metadata.scanId || 'not available')}  `,
     `**Scanned:** ${markdownText(metadata.scannedAt || 'not available')}  `,
     `**Engine:** ${markdownText(metadata.engine || 'Lunar SAST + AI remediation')}  `,
-    `**Security score:** ${Number(metadata.score || 0)}/100  `,
+    `**Security score:** ${summary.score}/100  `,
     `**Maximum CVSS:** ${summary.maxCvss.toFixed(1)}/10.0`,
     '',
     '## Executive Summary',
@@ -528,7 +529,7 @@ export function createPortableRemediationPdf(report) {
     ],
     [
       ...pdfReportLine('Executive summary', 'heading'),
-      ...pdfReportLine(`Security score: ${Number(metadata.score || 0)} / 100 | Maximum CVSS: ${summary.maxCvss.toFixed(1)} / 10.0`, 'body'),
+      ...pdfReportLine(`Security score: ${summary.score} / 100 | Maximum CVSS: ${summary.maxCvss.toFixed(1)} / 10.0`, 'body'),
       ...pdfReportLine(`Critical: ${summary.criticalCount} | High: ${summary.highCount} | Medium: ${summary.mediumCount} | Low: ${summary.lowCount} | Total: ${findings.length}`, 'body'),
       ...pdfReportLine('NEEDS_REVIEW is not proof of exploitability. Apply, test and rescan before marking any finding verified.', 'muted'),
       ...pdfReportLine('', 'spacer'),
@@ -540,11 +541,15 @@ export function createPortableRemediationPdf(report) {
   findings.forEach((finding, index) => {
     blocks.push([
       ...pdfReportLine(`${String(index + 1).padStart(3, '0')}. [${finding.severity}] ${finding.ruleId} / ${finding.cwe} - ${finding.title}`, 'finding'),
-      ...pdfReportLine(`Location: ${finding.filePath}:${finding.line} | CVSS: ${Number(finding.cvss || 0).toFixed(1)} | Triage: ${finding.triageStatus} | Patch: ${finding.patchStatus}`, 'muted'),
+      ...pdfReportLine(`Location: ${finding.filePath}:${finding.line} | CVSS: ${Number(finding.cvss || 0).toFixed(1)} | Triage: ${finding.triageStatus} | Confidence: ${finding.confidence} | Patch: ${finding.patchStatus}`, 'muted'),
       ...pdfReportLine(`Why this finding exists: ${safeReportText(finding.whyThisIsValid)}`, 'body'),
       ...pdfReportLine(`Root cause: ${safeReportText(finding.rootCause)}`, 'body'),
       ...pdfReportLine(`Evidence: ${redactReportText(finding.evidence) || '[not stored]'}`, 'body'),
       ...pdfReportLine(`Impact: ${safeReportText(finding.impact)}`, 'body'),
+      ...(finding.attackChain?.length ? [
+        ...pdfReportLine('Defensive attack path:', 'body'),
+        ...finding.attackChain.flatMap((step, stepIndex) => pdfReportLine(`${stepIndex + 1}. ${safeReportText(step, 2000)}`, 'muted'))
+      ] : []),
       ...pdfReportLine(`Fix strategy: ${safeReportText(finding.remediationStrategy)}`, 'body'),
       ...pdfReportLine('Implementation steps:', 'body'),
       ...(finding.remediationSteps || []).flatMap((step, stepIndex) => pdfReportLine(`${stepIndex + 1}. ${safeReportText(step, 2000)}`, 'muted')),
@@ -552,6 +557,7 @@ export function createPortableRemediationPdf(report) {
       ...(finding.patchAvailable
         ? pdfReportLine(`${finding.patchStatus === 'verified' ? 'Verified' : 'Proposed'} after: ${redactReportText(finding.after) || '[see unified diff]'}`, 'body')
         : pdfReportLine(`Patch unavailable: ${safeReportText(finding.reasonUnavailable)}`, 'muted')),
+      ...(finding.unifiedDiff ? pdfReportLine(`Unified diff: ${redactReportText(finding.unifiedDiff)}`, 'muted') : []),
       ...pdfReportLine('Validation checklist:', 'body'),
       ...(finding.validationSteps || []).flatMap((step, stepIndex) => pdfReportLine(`${stepIndex + 1}. ${safeReportText(step, 2000)}`, 'muted')),
       ...pdfReportLine(`Reference: ${findingReference(finding)}`, 'muted'),
