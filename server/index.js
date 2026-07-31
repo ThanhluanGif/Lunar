@@ -184,7 +184,11 @@ app.use((req, res, next) => {
   return next();
 });
 
-app.listen(PORT, async () => {
-  writeSystemLog('INFO', `Lunar Zero-Trust REST API server is running on port ${PORT}.`);
-  await initPgDatabase();
-});
+module.exports = app;
+
+if (require.main === module && !process.env.VERCEL) {
+  app.listen(PORT, async () => {
+    writeSystemLog('INFO', `Lunar Zero-Trust REST API server is running on port ${PORT}.`);
+    await initPgDatabase();
+  });
+}

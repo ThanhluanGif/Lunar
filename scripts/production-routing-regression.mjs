@@ -68,9 +68,21 @@ assert.match(githubRouteSource, /redirectToApp\(res, 'success'\)/);
 assert.match(githubRouteSource, /oauthStateCookieOptions = \{[\s\S]*sameSite: 'lax'/);
 assert.doesNotMatch(githubRouteSource, /res\.redirect\(['"]\/\?github_auth=/);
 
+const viteConfigSource = fs.readFileSync('vite.config.js', 'utf8');
+const envExampleSource = fs.readFileSync('.env.example', 'utf8');
+assert.match(viteConfigSource, /VITE_API_PROXY_TARGET \|\| 'http:\/\/127\.0\.0\.1:5000'/);
+assert.match(envExampleSource, /^PORT=5000$/m);
+assert.match(envExampleSource, /^VITE_API_PROXY_TARGET=http:\/\/127\.0\.0\.1:5000$/m);
+
+const lunarApiSource = fs.readFileSync('src/services/lunarApi.js', 'utf8');
+assert.match(lunarApiSource, /code = 'API_UNREACHABLE'/);
+assert.doesNotMatch(lunarApiSource, /Kiểm tra VITE_API_BASE_URL, HTTPS và CORS/);
+
 console.log(JSON.stringify({
   productionApiOrigin: 'PASS',
   githubOAuthStartOrigin: 'PASS',
   githubCallbackPublicAppRedirect: 'PASS',
-  crossSiteCookiePolicy: 'PASS'
+  crossSiteCookiePolicy: 'PASS',
+  localApiProxyAlignment: 'PASS',
+  userFacingNetworkError: 'PASS'
 }, null, 2));

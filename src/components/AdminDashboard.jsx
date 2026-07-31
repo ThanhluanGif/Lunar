@@ -8,7 +8,9 @@ import { lunarApi } from '../services/lunarApi';
 import {
   ADMIN_DASHBOARD_REFRESH_INTERVAL_MS,
   createLatestRequestGate,
-  isSystemDashboardResponse
+  isSystemDashboardResponse,
+  notifyUserUpdated,
+  subscribeToRealtimeSync
 } from '../services/dashboardSync';
 
 export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
@@ -61,7 +63,16 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
         if (!isSystemDashboardResponse(analyticsRes.value)) {
           throw new Error('Admin analytics returned data outside the system scope.');
         }
-        setAnalytics(analyticsRes.value);
+        const analyticsData = analyticsRes.value;
+        if (currentUser && analyticsData.recentLogins) {
+          analyticsData.recentLogins = analyticsData.recentLogins.map((u) => {
+            if (String(u.id) === String(currentUser.id) || u.email === currentUser.email) {
+              return { ...u, tier: currentUser.tier || u.tier };
+            }
+            return u;
+          });
+        }
+        setAnalytics(analyticsData);
       }
       if (usersRes.status === 'fulfilled' && usersRes.value?.users) {
         let rawUsers = usersRes.value.users;
@@ -74,18 +85,22 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
             tier: currentUser.tier || 'ENTERPRISE',
             role: currentUser.role || 'ADMIN',
             status: 'ACTIVE',
-            dailyScansUsed: 0,
+            dailyScansUsed: currentUser.dailyScansUsed ?? 0,
             lastLoginAt: new Date().toISOString(),
             createdAt: new Date().toISOString()
           }, ...rawUsers];
         }
-        setUsers(rawUsers.map((user) => ({
-          ...user,
-          github: user.nickname?.replace(/^@/, '') || '',
-          dailyScans: user.dailyScansUsed ?? 0,
-          joined: user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Mới tạo',
-          lastLogin: user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'Đang trực tuyến'
-        })));
+        setUsers(rawUsers.map((user) => {
+          const isMe = currentUser && (String(user.id) === String(currentUser.id) || user.email === currentUser.email);
+          return {
+            ...user,
+            tier: isMe ? (currentUser.tier || user.tier) : user.tier,
+            github: user.nickname?.replace(/^@/, '') || '',
+            dailyScans: user.dailyScansUsed ?? 0,
+            joined: user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Mới tạo',
+            lastLogin: isMe ? 'Đang trực tuyến (Bạn)' : (user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'Vừa vào')
+          };
+        }));
       }
       if (paymentsRes.status === 'fulfilled' && paymentsRes.value?.payments) {
         setTransactions(paymentsRes.value.payments.map((payment) => ({
@@ -134,7 +149,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
       if (requestGateRef.current.isCurrent(requestId)) setLoading(false);
       if (requestControllerRef.current === controller) requestControllerRef.current = null;
     }
-  }, [adminUserId, daysRange]);
+  }, [adminUserId, daysRange, currentUser]);
 
   useEffect(() => {
     requestGateRef.current.invalidate();
@@ -154,10 +169,16 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
     window.addEventListener('focus', refreshVisibleDashboard);
     document.addEventListener('visibilitychange', refreshVisibleDashboard);
 
+    const unsubscribeRealtime = subscribeToRealtimeSync({
+      onUserUpdated: () => loadAdminData({ background: true }),
+      onScanCompleted: () => loadAdminData({ background: true })
+    });
+
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshVisibleDashboard);
       document.removeEventListener('visibilitychange', refreshVisibleDashboard);
+      unsubscribeRealtime();
       requestControllerRef.current?.abort();
       requestControllerRef.current = null;
       requestGateRef.current.invalidate();
@@ -180,22 +201,60 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
   };
 
   const handleChangeUserTier = async (userId, newTier) => {
+    // 1. Optimistic local state updates for users list and recent logins
+    setUsers((prevUsers) => prevUsers.map((u) => (
+      String(u.id) === String(userId) ? { ...u, tier: newTier } : u
+    )));
+    if (analytics?.recentLogins) {
+      setAnalytics((prev) => prev ? {
+        ...prev,
+        recentLogins: prev.recentLogins.map((u) => (
+          String(u.id) === String(userId) ? { ...u, tier: newTier } : u
+        ))
+      } : prev);
+    }
+
+    // 2. Notify logged in admin session if self tier was changed
+    const targetUser = users.find((u) => String(u.id) === String(userId));
+    if (currentUser && (String(currentUser.id) === String(userId) || currentUser.email === targetUser?.email)) {
+      onUpgradeUserTier?.(newTier);
+    }
+
+    // 3. Broadcast real-time sync event across tabs
+    notifyUserUpdated({ userId, tier: newTier });
+
     try {
       await lunarApi.updateAdminUser(userId, { tier: newTier }, `Admin cấp quyền tài khoản sang ${newTier}.`);
-      await loadAdminData();
-      showNotice(`Đã chuyển tài khoản sang gói ${newTier} thành công.`);
+      showNotice(`✓ Đã chuyển tài khoản sang gói ${newTier} thành công.`);
+      loadAdminData({ background: true });
     } catch (error) {
-      showNotice(`Lỗi thay đổi gói: ${error.message}`);
+      showNotice(`❌ Lỗi thay đổi gói: ${error.message}`);
+      loadAdminData({ background: true });
     }
   };
 
   const handleChangeUserStatus = async (userId, newStatus) => {
+    setUsers((prevUsers) => prevUsers.map((u) => (
+      String(u.id) === String(userId) ? { ...u, status: newStatus } : u
+    )));
+    if (analytics?.recentLogins) {
+      setAnalytics((prev) => prev ? {
+        ...prev,
+        recentLogins: prev.recentLogins.map((u) => (
+          String(u.id) === String(userId) ? { ...u, status: newStatus } : u
+        ))
+      } : prev);
+    }
+
+    notifyUserUpdated({ userId, status: newStatus });
+
     try {
       await lunarApi.updateAdminUser(userId, { status: newStatus }, `Admin cập nhật trạng thái sang ${newStatus}.`);
-      await loadAdminData();
-      showNotice(`Đã cập nhật trạng thái người dùng thành ${newStatus}.`);
+      showNotice(`✓ Đã cập nhật trạng thái người dùng thành ${newStatus}.`);
+      loadAdminData({ background: true });
     } catch (error) {
-      showNotice(`Lỗi cập nhật trạng thái: ${error.message}`);
+      showNotice(`❌ Lỗi cập nhật trạng thái: ${error.message}`);
+      loadAdminData({ background: true });
     }
   };
 
@@ -208,19 +267,29 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
       return;
     }
     setResettingQuotaIds((prev) => new Set(prev).add(userId));
+
+    // Optimistic local state updates
+    setUsers((prevUsers) => prevUsers.map((u) => (
+      String(u.id) === String(userId) ? { ...u, dailyScans: 0, dailyScansUsed: 0 } : u
+    )));
+    if (analytics?.recentLogins) {
+      setAnalytics((prev) => prev ? {
+        ...prev,
+        recentLogins: prev.recentLogins.map((u) => (
+          String(u.id) === String(userId) ? { ...u, dailyScansUsed: 0 } : u
+        ))
+      } : prev);
+    }
+
+    notifyUserUpdated({ userId, dailyScansUsed: 0 });
+
     try {
       await lunarApi.resetAdminQuota(userId, `Admin reset quota lượt quét cho ${displayName}.`);
-      setUsers((prevUsers) => prevUsers.map((u) => u.id === userId ? { ...u, dailyScans: 0 } : u));
-      if (analytics?.recentLogins) {
-        setAnalytics((prev) => prev ? {
-          ...prev,
-          recentLogins: prev.recentLogins.map((u) => u.id === userId ? { ...u, dailyScansUsed: 0 } : u)
-        } : prev);
-      }
-      await loadAdminData({ background: true });
       showNotice(`✓ Đã khôi phục hạn ngạch lượt quét về 0 cho ${displayName}.`);
+      loadAdminData({ background: true });
     } catch (error) {
       showNotice(`❌ Lỗi reset quota: ${error.message}`);
+      loadAdminData({ background: true });
     } finally {
       setResettingQuotaIds((prev) => {
         const next = new Set(prev);
@@ -231,19 +300,25 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
   };
 
   const handleCleanupQaUsers = async () => {
-    if (!window.confirm('Xác nhận dọn dẹp các tài khoản test tự động (qa-*, browser-*, *@example.com) khỏi hệ thống?')) {
+    if (!window.confirm('Xác nhận xóa toàn bộ dữ liệu lượt quét cũ, nhật ký truy cập cũ và các tài khoản rác khỏi hệ thống?')) {
       return;
     }
     setIsCleaningQa(true);
     try {
-      const res = await lunarApi.cleanupQaUsers('Admin dọn dẹp dữ liệu test QA.');
+      const res = await lunarApi.purgeOldAdminData('Admin thực hiện dọn dẹp và xóa sạch toàn bộ dữ liệu cũ trong dashboard.');
       await loadAdminData();
-      showNotice(`✓ ${res.message || 'Đã dọn dẹp thành công.'}`);
+      showNotice(`✓ ${res.message || 'Đã dọn dẹp và xóa thành công toàn bộ dữ liệu cũ.'}`);
     } catch (error) {
-      showNotice(`❌ Lỗi dọn dẹp: ${error.message}`);
+      showNotice(`❌ Lỗi dọn dẹp dữ liệu cũ: ${error.message}`);
     } finally {
       setIsCleaningQa(false);
     }
+  };
+
+  const isQaAccount = (email) => {
+    if (!email || typeof email !== 'string') return false;
+    const lower = email.toLowerCase();
+    return lower.startsWith('qa-') || lower.startsWith('browser-') || lower.endsWith('@example.com');
   };
 
   const filteredTxs = transactions.filter(t => {
@@ -255,12 +330,15 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
   });
 
   const filteredUsers = users.filter(u => {
+    if (isQaAccount(u.email)) return false;
     const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           u.github.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTier = userTierFilter === 'ALL' || u.tier === userTierFilter;
     return matchesSearch && matchesTier;
   });
+
+  const cleanRecentLogins = (analytics?.recentLogins || []).filter(u => !isQaAccount(u.email));
 
   const maxChartValue = Math.max(
     1,
@@ -312,6 +390,16 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
             >
               <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
               Đồng Bộ Dữ Liệu
+            </button>
+            <button
+              onClick={handleCleanupQaUsers}
+              disabled={isCleaningQa}
+              className="btn btn-rose btn-sm"
+              style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+              title="Reset lại dữ liệu sạch ban đầu, loại bỏ toàn bộ dữ liệu test ảo và outdated"
+            >
+              <RotateCcw size={14} className={isCleaningQa ? "animate-spin" : ""} />
+              {isCleaningQa ? 'Đang dọn dẹp...' : 'Reset Dữ Liệu Sạch Ban Đầu'}
             </button>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'right' }}>
               {lastSyncedAt ? `Cập nhật ${new Date(lastSyncedAt).toLocaleTimeString()}` : 'Đang chờ dữ liệu mới'}
@@ -558,47 +646,56 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {(analytics?.recentLogins || []).map((u) => (
-                    <tr key={u.loginEventId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding: '12px 10px', fontWeight: '700', color: '#ffffff' }}>
-                        {u.name || u.nickname}
-                      </td>
-                      <td style={{ padding: '12px 10px', color: 'var(--text-secondary)' }}>{u.email}</td>
-                      <td style={{ padding: '12px 10px' }}>
-                        <span className={`badge ${u.tier === 'ENTERPRISE' ? 'badge-cyan' : u.tier === 'PRO' ? 'badge-purple' : 'badge-yellow'}`}>
-                          {u.tier}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px 10px' }}>{u.dailyScansUsed} scans</td>
-                      <td style={{ padding: '12px 10px', color: '#34d399' }}>
-                        {u.loginAt ? new Date(u.loginAt).toLocaleString() : 'Vừa vào'} · {u.authMethod || 'PASSWORD'}
-                      </td>
-                      <td style={{ padding: '12px 10px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
-                          {u.tier !== 'PRO' && (
-                            <button onClick={() => handleChangeUserTier(u.id, 'PRO')} className="btn btn-purple btn-sm" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
-                              + Cấp Pro
-                            </button>
+                  {cleanRecentLogins.map((u) => {
+                    const isMe = currentUser && (String(u.id) === String(currentUser.id) || u.email === currentUser.email);
+                    const currentTier = isMe ? (currentUser.tier || u.tier) : u.tier;
+                    return (
+                      <tr key={u.loginEventId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: isMe ? 'rgba(56, 189, 248, 0.06)' : 'transparent' }}>
+                        <td style={{ padding: '12px 10px', fontWeight: '700', color: '#ffffff' }}>
+                          {u.name || u.nickname}
+                          {isMe && (
+                            <span className="badge badge-emerald" style={{ fontSize: '0.68rem', marginLeft: '6px', padding: '2px 6px' }}>
+                              ● Bạn (Đang đăng nhập)
+                            </span>
                           )}
-                          {u.tier !== 'ENTERPRISE' && (
-                            <button onClick={() => handleChangeUserTier(u.id, 'ENTERPRISE')} className="btn btn-cyan btn-sm" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
-                              + Enterprise
+                        </td>
+                        <td style={{ padding: '12px 10px', color: 'var(--text-secondary)' }}>{u.email}</td>
+                        <td style={{ padding: '12px 10px' }}>
+                          <span className={`badge ${currentTier === 'ENTERPRISE' ? 'badge-cyan' : currentTier === 'PRO' ? 'badge-purple' : 'badge-yellow'}`}>
+                            {currentTier}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 10px' }}>{u.dailyScansUsed} scans</td>
+                        <td style={{ padding: '12px 10px', color: '#34d399' }}>
+                          {isMe ? 'Vừa vào (Đang trực tuyến)' : (u.loginAt ? new Date(u.loginAt).toLocaleString() : 'Vừa vào')} · {u.authMethod || 'PASSWORD'}
+                        </td>
+                        <td style={{ padding: '12px 10px', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                            {currentTier !== 'PRO' && (
+                              <button onClick={() => handleChangeUserTier(u.id, 'PRO')} className="btn btn-purple btn-sm" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
+                                + Cấp Pro
+                              </button>
+                            )}
+                            {currentTier !== 'ENTERPRISE' && (
+                              <button onClick={() => handleChangeUserTier(u.id, 'ENTERPRISE')} className="btn btn-cyan btn-sm" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
+                                + Enterprise
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleResetQuota(u.id, u.name || u.nickname || u.email)}
+                              disabled={resettingQuotaIds.has(u.id)}
+                              className="btn btn-secondary btn-sm"
+                              style={{ fontSize: '0.72rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              title="Khôi phục lượt quét hàng ngày về 0"
+                            >
+                              <RotateCcw size={12} className={resettingQuotaIds.has(u.id) ? "animate-spin" : ""} />
+                              {resettingQuotaIds.has(u.id) ? 'Resetting...' : 'Reset Quota'}
                             </button>
-                          )}
-                          <button
-                            onClick={() => handleResetQuota(u.id, u.name || u.nickname || u.email)}
-                            disabled={resettingQuotaIds.has(u.id)}
-                            className="btn btn-secondary btn-sm"
-                            style={{ fontSize: '0.72rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                            title="Khôi phục lượt quét hàng ngày về 0"
-                          >
-                            <RotateCcw size={12} className={resettingQuotaIds.has(u.id) ? "animate-spin" : ""} />
-                            {resettingQuotaIds.has(u.id) ? 'Resetting...' : 'Reset Quota'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -673,12 +770,21 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td style={{ padding: '14px 18px' }}>
-                    <div style={{ fontWeight: '700', color: '#ffffff' }}>{user.name}</div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{user.email}</div>
-                  </td>
+              {filteredUsers.map((user) => {
+                const isMe = currentUser && (String(user.id) === String(currentUser.id) || user.email === currentUser.email);
+                return (
+                  <tr key={user.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: isMe ? 'rgba(56, 189, 248, 0.06)' : 'transparent' }}>
+                    <td style={{ padding: '14px 18px' }}>
+                      <div style={{ fontWeight: '700', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {user.name}
+                        {isMe && (
+                          <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
+                            ● Bạn (Đang đăng nhập)
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{user.email}</div>
+                    </td>
                   <td style={{ padding: '14px 18px' }}>
                     <span className={`badge ${user.role === 'ADMIN' ? 'badge-rose' : 'badge-slate'}`}>
                       {user.role === 'ADMIN' ? '👑 ADMIN' : 'USER'}
@@ -753,7 +859,8 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>

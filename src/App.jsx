@@ -25,6 +25,7 @@ import { Moon, ShieldCheck, Wrench, Users, Bot, Package, ArrowRight, Star, GitFo
 
 import UserGitHubWorkspace from './components/UserGitHubWorkspace';
 import RealTimeStatsBanner from './components/RealTimeStatsBanner';
+import { subscribeToRealtimeSync } from './services/dashboardSync';
 
 export default function App() {
   const [projects, setProjects] = useState(SECURITY_PROJECTS_MOCK);
@@ -150,18 +151,45 @@ export default function App() {
   // The Lunar backend is authoritative for identity, tier and role.
   useEffect(() => {
     let mounted = true;
-    lunarApi.getMe()
-      .then(({ user }) => {
+    const fetchSession = () => {
+      lunarApi.getMe()
+        .then(({ user }) => {
+          if (!mounted) return;
+          setCurrentUser(user);
+          setCurrentTier(user.tier || 'FREE');
+        })
+        .catch(() => {
+          if (!mounted) return;
+          setCurrentUser(null);
+          setCurrentTier('FREE');
+        });
+    };
+
+    fetchSession();
+
+    const unsubscribe = subscribeToRealtimeSync({
+      onUserUpdated: (userData) => {
         if (!mounted) return;
-        setCurrentUser(user);
-        setCurrentTier(user.tier || 'FREE');
-      })
-      .catch(() => {
+        if (userData?.userId && currentUser?.id && String(userData.userId) === String(currentUser.id)) {
+          if (userData.tier) setCurrentTier(userData.tier);
+          setCurrentUser((prev) => prev ? {
+            ...prev,
+            ...(userData.tier ? { tier: userData.tier } : {}),
+            ...(typeof userData.dailyScansUsed === 'number' ? { dailyScansUsed: userData.dailyScansUsed } : {})
+          } : prev);
+        }
+        fetchSession();
+      },
+      onScanCompleted: () => {
         if (!mounted) return;
-        setCurrentUser(null);
-        setCurrentTier('FREE');
-      });
-    return () => { mounted = false; };
+        fetchSession();
+      }
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
 

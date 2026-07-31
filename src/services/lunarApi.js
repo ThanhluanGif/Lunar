@@ -13,12 +13,18 @@ async function fetchApi(path, options) {
     return await fetch(apiUrl(path), options);
   } catch (cause) {
     if (cause?.name === 'AbortError') throw cause;
+    const target = API_BASE_URL || 'backend cùng domain';
     const error = new Error(
-      `Không thể kết nối Lunar API${API_BASE_URL ? ` tại ${API_BASE_URL}` : ''}. `
-      + 'Kiểm tra VITE_API_BASE_URL, HTTPS và CORS của backend production.'
+      `Không thể kết nối máy chủ Lunar (${target}). `
+      + 'Vui lòng thử lại sau hoặc liên hệ quản trị viên nếu lỗi vẫn tiếp diễn.'
     );
     error.status = 502;
-    error.payload = { error: error.message };
+    error.code = 'API_UNREACHABLE';
+    error.payload = {
+      error: error.message,
+      code: error.code,
+      target: API_BASE_URL || 'same-origin'
+    };
     error.cause = cause;
     throw error;
   }
@@ -28,11 +34,11 @@ async function readJsonResponse(response) {
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.toLowerCase().includes('application/json')) {
     const error = new Error(
-      'Lunar API trả về nội dung không hợp lệ. Trong production, hãy route `/api` '
-      + 'tới backend hoặc đặt VITE_API_BASE_URL thành origin HTTPS của backend.'
+      'Máy chủ Lunar trả về phản hồi không hợp lệ. Vui lòng thử lại sau.'
     );
     error.status = 502;
-    error.payload = { error: error.message };
+    error.code = 'INVALID_API_RESPONSE';
+    error.payload = { error: error.message, code: error.code };
     throw error;
   }
 
@@ -203,5 +209,10 @@ export const lunarApi = {
   sendSupportContact: (payload) => request('/public/contact', {
     method: 'POST',
     body: JSON.stringify(payload)
+  }),
+  clearScanHistory: () => request('/auth/scan-history', { method: 'DELETE' }),
+  purgeOldAdminData: (reason) => request('/admin/purge-old-data', {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason || 'Xóa dữ liệu cũ và lượt quét cũ trong dashboard.' })
   })
 };

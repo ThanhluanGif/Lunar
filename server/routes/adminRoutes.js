@@ -251,9 +251,12 @@ router.get('/users', async (req, res) => {
   const tier = VALID_TIERS.has(req.query.tier) ? req.query.tier : null;
   const role = VALID_ROLES.has(req.query.role) ? req.query.role : null;
   const status = VALID_USER_STATUSES.has(req.query.status) ? req.query.status : null;
+  const includeQa = req.query.includeQa === 'true';
 
   if (!pool) {
-    let filtered = [...realUsersStore];
+    let filtered = realUsersStore.filter((u) => (
+      includeQa || (!u.email?.startsWith('qa-') && !u.email?.startsWith('browser-') && !u.email?.endsWith('@example.com'))
+    ));
     if (search) {
       filtered = filtered.filter(
         (u) => u.name?.toLowerCase().includes(search) || u.email?.toLowerCase().includes(search) || u.nickname?.toLowerCase().includes(search)
@@ -288,9 +291,10 @@ router.get('/users', async (req, res) => {
          AND ($2::text IS NULL OR tier = $2)
          AND ($3::text IS NULL OR role = $3)
          AND ($4::text IS NULL OR status = $4)
+         AND ($7::boolean IS TRUE OR (email NOT LIKE 'qa-%' AND email NOT LIKE 'browser-%' AND email NOT LIKE '%@example.com'))
        ORDER BY created_at DESC
        LIMIT $5 OFFSET $6`,
-      [search, tier, role, status, limit, offset]
+      [search, tier, role, status, limit, offset, includeQa]
     );
 
     return res.json({
@@ -701,23 +705,29 @@ router.get('/analytics', async (req, res) => {
       };
     });
 
-    const recentLogins = realLoginEventsStore.map((e) => {
-      const u = findUserById(e.user_id) || {};
-      return {
-        loginEventId: e.id,
-        id: e.user_id,
-        nickname: u.nickname || '@user',
-        name: u.name || 'User',
-        email: u.email || 'user@lunar.dev',
-        tier: u.tier || 'FREE',
-        role: u.role || 'USER',
-        status: u.status || 'ACTIVE',
-        dailyScansUsed: u.daily_scans_used || 0,
-        authMethod: e.auth_method || 'PASSWORD',
-        loginAt: e.created_at,
-        createdAt: u.created_at || e.created_at
-      };
-    });
+    const recentLogins = realLoginEventsStore
+      .filter((e) => {
+        const u = findUserById(e.user_id);
+        const email = (u?.email || '').toLowerCase();
+        return u && !email.startsWith('qa-') && !email.startsWith('browser-') && !email.endsWith('@example.com');
+      })
+      .map((e) => {
+        const u = findUserById(e.user_id) || {};
+        return {
+          loginEventId: e.id,
+          id: e.user_id,
+          nickname: u.nickname || '@user',
+          name: u.name || 'User',
+          email: u.email || 'user@lunar.dev',
+          tier: u.tier || 'FREE',
+          role: u.role || 'USER',
+          status: u.status || 'ACTIVE',
+          dailyScansUsed: u.daily_scans_used || 0,
+          authMethod: e.auth_method || 'PASSWORD',
+          loginAt: e.created_at,
+          createdAt: u.created_at || e.created_at
+        };
+      });
 
     const freeCount = realUsersStore.filter((u) => u.tier === 'FREE').length;
     const proCount = realUsersStore.filter((u) => u.tier === 'PRO').length;
@@ -767,6 +777,7 @@ router.get('/analytics', async (req, res) => {
            u.created_at AS "createdAt"
          FROM user_login_events e
          JOIN users u ON u.id = e.user_id
+         WHERE u.email NOT LIKE 'qa-%' AND u.email NOT LIKE 'browser-%' AND u.email NOT LIKE '%@example.com'
          ORDER BY e.created_at DESC
          LIMIT 30`
       ),
@@ -789,6 +800,55 @@ router.get('/analytics', async (req, res) => {
   } catch (error) {
     req.log?.error('Admin analytics query failed.', error, 500);
     return res.status(500).json({ success: false, error: 'Không thể tải biểu đồ phân tích.' });
+  }
+});
+
+// 9. POST /api/v1/admin/purge-old-data
+router.post('/purge-old-data', async (req, res) => {
+  const reason = requireReason(req, res);
+  if (!reason) return;
+
+  const pool = getPool();
+  if (!pool) {
+    realLoginEventsStore.length = 0;
+    realPaymentsStore.length = 0;
+    realAuditLogsStore.length = 0;
+    for (let i = realUsersStore.length - 1; i >= 0; i--) {
+      const email = (realUsersStore[i].email || '').toLowerCase();
+      if (email.startsWith('qa-') || email.startsWith('browser-') || email.endsWith('@example.com')) {
+        realUsersStore.splice(i, 1);
+      }
+    }
+    return res.json({
+      success: true,
+      message: 'Đã xóa toàn bộ dữ liệu lượt quét và nhật ký cũ khỏi bộ nhớ.'
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM vulnerabilities');
+    const deletedScans = await client.query('DELETE FROM scans');
+    const deletedLogins = await client.query('DELETE FROM user_login_events');
+    const deleteQaUsers = await client.query(
+      `DELETE FROM users
+       WHERE email LIKE 'qa-%' OR email LIKE 'browser-%' OR email LIKE '%@example.com'`
+    );
+    await client.query('UPDATE users SET daily_scans_used = 0');
+    await client.query('COMMIT');
+    return res.json({
+      success: true,
+      message: `Đã xóa thành công ${deletedScans.rowCount} lượt quét cũ, ${deletedLogins.rowCount} lượt đăng nhập và ${deleteQaUsers.rowCount} tài khoản rác.`,
+      purgedScans: deletedScans.rowCount,
+      purgedLogins: deletedLogins.rowCount
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    req.log?.error('Admin purge old data failed.', error, 500);
+    return res.status(500).json({ success: false, error: 'Lỗi khi xóa dữ liệu cũ.' });
+  } finally {
+    client.release();
   }
 });
 

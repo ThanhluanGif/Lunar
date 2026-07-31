@@ -16,6 +16,7 @@ import { fetchUserGitHubRepos, normalizeGitHubUsername } from '../services/githu
 import { lunarApi } from '../services/lunarApi';
 import { scanLocalFiles } from '../services/repoScanner';
 import { getUpgradeQuotaContext } from '../services/quotaUpgrade';
+import { notifyScanCompleted } from '../services/dashboardSync';
 import DeepScanProgress from './DeepScanProgress';
 import RepoTreeView from './RepoTreeView';
 import FolderDropZone from './FolderDropZone';
@@ -266,7 +267,7 @@ export default function UserGitHubWorkspace({
     try {
       const config = await lunarApi.getGitHubConfig();
       if (!config.configured) {
-        throw new Error('GitHub OAuth chưa được cấu hình. Hãy thêm LUNAR_GITHUB_CLIENT_ID, LUNAR_GITHUB_CLIENT_SECRET và LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY.');
+        throw new Error('Kết nối GitHub hiện chưa được bật trên máy chủ Lunar. Vui lòng liên hệ quản trị viên.');
       }
       if (config.authFlow === 'device' && onOpenGitHubAuth) {
         onOpenGitHubAuth();
@@ -297,6 +298,7 @@ export default function UserGitHubWorkspace({
       setScanProgress(35);
       setScanStage('Đang tải cây thư mục GitHub trong giới hạn an toàn…');
       const result = await lunarApi.deepScanRepository({ repository: repository.fullName });
+      notifyScanCompleted(result);
       setScanProgress(90);
       setScanStage('Đang lưu findings và lịch sử quét…');
       setScanFiles(result.files || []);

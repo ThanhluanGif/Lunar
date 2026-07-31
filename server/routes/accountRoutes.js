@@ -318,4 +318,35 @@ router.get('/scan-history', verifyToken, async (req, res) => {
   return res.json({ success: true, scans: result.rows });
 });
 
+router.delete('/scan-history', verifyToken, async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
+  const userId = req.user.id;
+  try {
+    await pool.query('BEGIN');
+    await pool.query(
+      `DELETE FROM vulnerabilities
+       WHERE scan_id IN (SELECT id FROM scans WHERE user_id = $1)`,
+      [userId]
+    );
+    const result = await pool.query(
+      'DELETE FROM scans WHERE user_id = $1',
+      [userId]
+    );
+    await pool.query(
+      'UPDATE users SET daily_scans_used = 0 WHERE id = $1',
+      [userId]
+    );
+    await pool.query('COMMIT');
+    return res.json({
+      success: true,
+      message: `Đã xóa ${result.rowCount} lượt quét cũ và khôi phục dữ liệu dashboard sạch.`
+    });
+  } catch (error) {
+    await pool.query('ROLLBACK');
+    req.log?.error('Clear scan history failed.', error, 500);
+    return res.status(500).json({ success: false, error: 'Không thể xóa lịch sử quét cũ.' });
+  }
+});
+
 module.exports = router;

@@ -12,7 +12,9 @@ export default defineConfig(({ mode }) => {
       host: true,
       proxy: {
         '/api': {
-          target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:5050',
+          // Keep the development proxy aligned with server/index.js and .env.example.
+          // Port 5050 is only the Docker host port; the local Node server uses 5000.
+          target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:5000',
           changeOrigin: true,
           secure: false
         }

@@ -4,7 +4,7 @@ import {
   CheckCircle2, XCircle, Clock, ChevronDown, Bell, Settings, Filter, 
   ArrowUpRight, BarChart3, PieChart, Layers, GitPullRequest, GitFork, 
   FolderGit2, ShieldAlert, Cpu, Lock, Sliders, ExternalLink, HelpCircle, 
-  ArrowLeft, RefreshCw, Zap, User, Database, CreditCard
+  ArrowLeft, RefreshCw, Zap, User, Database, CreditCard, RotateCcw, Trash2
 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
 import {
@@ -26,6 +26,8 @@ export default function LunarDashboard({
   const [selectedRepoFilter, setSelectedRepoFilter] = useState('ALL');
   const [dashboard, setDashboard] = useState(null);
   const [loadError, setLoadError] = useState('');
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
+  const [actionNotice, setActionNotice] = useState('');
   const requestGateRef = useRef(createLatestRequestGate());
   const userId = currentUser?.id || null;
 
@@ -47,6 +49,24 @@ export default function LunarDashboard({
       }
     }
   }, [userId]);
+
+  const handleClearScanHistory = async () => {
+    if (!window.confirm('Xác nhận xóa toàn bộ dữ liệu lịch sử quét cũ trong dashboard của bạn?')) {
+      return;
+    }
+    setIsClearingHistory(true);
+    try {
+      const res = await lunarApi.clearScanHistory();
+      await loadDashboard();
+      setActionNotice(res.message || 'Đã xóa dữ liệu lịch sử quét cũ thành công.');
+      setTimeout(() => setActionNotice(''), 4000);
+    } catch (err) {
+      setActionNotice(`Lỗi: ${err.message}`);
+      setTimeout(() => setActionNotice(''), 4000);
+    } finally {
+      setIsClearingHistory(false);
+    }
+  };
 
   useEffect(() => {
     requestGateRef.current.invalidate();
@@ -386,6 +406,29 @@ export default function LunarDashboard({
               </span>
             </div>
 
+            {/* Clear Old Data Button */}
+            <button
+              onClick={handleClearScanHistory}
+              disabled={isClearingHistory}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#fca5a5',
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+              title="Xóa toàn bộ dữ liệu lượt quét cũ trong dashboard của bạn"
+            >
+              <RotateCcw size={14} className={isClearingHistory ? "animate-spin" : ""} />
+              {isClearingHistory ? 'Đang xóa...' : 'Xóa Dữ Liệu Cũ'}
+            </button>
+
             {/* Notification Bell */}
             <div style={{
               position: 'relative',
@@ -429,6 +472,22 @@ export default function LunarDashboard({
             </div>
           </div>
         </header>
+
+        {actionNotice && (
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.15)',
+            borderBottom: '1px solid rgba(16, 185, 129, 0.3)',
+            color: '#34d399',
+            padding: '10px 28px',
+            fontSize: '0.85rem',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <CheckCircle2 size={16} /> {actionNotice}
+          </div>
+        )}
 
         {/* Scrollable Dashboard Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '28px' }}>

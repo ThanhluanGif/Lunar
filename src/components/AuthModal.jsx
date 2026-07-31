@@ -104,7 +104,9 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
     try {
       const config = await lunarApi.getGitHubConfig();
       if (!config.configured) {
-        throw new Error('GitHub OAuth chưa được cấu hình. Hãy đặt các biến LUNAR_GITHUB_* trong file .env.');
+        setLoading(false);
+        setErrorMsg('Tích hợp GitHub OAuth chưa được cấu hình Client ID/Secret trên môi trường máy chủ này. Vui lòng sử dụng Đăng nhập Email bên dưới.');
+        return;
       }
       if (config.authFlow === 'device') {
         const authorization = await lunarApi.startGitHubDeviceAuth();
@@ -118,7 +120,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
       window.location.assign(lunarApi.getGitHubOAuthStartUrl());
     } catch (error) {
       setLoading(false);
-      setErrorMsg(error.message || 'Không thể khởi tạo kết nối GitHub.');
+      setErrorMsg(error.message || 'Không thể kết nối máy chủ GitHub OAuth. Vui lòng sử dụng Đăng nhập Email bên dưới.');
     }
   };
 
@@ -250,7 +252,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
 
         {errorMsg && (
           <div style={{
-            padding: '10px 14px',
+            padding: '12px 14px',
             background: 'rgba(220, 38, 38, 0.15)',
             border: '1px solid rgba(220, 38, 38, 0.3)',
             borderRadius: 'var(--radius-md)',
@@ -258,11 +260,36 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
             fontSize: '0.82rem',
             marginBottom: '16px',
             display: 'flex',
-            alignItems: 'center',
+            flexDirection: 'column',
             gap: '8px'
           }}>
-            <AlertCircle size={16} />
-            <span>{errorMsg}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertCircle size={18} style={{ flexShrink: 0 }} />
+              <span>{errorMsg}</span>
+            </div>
+            {activeTab === 'github' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('email');
+                  setErrorMsg('');
+                }}
+                style={{
+                  alignSelf: 'flex-start',
+                  background: 'rgba(255,255,255,0.12)',
+                  border: '1px solid rgba(248, 113, 113, 0.4)',
+                  color: '#ffffff',
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  fontSize: '0.78rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  marginTop: '2px'
+                }}
+              >
+                👉 Chuyển sang Đăng Nhập bằng Email / Nickname
+              </button>
+            )}
           </div>
         )}
         {noticeMsg && (
