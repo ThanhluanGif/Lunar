@@ -10,6 +10,7 @@ const { PURPOSES, issueAccountToken } = require('../services/accountTokenService
 const { createCookieOptions } = require('../services/cookiePolicy');
 const { serializeUser, tokenPayload } = require('../services/userSerializer');
 const { recordSuccessfulLogin } = require('../services/loginActivityService');
+const { addOrUpdateRealUser, recordRealLoginEvent } = require('../services/userStore');
 
 const router = express.Router();
 
@@ -149,6 +150,14 @@ router.post('/register', authRateLimiter, authIdentifierRateLimiter, async (req,
     };
 
     usersDb.push(newUser);
+    addOrUpdateRealUser(newUser);
+    recordRealLoginEvent({
+      userId: newUser.id,
+      authMethod: 'PASSWORD',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId
+    });
 
     const token = jwt.sign(
       tokenPayload(newUser),
@@ -252,6 +261,15 @@ router.post('/login', authRateLimiter, authIdentifierRateLimiter, async (req, re
     if (user.status === 'SUSPENDED') {
       return res.status(403).json({ success: false, error: 'Tài khoản đã bị tạm khóa.' });
     }
+
+    addOrUpdateRealUser(user);
+    recordRealLoginEvent({
+      userId: user.id,
+      authMethod: 'PASSWORD',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId: req.correlationId
+    });
 
     const token = jwt.sign(
       tokenPayload(user),

@@ -1,6 +1,13 @@
 const express = require('express');
 const { verifyToken, requireRole } = require('../middleware/auth');
 const { getPool } = require('../db/connection');
+const {
+  realUsersStore,
+  realPaymentsStore,
+  realAuditLogsStore,
+  realLoginEventsStore,
+  findUserById
+} = require('../services/userStore');
 
 const router = express.Router();
 router.use(verifyToken, requireRole('ADMIN'));
@@ -9,80 +16,6 @@ const VALID_TIERS = new Set(['FREE', 'PRO', 'ENTERPRISE']);
 const VALID_ROLES = new Set(['USER', 'ADMIN']);
 const VALID_USER_STATUSES = new Set(['ACTIVE', 'SUSPENDED']);
 const VALID_PAYMENT_STATUSES = new Set(['SUCCESS', 'FAILED', 'EXPIRED']);
-
-// Resilient In-Memory Fallback State for Admin Operations when PostgreSQL is unavailable
-const fallbackUsersStore = [
-  {
-    id: '00000000-0000-4000-a000-000000000001',
-    nickname: '@admin',
-    name: 'System Root Administrator',
-    email: 'admin@lunar.dev',
-    tier: 'ENTERPRISE',
-    role: 'ADMIN',
-    status: 'ACTIVE',
-    daily_scans_used: 0,
-    last_scan_reset_at: new Date().toISOString(),
-    last_login_at: new Date().toISOString(),
-    created_at: '2026-01-01T00:00:00.000Z',
-    updated_at: new Date().toISOString()
-  },
-  {
-    id: '00000000-0000-4000-a000-000000000002',
-    nickname: '@nluan5517',
-    name: 'Nguyễn Thanh Luận',
-    email: 'nluan5517@gmail.com',
-    tier: 'PRO',
-    role: 'USER',
-    status: 'ACTIVE',
-    daily_scans_used: 3,
-    last_scan_reset_at: new Date().toISOString(),
-    last_login_at: new Date(Date.now() - 1800000).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
-    updated_at: new Date().toISOString()
-  },
-  {
-    id: '00000000-0000-4000-a000-000000000003',
-    nickname: '@dev_guest',
-    name: 'Tài khoản Khách Hàng',
-    email: 'guest@lunar.dev',
-    tier: 'FREE',
-    role: 'USER',
-    status: 'ACTIVE',
-    daily_scans_used: 1,
-    last_scan_reset_at: new Date().toISOString(),
-    last_login_at: new Date(Date.now() - 3600000).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-    updated_at: new Date().toISOString()
-  }
-];
-
-const fallbackPaymentsStore = [
-  {
-    orderCode: 'LUNAR-PRO-98421',
-    amount: 1990000,
-    currency: 'VND',
-    tierTarget: 'PRO',
-    paymentMethod: 'VietQR',
-    status: 'SUCCESS',
-    createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-    userId: '00000000-0000-4000-a000-000000000002',
-    userName: 'Nguyễn Thanh Luận',
-    userEmail: 'nluan5517@gmail.com'
-  }
-];
-
-const fallbackAuditLogsStore = [
-  {
-    id: 1,
-    actionType: 'UPDATE_TIER',
-    targetType: 'USER',
-    targetId: '00000000-0000-4000-a000-000000000002',
-    reason: 'Cấp quyền gói PRO chính thức qua VietQR',
-    createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-    actorEmail: 'admin@lunar.dev'
-  }
-];
 
 function requireReason(req, res) {
   const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
@@ -120,7 +53,7 @@ async function writeAudit(client, req, {
   afterState
 }) {
   if (!client) {
-    fallbackAuditLogsStore.unshift({
+    realAuditLogsStore.unshift({
       id: Date.now(),
       actionType,
       targetType,
@@ -157,44 +90,50 @@ async function writeAudit(client, req, {
 router.get('/overview', async (req, res) => {
   const pool = getPool();
   if (!pool) {
-    // Resilient fallback system response when PostgreSQL pool is not connected
-    const totalUsers = fallbackUsersStore.length;
-    const activeUsers = fallbackUsersStore.filter((u) => u.status === 'ACTIVE').length;
-    const admins = fallbackUsersStore.filter((u) => u.role === 'ADMIN').length;
-    const revenueCurrentMonth = fallbackPaymentsStore
+    // Return strictly real runtime data from realUsersStore and real logs (no mock data)
+    const activeUsersList = realUsersStore.filter((u) => u.status === 'ACTIVE');
+    const adminCount = realUsersStore.filter((u) => u.role === 'ADMIN').length;
+    const currentMonthRevenue = realPaymentsStore
       .filter((p) => p.status === 'SUCCESS')
-      .reduce((sum, p) => sum + Number(p.amount), 0);
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayLogins = realLoginEventsStore.filter((e) => e.created_at?.startsWith(todayStr)).length;
+
+    const freeCount = realUsersStore.filter((u) => u.tier === 'FREE').length;
+    const proCount = realUsersStore.filter((u) => u.tier === 'PRO').length;
+    const entCount = realUsersStore.filter((u) => u.tier === 'ENTERPRISE').length;
 
     return res.json({
       success: true,
-      source: 'resilient_system_fallback',
+      source: 'real_runtime_sync',
       scope: 'SYSTEM',
       generatedAt: new Date().toISOString(),
       metrics: {
-        totalUsers,
-        activeUsers,
-        admins,
-        newUsers30d: totalUsers,
-        loginEventsToday: Math.max(1, activeUsers),
-        totalProjects: 12,
-        totalScans: 48,
-        scans30d: 36,
-        openFindings: 3,
-        patchedFindings: 45,
-        revenueCurrentMonth: revenueCurrentMonth || 1990000,
-        revenuePreviousMonth: 990000,
-        revenueGrowthPercent: 101.01
+        totalUsers: realUsersStore.length,
+        activeUsers: activeUsersList.length,
+        admins: adminCount,
+        newUsers30d: realUsersStore.length,
+        loginEventsToday: todayLogins,
+        totalProjects: 0,
+        totalScans: 0,
+        scans30d: 0,
+        openFindings: 0,
+        patchedFindings: 0,
+        revenueCurrentMonth: currentMonthRevenue,
+        revenuePreviousMonth: 0,
+        revenueGrowthPercent: null
       },
       usersByTier: [
-        { tier: 'FREE', count: fallbackUsersStore.filter((u) => u.tier === 'FREE').length },
-        { tier: 'PRO', count: fallbackUsersStore.filter((u) => u.tier === 'PRO').length },
-        { tier: 'ENTERPRISE', count: fallbackUsersStore.filter((u) => u.tier === 'ENTERPRISE').length }
+        { tier: 'FREE', count: freeCount },
+        { tier: 'PRO', count: proCount },
+        { tier: 'ENTERPRISE', count: entCount }
       ],
       paymentsByStatus: [
-        { status: 'SUCCESS', count: 1, amount: 1990000 }
+        { status: 'SUCCESS', count: realPaymentsStore.filter((p) => p.status === 'SUCCESS').length, amount: currentMonthRevenue }
       ],
-      recentPayments: fallbackPaymentsStore,
-      recentAdminActions: fallbackAuditLogsStore
+      recentPayments: realPaymentsStore,
+      recentAdminActions: realAuditLogsStore
     });
   }
 
@@ -314,10 +253,10 @@ router.get('/users', async (req, res) => {
   const status = VALID_USER_STATUSES.has(req.query.status) ? req.query.status : null;
 
   if (!pool) {
-    let filtered = [...fallbackUsersStore];
+    let filtered = [...realUsersStore];
     if (search) {
       filtered = filtered.filter(
-        (u) => u.name.toLowerCase().includes(search) || u.email.toLowerCase().includes(search) || u.nickname.toLowerCase().includes(search)
+        (u) => u.name?.toLowerCase().includes(search) || u.email?.toLowerCase().includes(search) || u.nickname?.toLowerCase().includes(search)
       );
     }
     if (tier) filtered = filtered.filter((u) => u.tier === tier);
@@ -326,7 +265,7 @@ router.get('/users', async (req, res) => {
 
     return res.json({
       success: true,
-      source: 'resilient_system_fallback',
+      source: 'real_runtime_sync',
       page: 1,
       limit: 100,
       total: filtered.length,
@@ -388,16 +327,16 @@ router.patch('/users/:userId', async (req, res) => {
 
   const pool = getPool();
   if (!pool) {
-    const userIndex = fallbackUsersStore.findIndex((u) => String(u.id) === String(req.params.userId));
-    if (userIndex === -1) {
+    const user = findUserById(req.params.userId);
+    if (!user) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy người dùng.' });
     }
-    const beforeState = JSON.stringify(sanitizeUser(fallbackUsersStore[userIndex]));
-    if (tier) fallbackUsersStore[userIndex].tier = tier;
-    if (role) fallbackUsersStore[userIndex].role = role;
-    if (status) fallbackUsersStore[userIndex].status = status;
-    fallbackUsersStore[userIndex].updated_at = new Date().toISOString();
-    const afterState = JSON.stringify(sanitizeUser(fallbackUsersStore[userIndex]));
+    const beforeState = JSON.stringify(sanitizeUser(user));
+    if (tier) user.tier = tier;
+    if (role) user.role = role;
+    if (status) user.status = status;
+    user.updated_at = new Date().toISOString();
+    const afterState = JSON.stringify(sanitizeUser(user));
 
     await writeAudit(null, req, {
       actionType: tier ? 'UPDATE_TIER' : role ? 'UPDATE_ROLE' : 'UPDATE_STATUS',
@@ -412,7 +351,7 @@ router.patch('/users/:userId', async (req, res) => {
     return res.json({
       success: true,
       message: 'Cập nhật tài khoản người dùng thành công.',
-      user: sanitizeUser(fallbackUsersStore[userIndex])
+      user: sanitizeUser(user)
     });
   }
 
@@ -471,16 +410,16 @@ router.post('/users/:userId/reset-quota', async (req, res) => {
 
   const pool = getPool();
   if (!pool) {
-    const userIndex = fallbackUsersStore.findIndex((u) => String(u.id) === String(req.params.userId));
-    if (userIndex === -1) {
+    const user = findUserById(req.params.userId);
+    if (!user) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy người dùng.' });
     }
-    fallbackUsersStore[userIndex].daily_scans_used = 0;
-    fallbackUsersStore[userIndex].last_scan_reset_at = new Date().toISOString();
+    user.daily_scans_used = 0;
+    user.last_scan_reset_at = new Date().toISOString();
     return res.json({
       success: true,
       message: 'Đã reset hạn ngạch lượt quét hàng ngày thành công.',
-      user: sanitizeUser(fallbackUsersStore[userIndex])
+      user: sanitizeUser(user)
     });
   }
 
@@ -534,8 +473,8 @@ router.get('/payments', async (req, res) => {
   if (!pool) {
     return res.json({
       success: true,
-      source: 'resilient_system_fallback',
-      payments: fallbackPaymentsStore
+      source: 'real_runtime_sync',
+      payments: realPaymentsStore
     });
   }
 
@@ -581,17 +520,17 @@ router.patch('/payments/:orderCode', async (req, res) => {
 
   const pool = getPool();
   if (!pool) {
-    const paymentIndex = fallbackPaymentsStore.findIndex((p) => p.orderCode === req.params.orderCode);
+    const paymentIndex = realPaymentsStore.findIndex((p) => p.orderCode === req.params.orderCode);
     if (paymentIndex === -1) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy giao dịch.' });
     }
-    fallbackPaymentsStore[paymentIndex].status = status;
-    fallbackPaymentsStore[paymentIndex].updatedAt = new Date().toISOString();
+    realPaymentsStore[paymentIndex].status = status;
+    realPaymentsStore[paymentIndex].updatedAt = new Date().toISOString();
 
     return res.json({
       success: true,
       message: 'Cập nhật trạng thái thanh toán thành công.',
-      payment: fallbackPaymentsStore[paymentIndex]
+      payment: realPaymentsStore[paymentIndex]
     });
   }
 
@@ -657,8 +596,8 @@ router.get('/audit-log', async (req, res) => {
   if (!pool) {
     return res.json({
       success: true,
-      source: 'resilient_system_fallback',
-      logs: fallbackAuditLogsStore
+      source: 'real_runtime_sync',
+      logs: realAuditLogsStore
     });
   }
 
@@ -696,45 +635,55 @@ router.get('/analytics', async (req, res) => {
 
   if (!pool) {
     const now = new Date();
+    // Compute strict real daily counts from realUsersStore & realLoginEventsStore (NO mock random numbers)
     const dailyActivity = Array.from({ length: days }).map((_, i) => {
-      const date = new Date(now.getTime() - (days - 1 - i) * 86400000).toISOString().split('T')[0];
+      const dateStr = new Date(now.getTime() - (days - 1 - i) * 86400000).toISOString().split('T')[0];
+      const newUsers = realUsersStore.filter((u) => u.created_at?.startsWith(dateStr)).length;
+      const loginCount = realLoginEventsStore.filter((e) => e.created_at?.startsWith(dateStr)).length;
       return {
-        date,
-        newUsers: Math.floor(Math.random() * 3) + (i % 2),
-        loginCount: Math.floor(Math.random() * 8) + 4,
-        scansCount: Math.floor(Math.random() * 12) + 5,
-        vulnsFound: Math.floor(Math.random() * 6) + 1,
-        vulnsPatched: Math.floor(Math.random() * 5) + 1
+        date: dateStr,
+        newUsers,
+        loginCount,
+        scansCount: 0,
+        vulnsFound: 0,
+        vulnsPatched: 0
       };
     });
 
-    const recentLogins = fallbackUsersStore.map((u) => ({
-      loginEventId: `event-${u.id}`,
-      id: u.id,
-      nickname: u.nickname,
-      name: u.name,
-      email: u.email,
-      tier: u.tier,
-      role: u.role,
-      status: u.status,
-      dailyScansUsed: u.daily_scans_used,
-      authMethod: 'PASSWORD',
-      loginAt: u.last_login_at,
-      createdAt: u.created_at
-    }));
+    const recentLogins = realLoginEventsStore.map((e) => {
+      const u = findUserById(e.user_id) || {};
+      return {
+        loginEventId: e.id,
+        id: e.user_id,
+        nickname: u.nickname || '@user',
+        name: u.name || 'User',
+        email: u.email || 'user@lunar.dev',
+        tier: u.tier || 'FREE',
+        role: u.role || 'USER',
+        status: u.status || 'ACTIVE',
+        dailyScansUsed: u.daily_scans_used || 0,
+        authMethod: e.auth_method || 'PASSWORD',
+        loginAt: e.created_at,
+        createdAt: u.created_at || e.created_at
+      };
+    });
+
+    const freeCount = realUsersStore.filter((u) => u.tier === 'FREE').length;
+    const proCount = realUsersStore.filter((u) => u.tier === 'PRO').length;
+    const entCount = realUsersStore.filter((u) => u.tier === 'ENTERPRISE').length;
 
     return res.json({
       success: true,
-      source: 'resilient_system_fallback',
+      source: 'real_runtime_sync',
       scope: 'SYSTEM',
       generatedAt: new Date().toISOString(),
       rangeDays: days,
       dailyActivity,
       recentLogins,
       tierBreakdown: [
-        { tier: 'FREE', count: fallbackUsersStore.filter((u) => u.tier === 'FREE').length },
-        { tier: 'PRO', count: fallbackUsersStore.filter((u) => u.tier === 'PRO').length },
-        { tier: 'ENTERPRISE', count: fallbackUsersStore.filter((u) => u.tier === 'ENTERPRISE').length }
+        { tier: 'FREE', count: freeCount },
+        { tier: 'PRO', count: proCount },
+        { tier: 'ENTERPRISE', count: entCount }
       ]
     });
   }
