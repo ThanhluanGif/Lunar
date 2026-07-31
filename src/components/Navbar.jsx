@@ -133,43 +133,47 @@ export default function Navbar({
             <Layers size={14} /> Landing
           </button>
 
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '8px',
-              fontSize: '0.82rem',
-              fontWeight: '600',
-              background: activeTab === 'dashboard' ? 'rgba(124, 58, 237, 0.25)' : 'transparent',
-              color: activeTab === 'dashboard' ? '#c084fc' : '#7880a0',
-              border: activeTab === 'dashboard' ? '1px solid rgba(124, 58, 237, 0.4)' : 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <Sparkles size={14} color="#a78bfa" /> Dashboard
-          </button>
+          {currentUser?.role !== 'ADMIN' && (
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                fontWeight: '600',
+                background: activeTab === 'dashboard' ? 'rgba(124, 58, 237, 0.25)' : 'transparent',
+                color: activeTab === 'dashboard' ? '#c084fc' : '#7880a0',
+                border: activeTab === 'dashboard' ? '1px solid rgba(124, 58, 237, 0.4)' : 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Sparkles size={14} color="#a78bfa" /> Dashboard
+            </button>
+          )}
 
-          {currentUser?.role === 'ADMIN' && <button
-            onClick={() => setActiveTab('admin')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '8px',
-              fontSize: '0.82rem',
-              fontWeight: '600',
-              background: activeTab === 'admin' ? 'rgba(157, 110, 245, 0.2)' : 'transparent',
-              color: activeTab === 'admin' ? '#c084fc' : '#7880a0',
-              border: activeTab === 'admin' ? '1px solid rgba(157, 110, 245, 0.3)' : 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <Crown size={14} color="#f59e0b" /> Admin 👑
-          </button>}
+          {currentUser?.role === 'ADMIN' && (
+            <button
+              onClick={() => setActiveTab('admin')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                fontWeight: '600',
+                background: activeTab === 'admin' ? 'rgba(157, 110, 245, 0.2)' : 'transparent',
+                color: activeTab === 'admin' ? '#c084fc' : '#7880a0',
+                border: activeTab === 'admin' ? '1px solid rgba(157, 110, 245, 0.3)' : 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Crown size={14} color="#f59e0b" /> Admin 👑
+            </button>
+          )}
         </nav>
 
         {/* Right Action Toolbar */}

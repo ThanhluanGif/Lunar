@@ -135,10 +135,15 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Strict Security Protection: Non-admin users can never access or view activeTab === 'admin'
+  // Strict Security & Business Rule Protection:
+  // 1. Non-admin users can never access or view activeTab === 'admin'
+  // 2. Admin users only have Landing & Admin tabs (activeTab === 'dashboard' redirects to 'admin')
   useEffect(() => {
     if (activeTab === 'admin' && currentUser?.role !== 'ADMIN') {
       setActiveTab('explore');
+    }
+    if (activeTab === 'dashboard' && currentUser?.role === 'ADMIN') {
+      setActiveTab('admin');
     }
   }, [activeTab, currentUser]);
 
@@ -387,7 +392,7 @@ export default function App() {
               onOpenGitBot={() => setIsGitBotOpen(true)}
               onSelectDemoProject={handleSelectProject}
               onOpenPricing={handleOpenPricing}
-              onOpenDashboard={() => setActiveTab('dashboard')}
+              onOpenDashboard={() => setActiveTab(currentUser?.role === 'ADMIN' ? 'admin' : 'dashboard')}
               quickScanSection={(
                 <UserGitHubWorkspace
                   currentUser={currentUser}
@@ -401,8 +406,8 @@ export default function App() {
           </>
         )}
 
-        {/* Authenticated account dashboard */}
-        {activeTab === 'dashboard' && (
+        {/* Authenticated account dashboard (non-admin only) */}
+        {activeTab === 'dashboard' && currentUser?.role !== 'ADMIN' && (
           <div style={{ margin: '-0px -24px -60px -24px' }}>
             <LunarDashboard
               key={`account-dashboard:${currentUser?.id || 'guest'}`}
