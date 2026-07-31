@@ -467,6 +467,57 @@ router.post('/users/:userId/reset-quota', async (req, res) => {
   }
 });
 
+// 4b. POST /api/v1/admin/users/cleanup-qa
+router.post('/users/cleanup-qa', async (req, res) => {
+  const reason = requireReason(req, res);
+  if (!reason) return;
+
+  const pool = getPool();
+  if (!pool) {
+    const originalCount = realUsersStore.length;
+    for (let i = realUsersStore.length - 1; i >= 0; i--) {
+      const email = realUsersStore[i].email || '';
+      if (email.startsWith('qa-') || email.startsWith('browser-') || email.endsWith('@example.com')) {
+        realUsersStore.splice(i, 1);
+      }
+    }
+    const purgedCount = originalCount - realUsersStore.length;
+    return res.json({
+      success: true,
+      message: `Đã dọn dẹp ${purgedCount} tài khoản QA test tự động khỏi bộ nhớ.`,
+      purgedCount
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM user_login_events
+       WHERE user_id IN (
+         SELECT id FROM users
+         WHERE email LIKE 'qa-%' OR email LIKE 'browser-%' OR email LIKE '%@example.com'
+       )`
+    );
+    const deleteUsersRes = await client.query(
+      `DELETE FROM users
+       WHERE email LIKE 'qa-%' OR email LIKE 'browser-%' OR email LIKE '%@example.com'`
+    );
+    await client.query('COMMIT');
+    return res.json({
+      success: true,
+      message: `Đã dọn dẹp ${deleteUsersRes.rowCount} tài khoản QA test khỏi PostgreSQL.`,
+      purgedCount: deleteUsersRes.rowCount
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    req.log?.error('Admin QA cleanup failed.', error, 500);
+    return res.status(500).json({ success: false, error: 'Không thể dọn dẹp tài khoản QA test.' });
+  } finally {
+    client.release();
+  }
+});
+
 // 5. GET /api/v1/admin/payments
 router.get('/payments', async (req, res) => {
   const pool = getPool();

@@ -188,6 +188,10 @@ export const lunarApi = {
     method: 'POST',
     body: JSON.stringify({ reason })
   }),
+  cleanupQaUsers: (reason) => request('/admin/users/cleanup-qa', {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason || 'Dọn dẹp tài khoản test tự động QA.' })
+  }),
   updateAdminPayment: (orderCode, status, reason) => request(`/admin/payments/${orderCode}`, {
     method: 'PATCH',
     body: JSON.stringify({ status, reason })

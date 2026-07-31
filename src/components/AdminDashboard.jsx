@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ShieldCheck, Users, CreditCard, DollarSign, TrendingUp, Sparkles,
   Search, Filter, CheckCircle2, Clock, XCircle, RefreshCw, Send, Lock, 
-  Crown, ArrowUpRight, Zap, AlertTriangle, Eye, UserCheck, ShieldAlert, Inbox, PlusCircle, BarChart3, Activity
+  Crown, ArrowUpRight, Zap, AlertTriangle, Eye, UserCheck, ShieldAlert, Inbox, PlusCircle, BarChart3, Activity, RotateCcw, Trash2
 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
 import {
@@ -199,13 +199,50 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
     }
   };
 
-  const handleResetQuota = async (userId) => {
+  const [resettingQuotaIds, setResettingQuotaIds] = useState(new Set());
+  const [isCleaningQa, setIsCleaningQa] = useState(false);
+
+  const handleResetQuota = async (userId, targetName) => {
+    const displayName = targetName || 'người dùng này';
+    if (!window.confirm(`Xác nhận reset hạn ngạch lượt quét hàng ngày của ${displayName} về 0 lượt?`)) {
+      return;
+    }
+    setResettingQuotaIds((prev) => new Set(prev).add(userId));
     try {
-      await lunarApi.resetAdminQuota(userId, 'Reset quota lượt quét từ Admin Dashboard.');
-      await loadAdminData();
-      showNotice(`Đã khôi phục lượt quét cho người dùng.`);
+      await lunarApi.resetAdminQuota(userId, `Admin reset quota lượt quét cho ${displayName}.`);
+      setUsers((prevUsers) => prevUsers.map((u) => u.id === userId ? { ...u, dailyScans: 0 } : u));
+      if (analytics?.recentLogins) {
+        setAnalytics((prev) => prev ? {
+          ...prev,
+          recentLogins: prev.recentLogins.map((u) => u.id === userId ? { ...u, dailyScansUsed: 0 } : u)
+        } : prev);
+      }
+      await loadAdminData({ background: true });
+      showNotice(`✓ Đã khôi phục hạn ngạch lượt quét về 0 cho ${displayName}.`);
     } catch (error) {
-      showNotice(`Lỗi reset quota: ${error.message}`);
+      showNotice(`❌ Lỗi reset quota: ${error.message}`);
+    } finally {
+      setResettingQuotaIds((prev) => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+    }
+  };
+
+  const handleCleanupQaUsers = async () => {
+    if (!window.confirm('Xác nhận dọn dẹp các tài khoản test tự động (qa-*, browser-*, *@example.com) khỏi hệ thống?')) {
+      return;
+    }
+    setIsCleaningQa(true);
+    try {
+      const res = await lunarApi.cleanupQaUsers('Admin dọn dẹp dữ liệu test QA.');
+      await loadAdminData();
+      showNotice(`✓ ${res.message || 'Đã dọn dẹp thành công.'}`);
+    } catch (error) {
+      showNotice(`❌ Lỗi dọn dẹp: ${error.message}`);
+    } finally {
+      setIsCleaningQa(false);
     }
   };
 
@@ -548,8 +585,15 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                               + Enterprise
                             </button>
                           )}
-                          <button onClick={() => handleResetQuota(u.id)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
-                            Reset Quota
+                          <button
+                            onClick={() => handleResetQuota(u.id, u.name || u.nickname || u.email)}
+                            disabled={resettingQuotaIds.has(u.id)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: '0.72rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            title="Khôi phục lượt quét hàng ngày về 0"
+                          >
+                            <RotateCcw size={12} className={resettingQuotaIds.has(u.id) ? "animate-spin" : ""} />
+                            {resettingQuotaIds.has(u.id) ? 'Resetting...' : 'Reset Quota'}
                           </button>
                         </div>
                       </td>
@@ -593,11 +637,21 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
           )}
 
           {activeSubTab === 'users' && (
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <button onClick={() => setUserTierFilter('ALL')} className={`btn btn-sm ${userTierFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`}>Tất Cả</button>
               <button onClick={() => setUserTierFilter('FREE')} className={`btn btn-sm ${userTierFilter === 'FREE' ? 'btn-yellow' : 'btn-secondary'}`}>Free</button>
               <button onClick={() => setUserTierFilter('PRO')} className={`btn btn-sm ${userTierFilter === 'PRO' ? 'btn-purple' : 'btn-secondary'}`}>Pro</button>
               <button onClick={() => setUserTierFilter('ENTERPRISE')} className={`btn btn-sm ${userTierFilter === 'ENTERPRISE' ? 'btn-cyan' : 'btn-secondary'}`}>Enterprise</button>
+              <button
+                onClick={handleCleanupQaUsers}
+                disabled={isCleaningQa}
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: '0.78rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.3)', marginLeft: '8px' }}
+                title="Dọn dẹp các tài khoản test tự động QA (qa-*, browser-*, *@example.com) khỏi database"
+              >
+                <Trash2 size={14} />
+                {isCleaningQa ? 'Đang dọn dẹp...' : 'Dọn dẹp tài khoản QA Test'}
+              </button>
             </div>
           )}
         </div>
@@ -669,11 +723,14 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                       </select>
 
                       <button
-                        onClick={() => handleResetQuota(user.id)}
+                        onClick={() => handleResetQuota(user.id, user.name || user.email)}
+                        disabled={resettingQuotaIds.has(user.id)}
                         className="btn btn-secondary btn-sm"
-                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                        style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        title="Khôi phục lượt quét hàng ngày về 0"
                       >
-                        Reset Quota
+                        <RotateCcw size={12} className={resettingQuotaIds.has(user.id) ? "animate-spin" : ""} />
+                        {resettingQuotaIds.has(user.id) ? 'Resetting...' : 'Reset Quota'}
                       </button>
 
                       {user.status === 'ACTIVE' ? (
