@@ -72,11 +72,17 @@ CREATE TABLE IF NOT EXISTS scans (
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     score INT NOT NULL,
     issues_count INT DEFAULT 0,
+    lines_scanned INT DEFAULT 0,
+    duration_ms INT DEFAULT 0,
     ai_model_used VARCHAR(50) DEFAULT 'lunar-ai-v3',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE scans ADD COLUMN IF NOT EXISTS lines_scanned INT DEFAULT 0;
+ALTER TABLE scans ADD COLUMN IF NOT EXISTS duration_ms INT DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id);
+
 
 -- 4. Vulnerabilities Table
 CREATE TABLE IF NOT EXISTS vulnerabilities (
@@ -276,3 +282,18 @@ ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS sequence_id BIGSERIAL;
 
 CREATE INDEX IF NOT EXISTS idx_assistant_messages_conversation_created
     ON assistant_messages(conversation_id, sequence_id ASC);
+
+-- 15. Real User Experiences and Reviews
+CREATE TABLE IF NOT EXISTS user_reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    user_name VARCHAR(255) NOT NULL,
+    user_role VARCHAR(255) DEFAULT 'Developer',
+    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT NOT NULL,
+    is_approved BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_reviews_approved_created
+    ON user_reviews(is_approved, created_at DESC);

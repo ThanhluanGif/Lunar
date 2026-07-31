@@ -1,14 +1,64 @@
-const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+
+const AUTH_WINDOW_MS = 60 * 1000;
+
+function configuredInstanceCount(env = process.env) {
+  const value = Number.parseInt(env.WEB_CONCURRENCY || env.LUNAR_INSTANCE_COUNT || '1', 10);
+  return Number.isInteger(value) && value > 0 ? value : 1;
+}
+
+function validateRateLimitDeployment(env = process.env) {
+  if (env.NODE_ENV === 'production' && configuredInstanceCount(env) > 1) {
+    throw new Error(
+      'Multi-instance production requires a shared rate-limit store; run one instance until one is configured.'
+    );
+  }
+}
+
+function normalizedAuthIdentifier(req) {
+  const candidate = req.body?.email
+    || req.body?.nickname
+    || req.body?.token
+    || req.user?.email
+    || req.user?.id
+    || '';
+  return typeof candidate === 'string'
+    ? candidate.trim().toLowerCase().slice(0, 512)
+    : '';
+}
+
+function authIdentifierKey(req) {
+  const identifier = normalizedAuthIdentifier(req);
+  if (!identifier) return `missing:${ipKeyGenerator(req.ip)}`;
+  return `identifier:${crypto.createHash('sha256').update(identifier).digest('hex')}`;
+}
+
+validateRateLimitDeployment();
 
 // 1. Auth Rate Limiter - Chống Brute-Force Password & Enumeration (Max 5 req / 1 phút)
 const authRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 phút
+  windowMs: AUTH_WINDOW_MS,
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
     error: 'TOO_MANY_REQUESTS: Quá nhiều lần thử đăng nhập/đăng ký. Vui lòng thử lại sau 1 phút.'
+  }
+});
+
+// Keep the IP and account limits separate so distributed guessing against one
+// identifier cannot bypass the normal per-IP brute-force protection.
+const authIdentifierRateLimiter = rateLimit({
+  windowMs: AUTH_WINDOW_MS,
+  max: 5,
+  keyGenerator: authIdentifierKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Quá nhiều lần thử cho thông tin đăng nhập này. Vui lòng thử lại sau 1 phút.'
   }
 });
 
@@ -20,6 +70,18 @@ const accountRecoveryRateLimiter = rateLimit({
   message: {
     success: false,
     error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu khôi phục tài khoản. Vui lòng thử lại sau.'
+  }
+});
+
+const accountRecoveryIdentifierRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: authIdentifierKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'TOO_MANY_REQUESTS: Quá nhiều yêu cầu khôi phục cho định danh này.'
   }
 });
 
@@ -138,8 +200,12 @@ const aiRateLimiter = rateLimit({
 });
 
 module.exports = {
+  AUTH_WINDOW_MS,
+  authIdentifierKey,
   authRateLimiter,
+  authIdentifierRateLimiter,
   accountRecoveryRateLimiter,
+  accountRecoveryIdentifierRateLimiter,
   accountMutationRateLimiter,
   githubAuthStartRateLimiter,
   githubAuthPollRateLimiter,
@@ -150,5 +216,8 @@ module.exports = {
   scanRateLimiter,
   deepScanRateLimiter,
   reportRateLimiter,
-  aiRateLimiter
+  aiRateLimiter,
+  configuredInstanceCount,
+  normalizedAuthIdentifier,
+  validateRateLimitDeployment
 };

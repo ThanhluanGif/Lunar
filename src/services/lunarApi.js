@@ -1,11 +1,34 @@
-const API_ROOT = '/api/v1';
+import { createApiUrl, normalizeApiBaseUrl } from './apiUrl';
+
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL, {
+  requireHttps: import.meta.env.PROD
+});
+
+function apiUrl(path) {
+  return createApiUrl(path, API_BASE_URL);
+}
+
+async function fetchApi(path, options) {
+  try {
+    return await fetch(apiUrl(path), options);
+  } catch (cause) {
+    const error = new Error(
+      `Không thể kết nối Lunar API${API_BASE_URL ? ` tại ${API_BASE_URL}` : ''}. `
+      + 'Kiểm tra VITE_API_BASE_URL, HTTPS và CORS của backend production.'
+    );
+    error.status = 502;
+    error.payload = { error: error.message };
+    error.cause = cause;
+    throw error;
+  }
+}
 
 async function readJsonResponse(response) {
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.toLowerCase().includes('application/json')) {
     const error = new Error(
-      'Không kết nối được Lunar API. Hãy chạy backend Docker ở cổng 5050 '
-      + 'hoặc cấu hình VITE_API_PROXY_TARGET.'
+      'Lunar API trả về nội dung không hợp lệ. Trong production, hãy route `/api` '
+      + 'tới backend hoặc đặt VITE_API_BASE_URL thành origin HTTPS của backend.'
     );
     error.status = 502;
     error.payload = { error: error.message };
@@ -17,8 +40,9 @@ async function readJsonResponse(response) {
 
 async function request(path, options = {}) {
   const { acceptedStatuses = [], ...fetchOptions } = options;
-  const response = await fetch(`${API_ROOT}${path}`, {
+  const response = await fetchApi(path, {
     credentials: 'include',
+    cache: 'no-store',
     ...fetchOptions,
     headers: {
       ...(fetchOptions.body ? { 'Content-Type': 'application/json' } : {}),
@@ -37,7 +61,10 @@ async function request(path, options = {}) {
 }
 
 async function download(path) {
-  const response = await fetch(`${API_ROOT}${path}`, { credentials: 'include' });
+  const response = await fetchApi(path, {
+    credentials: 'include',
+    cache: 'no-store'
+  });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     const error = new Error(payload.error || `HTTP ${response.status}`);
@@ -51,6 +78,7 @@ async function download(path) {
 }
 
 export const lunarApi = {
+  getGitHubOAuthStartUrl: () => apiUrl('/auth/github/start'),
   getMe: () => request('/auth/me'),
   login: (email, password) => request('/auth/login', {
     method: 'POST',
@@ -105,6 +133,8 @@ export const lunarApi = {
   getAdminUsers: () => request('/admin/users?limit=100'),
   getAdminPayments: () => request('/admin/payments?limit=100'),
   getAdminAuditLog: () => request('/admin/audit-log?limit=100'),
+  getAdminAnalytics: (days = 14) => request(`/admin/analytics?days=${days}`),
+
   getPaymentPlans: () => request('/payment/plans'),
   createPaymentOrder: (tier, paymentMethod = 'VIETQR') => request('/payment/create-order', {
     method: 'POST',

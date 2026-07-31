@@ -120,6 +120,15 @@ function matchesRule(currentRule, lineText, index, code, lines) {
       ? match
       : null;
   }
+  if (currentRule.id === 'LUNAR-018') {
+    const match = firstPatternMatch(currentRule.pattern, lineText);
+    if (!match) return null;
+    const precedingCode = lines.slice(0, index + 1).join('\n');
+    if (/router\.use\s*\([^)]*\b(verifyToken|requireAuth|authenticate|requireRole)\b/is.test(precedingCode)) {
+      return null;
+    }
+    return match;
+  }
   if (currentRule.id === 'LUNAR-032') {
     return !/^\s*USER\s+\S+/im.test(code)
       ? firstPatternMatch(currentRule.pattern, lineText)
@@ -158,6 +167,19 @@ function isContainedInRange(start, end, ranges) {
   return ranges.some(([rangeStart, rangeEnd]) => start >= rangeStart && end <= rangeEnd);
 }
 
+function reviewOnlyRemediation(rule) {
+  return {
+    patchAvailable: false,
+    patchValidated: false,
+    patchCode: '',
+    defenseStrategy: rule.recommendation,
+    stepByStepGuide: [
+      '1. Xác minh source, sink và middleware kế thừa trong toàn bộ luồng dữ liệu.',
+      '2. Chỉ tạo bản vá sau khi có test hồi quy chứng minh exploit path đã bị đóng.'
+    ]
+  };
+}
+
 export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'server/index.js', language) {
   const code = String(fileContent || '').slice(0, 1000000);
   const detectedLanguage = language && language !== 'plaintext' ? language.toLowerCase() : languageFromPath(filePath);
@@ -178,6 +200,7 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
       const matchStart = lineOffsets[index] + match.index;
       const matchEnd = matchStart + match[0].length;
       if (isContainedInRange(matchStart, matchEnd, nonExecutableRanges)) return;
+
       vulnerabilities.push({
         id: `${currentRule.id}-${index + 1}`,
         ruleId: currentRule.id,
@@ -190,12 +213,21 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
         severity: currentRule.severity,
         cvss: currentRule.cvss,
         aiVerdict: 'Requires review',
+        triageStatus: 'NEEDS_REVIEW',
+        confidence: 'MEDIUM',
         aiConfidence: null,
         aiReason: 'Deterministic pattern match with direct source evidence.',
+        evidence: {
+          type: 'deterministic-pattern',
+          scope: 'file-local',
+          matchedSource: safeLine(lineText)
+        },
         description: currentRule.title,
         impact: `Potential ${currentRule.cwe} weakness.`,
         originalCode: safeLine(lineText),
+        patchAvailable: false,
         patchedCode: '',
+        remediation: reviewOnlyRemediation(currentRule),
         recommendation: currentRule.recommendation
       });
     });
@@ -203,16 +235,30 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
 
   if (JS.includes(detectedLanguage)) {
     const astResult = analyzeJavaScriptAst(code, filePath);
-    vulnerabilities.push(...astResult.findings.map((item) => ({
-      ...item,
-      id: `${item.ruleId}-${item.line}`,
-      filePath,
-      language: detectedLanguage,
-      category: item.cwe,
-      description: item.title,
-      impact: `Potential ${item.cwe} weakness.`
-    })));
+    vulnerabilities.push(...astResult.findings.map((item) => {
+      const rule = { recommendation: item.recommendation };
+      return {
+        ...item,
+        id: `${item.ruleId}-${item.line}`,
+        filePath,
+        language: detectedLanguage,
+        category: item.cwe,
+        description: item.title,
+        impact: `Potential ${item.cwe} weakness.`,
+        triageStatus: 'NEEDS_REVIEW',
+        confidence: 'HIGH',
+        evidence: {
+          type: 'javascript-ast',
+          scope: 'syntax-node',
+          matchedSource: safeLine(item.originalCode)
+        },
+        patchAvailable: false,
+        patchedCode: '',
+        remediation: reviewOnlyRemediation(rule)
+      };
+    }));
   }
+
 
   const unique = Array.from(new Map(
     vulnerabilities.map((finding) => [`${finding.filePath}:${finding.line}:${finding.cwe}`, finding])
@@ -228,6 +274,8 @@ export function scanCodeForSecurityVulnerabilities(fileContent, filePath = 'serv
     stats: {
       total: unique.length,
       maxCvss,
+      maxFindingCvss: maxCvss,
+      projectRiskScore: null,
       criticalCount: unique.filter((item) => item.severity === 'CRITICAL').length,
       highCount: unique.filter((item) => item.severity === 'HIGH').length,
       mediumCount: unique.filter((item) => item.severity === 'MEDIUM').length,

@@ -9,6 +9,7 @@ services:
       args:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
         PUBLIC_SUPABASE_ANON_TOKEN: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
     networks:
       - lunar_internal
     ports:
@@ -22,11 +23,13 @@ services:
       PROVIDER_TIMEOUT_MS: ${LUNAR_PROVIDER_TIMEOUT_MS:-15000}
       PROVIDER_MAX_RETRIES: ${LUNAR_PROVIDER_MAX_RETRIES:-1}
       JWT_SECRET: ${LUNAR_JWT_SECRET:?Set LUNAR_JWT_SECRET to a strong random value}
-      DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:-lunar_local_password}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
+      DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD to a strong random value}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
       DATABASE_SSL: ${LUNAR_DATABASE_SSL:-false}
       CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5050,http://127.0.0.1:5050,http://localhost:3000,http://127.0.0.1:3000}
+      PUBLIC_APP_URL: ${LUNAR_PUBLIC_APP_URL:-}
       # An empty secret disables webhook confirmation with HTTP 503; never use a public default.
       PAYMENT_WEBHOOK_SECRET: ${LUNAR_PAYMENT_WEBHOOK_SECRET:-}
+      PAYMENT_WEBHOOK_MAX_AGE_MS: ${LUNAR_PAYMENT_WEBHOOK_MAX_AGE_MS:-300000}
       # The app stays available without beneficiary details; order creation fails closed with HTTP 503.
       PAYMENT_BANK_ID: ${LUNAR_PAYMENT_BANK_ID:-}
       PAYMENT_ACCOUNT_NO: ${LUNAR_PAYMENT_ACCOUNT_NO:-}
@@ -34,6 +37,7 @@ services:
       ADMIN_BOOTSTRAP_TOKEN: ${LUNAR_ADMIN_BOOTSTRAP_TOKEN:-}
       # localhost uses HTTP; set true behind HTTPS in production.
       COOKIE_SECURE: ${LUNAR_COOKIE_SECURE:-false}
+      COOKIE_SAME_SITE: ${LUNAR_COOKIE_SAME_SITE:-strict}
       GITHUB_CLIENT_ID: ${LUNAR_GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${LUNAR_GITHUB_CLIENT_SECRET:-}
       GITHUB_OAUTH_CALLBACK_URL: ${LUNAR_GITHUB_OAUTH_CALLBACK_URL:-http://localhost:5050/api/v1/auth/github/callback}
@@ -100,7 +104,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${LUNAR_POSTGRES_USER:-lunar_admin}
-      POSTGRES_PASSWORD: ${LUNAR_POSTGRES_PASSWORD:-lunar_local_password}
+      POSTGRES_PASSWORD: ${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD to a strong random value}
       POSTGRES_DB: ${LUNAR_POSTGRES_DB:-lunar_db}
     ports:
       - "127.0.0.1:${LUNAR_POSTGRES_PORT:-5433}:5432"

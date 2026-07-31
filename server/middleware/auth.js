@@ -3,8 +3,9 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { getPool } = require('../db/connection');
 const { writeSystemLog } = require('./logger');
+const { readRuntimeSecret } = require('../services/runtimeSecrets');
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = readRuntimeSecret('JWT_SECRET');
 
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
   if (process.env.NODE_ENV === 'production') {

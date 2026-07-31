@@ -35,6 +35,7 @@ export default function App() {
   const [currentTier, setCurrentTier] = useState('FREE');
   const [githubAuthToast, setGithubAuthToast] = useState(''); // '' | 'success' | 'failed'
   const [accountToast, setAccountToast] = useState('');
+  const [accountError, setAccountError] = useState('');
   const [resetToken, setResetToken] = useState('');
   
   // Modals
@@ -233,6 +234,7 @@ export default function App() {
   };
 
   const handleLoginSuccess = (user, notice = '') => {
+    setAccountError('');
     setCurrentUser(user);
     setCurrentTier(user.tier || 'FREE');
     if (notice) {
@@ -245,8 +247,11 @@ export default function App() {
     try {
       await lunarApi.logout();
     } catch (error) {
-      console.warn('Logout request failed:', error);
+      setAccountError(error.message || 'Không thể đăng xuất khỏi Lunar API.');
+      window.setTimeout(() => setAccountError(''), 6000);
+      return;
     }
+    setAccountError('');
     setCurrentUser(null);
     setCurrentTier('FREE');
     if (activeTab === 'admin') setActiveTab('explore');
@@ -323,6 +328,18 @@ export default function App() {
               color: '#6ee7b7'
             }}>
               {accountToast}
+            </div>
+          )}
+          {accountError && (
+            <div role="alert" style={{
+              background: 'rgba(220, 38, 38, 0.15)',
+              borderBottom: '1px solid rgba(220,38,38,.55)',
+              padding: '10px 24px',
+              textAlign: 'center',
+              fontSize: '0.86rem',
+              color: '#fca5a5'
+            }}>
+              {accountError}
             </div>
           )}
         </>

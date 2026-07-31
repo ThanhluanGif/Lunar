@@ -566,6 +566,15 @@ eval(userInput);`,
     if (scan.body.source !== 'postgresql' || scan.body.scan.issuesCount < 1) {
       throw new Error('Verified scan was not analyzed and persisted.');
     }
+    const nonOwner = await registerOrLogin({
+      name: 'QA Non Owner',
+      nickname: `qa_non_owner_${uniqueId}`,
+      email: `qa-non-owner-${uniqueId}@example.com`,
+      password: 'StrongPass123!'
+    });
+    await request(`/api/v1/reports/export/csv/${scan.body.scan.id}`, {
+      headers: { cookie: nonOwner.cookie }
+    }, 404);
     const reportMetadata = await request('/api/v1/reports/export', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: regular.cookie },
@@ -686,7 +695,8 @@ eval(userInput);`,
       transactionId: `qa-transaction-${uniqueId}`,
       orderCode,
       amount: createOrder.body.order.amount,
-      status: 'PAID'
+      status: 'PAID',
+      timestamp: new Date().toISOString()
     });
     await request('/api/v1/payment/webhook', {
       method: 'POST',
@@ -721,12 +731,35 @@ eval(userInput);`,
     if (webhookConfirmation.body.status !== 'SUCCESS' || !webhookRetry.body.idempotent) {
       throw new Error('Signed payment webhook or event idempotency failed.');
     }
+    const stalePaymentPayload = JSON.stringify({
+      eventId: `qa-stale-event-${uniqueId}`,
+      transactionId: `qa-stale-transaction-${uniqueId}`,
+      orderCode,
+      amount: createOrder.body.order.amount,
+      status: 'PAID',
+      timestamp: new Date(Date.now() - (10 * 60 * 1000)).toISOString()
+    });
+    const stalePaymentSignature = crypto
+      .createHmac('sha256', 'qa-payment-webhook-secret')
+      .update(stalePaymentPayload)
+      .digest('hex');
+    await request('/api/v1/payment/webhook', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-lunar-signature': `sha256=${stalePaymentSignature}`
+      },
+      body: stalePaymentPayload
+    }, 400);
     const paymentStatus = await request(`/api/v1/payment/status/${orderCode}`, {
       headers: { cookie: regular.cookie }
     });
     if (paymentStatus.body.status !== 'SUCCESS') {
       throw new Error('The payment smoke flow did not reach SUCCESS.');
     }
+    await request(`/api/v1/payment/status/${orderCode}`, {
+      headers: { cookie: nonOwner.cookie }
+    }, 404);
     const persistedPaymentEvent = await qaPool.query(
       'SELECT correlation_id FROM payment_webhook_events WHERE event_id = $1',
       [`qa-event-${uniqueId}`]

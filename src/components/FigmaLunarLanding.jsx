@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Github, Sparkles, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Bot, Code, Cpu, Eye, Activity, RefreshCw, Check, Moon, Layers, Terminal, ChevronRight, Play, Lock, UserCheck, HelpCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Github, Sparkles, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Zap, Bot, Code, Cpu, Eye, Activity, RefreshCw, Check, Moon, Layers, Terminal, ChevronRight, Play, Lock, UserCheck, HelpCircle, Star, MessageSquarePlus, Send, X } from 'lucide-react';
 import LiveDashboardPreview from './LiveDashboardPreview';
+import { fetchPublicStats, fetchPublicReviews, submitUserReview } from '../services/publicService';
 
 export default function FigmaLunarLanding({
   currentUser,
@@ -12,7 +13,70 @@ export default function FigmaLunarLanding({
   onOpenDashboard,
   quickScanSection
 }) {
+  // Real System Stats & User Experiences State
+  const [realStats, setRealStats] = useState({
+    linesReviewed: '0',
+    bugsFixed: '0',
+    avgReviewTime: '0.0 min'
+  });
+
+  const [realReviews, setRealReviews] = useState([]);
+  const [loadingPublicData, setLoadingPublicData] = useState(true);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [newReview, setNewReview] = useState({ name: '', role: '', rating: 5, comment: '' });
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewNotice, setReviewNotice] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadPublicMetrics() {
+      setLoadingPublicData(true);
+      const [statsData, reviewsData] = await Promise.all([
+        fetchPublicStats(),
+        fetchPublicReviews()
+      ]);
+      if (isMounted) {
+        if (statsData) setRealStats(statsData);
+        if (reviewsData) setRealReviews(reviewsData);
+        setLoadingPublicData(false);
+      }
+    }
+    loadPublicMetrics();
+    return () => { isMounted = false; };
+  }, []);
+
+  const handleSendReview = async (e) => {
+    e.preventDefault();
+    if (!newReview.comment || newReview.comment.trim().length < 5) {
+      setReviewNotice('Vui lòng nhập nội dung nhận xét (tối thiểu 5 ký tự).');
+      return;
+    }
+    setSubmittingReview(true);
+    setReviewNotice('');
+    try {
+      const res = await submitUserReview({
+        name: newReview.name || (currentUser ? currentUser.name || currentUser.nickname : 'Người dùng'),
+        role: newReview.role || (currentUser ? `${currentUser.tier} Developer` : 'Software Engineer'),
+        rating: newReview.rating,
+        comment: newReview.comment
+      });
+      setReviewNotice(res.message || 'Cảm ơn bạn đã đóng góp trải nghiệm!');
+      setNewReview({ name: '', role: '', rating: 5, comment: '' });
+      const updatedReviews = await fetchPublicReviews();
+      setRealReviews(updatedReviews);
+      setTimeout(() => {
+        setShowReviewModal(false);
+        setReviewNotice('');
+      }, 1500);
+    } catch (err) {
+      setReviewNotice(err.message || 'Không thể gửi nhận xét.');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   // State for Interactive "Watch Lunar Work" Live Demo Editor
+
   const [demoState, setDemoState] = useState('before'); // 'before' | 'after'
   const [isAutoFixing, setIsAutoFixing] = useState(false);
   const [selectedIssueIdx, setSelectedIssueIdx] = useState(0);
@@ -300,7 +364,7 @@ export default function FigmaLunarLanding({
             </button>
           </div>
 
-          {/* 3 Metric Stat Cards */}
+          {/* 3 Metric Stat Cards (Real Database Metrics) */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
@@ -309,10 +373,11 @@ export default function FigmaLunarLanding({
             width: '100%'
           }}>
             {[
-              { val: '14.2M', label: 'Lines reviewed' },
-              { val: '98,000+', label: 'Bugs fixed' },
-              { val: '4.3 min', label: 'Avg review time' }
+              { val: realStats.linesReviewed ?? '0', label: 'Lines reviewed' },
+              { val: realStats.bugsFixed ?? '0', label: 'Bugs fixed' },
+              { val: realStats.avgReviewTime ?? '0.0 min', label: 'Avg review time' }
             ].map((stat, idx) => (
+
               <div key={idx} style={{
                 background: 'rgba(255, 255, 255, 0.025)',
                 border: '1px solid rgba(255, 255, 255, 0.07)',
@@ -329,6 +394,7 @@ export default function FigmaLunarLanding({
               </div>
             ))}
           </div>
+
         </section>
 
         {quickScanSection && (
@@ -923,10 +989,10 @@ export default function FigmaLunarLanding({
 
 
         {/* ---------------------------------------------------- */}
-        {/* SECTION 7: TESTIMONIALS */}
+        {/* SECTION 7: REAL USER EXPERIENCES & REVIEWS */}
         {/* ---------------------------------------------------- */}
         <section style={{ padding: '100px 0' }}>
-          <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
             <span style={{
               display: 'inline-block',
               padding: '4px 14px',
@@ -938,12 +1004,40 @@ export default function FigmaLunarLanding({
               border: '1px solid rgba(108, 142, 239, 0.25)',
               marginBottom: '16px'
             }}>
-              Testimonials
+              Trải Nghiệm Thật Từ Người Dùng
             </span>
 
-            <h2 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#e2e5f0', letterSpacing: '-0.02em' }}>
-              Trusted by engineering teams
+            <h2 style={{ fontSize: '2.4rem', fontWeight: '800', color: '#e2e5f0', letterSpacing: '-0.02em', marginBottom: '12px' }}>
+              Cảm Nhận Thực Tế Từ Các Developer & Team Tích Hợp
             </h2>
+
+            <p style={{ fontSize: '0.95rem', color: '#8890b0', maxWidth: '600px', margin: '0 auto 24px' }}>
+              Các con số và phản hồi được lưu trữ minh bạch trực tiếp trên hệ thống cơ sở dữ liệu Lunar Code Review.
+            </p>
+
+            <button
+              onClick={() => setShowReviewModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 22px',
+                borderRadius: '9999px',
+                background: 'linear-gradient(135deg, #6c8eef 0%, #9d6ef5 100%)',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: '700',
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                boxShadow: '0 4px 20px rgba(108, 142, 239, 0.35)',
+                transition: 'transform 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <MessageSquarePlus size={16} />
+              Chia Sẻ Trải Nghiệm Của Bạn
+            </button>
           </div>
 
           <div style={{
@@ -951,50 +1045,275 @@ export default function FigmaLunarLanding({
             gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
             gap: '20px'
           }}>
-            {testimonials.map((test, idx) => (
-              <div key={idx} style={{
-                background: 'rgba(255, 255, 255, 0.02)',
-                border: '1px solid rgba(255, 255, 255, 0.06)',
-                borderRadius: '16px',
-                padding: '28px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between'
-              }}>
-                <div>
-                  <div style={{ fontSize: '2rem', color: test.color, marginBottom: '16px', lineHeight: 1 }}>
-                    ❝
-                  </div>
-                  <p style={{ fontSize: '0.9rem', color: '#8890b0', lineHeight: '1.65', marginBottom: '24px' }}>
-                    {test.quote}
-                  </p>
-                </div>
+            {(realReviews.length > 0 ? realReviews : testimonials).map((test, idx) => {
+              const name = test.userName || test.name || 'Developer';
+              const role = test.userRole || test.role || 'Software Engineer';
+              const comment = test.comment || test.quote || '';
+              const rating = test.rating || 5;
+              const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'US';
+              const color = ['#6c8eef', '#9d6ef5', '#4fc3f7', '#34d399'][idx % 4];
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '50%',
-                    background: `${test.color}20`,
-                    color: test.color,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.8rem',
-                    fontWeight: '800'
-                  }}>
-                    {test.avatar}
-                  </div>
-
+              return (
+                <div key={test.id || idx} style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  borderRadius: '16px',
+                  padding: '28px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  transition: 'border-color 0.2s ease'
+                }}>
                   <div>
-                    <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#e2e5f0' }}>{test.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#8b94b8' }}>{test.role}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {Array.from({ length: 5 }).map((_, sIdx) => (
+                          <Star
+                            key={sIdx}
+                            size={15}
+                            fill={sIdx < rating ? '#fbbf24' : 'none'}
+                            color={sIdx < rating ? '#fbbf24' : '#4b5563'}
+                          />
+                        ))}
+                      </div>
+                      <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
+                        Verified User
+                      </span>
+                    </div>
+
+                    <p style={{ fontSize: '0.9rem', color: '#cbd5e1', lineHeight: '1.65', marginBottom: '24px', fontStyle: 'italic' }}>
+                      "{comment}"
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                      width: '38px',
+                      height: '38px',
+                      borderRadius: '50%',
+                      background: `${color}25`,
+                      color: color,
+                      border: `1px solid ${color}40`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.82rem',
+                      fontWeight: '800'
+                    }}>
+                      {initials}
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#e2e5f0' }}>{name}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#8b94b8' }}>{role}</div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
+
+        {/* REVIEW SUBMISSION MODAL */}
+        {showReviewModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}>
+            <div style={{
+              background: '#0d111d',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '20px',
+              padding: '32px',
+              maxWidth: '520px',
+              width: '100%',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
+              position: 'relative'
+            }}>
+              <button
+                onClick={() => setShowReviewModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: '20px',
+                  right: '20px',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={20} />
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <MessageSquarePlus color="#6c8eef" size={24} />
+                <h3 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#ffffff' }}>
+                  Gửi Nhận Xét Trải Nghiệm Thực Tế
+                </h3>
+              </div>
+              <p style={{ fontSize: '0.82rem', color: '#94a3b8', marginBottom: '24px' }}>
+                Chia sẻ ý kiến đánh giá của bạn sau khi quét hoặc sử dụng các tính năng của Lunar.
+              </p>
+
+              {reviewNotice && (
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  marginBottom: '18px',
+                  fontSize: '0.84rem',
+                  background: reviewNotice.includes('Cảm ơn') ? 'rgba(52, 211, 153, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  border: reviewNotice.includes('Cảm ơn') ? '1px solid rgba(52, 211, 153, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                  color: reviewNotice.includes('Cảm ơn') ? '#34d399' : '#f87171'
+                }}>
+                  {reviewNotice}
+                </div>
+              )}
+
+              <form onSubmit={handleSendReview}>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#cbd5e1', marginBottom: '6px' }}>
+                    Họ tên hoặc NICKNAME:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={currentUser ? currentUser.name || currentUser.nickname : 'Ví dụ: Nguyễn Văn A'}
+                    value={newReview.name}
+                    onChange={(e) => setNewReview({ ...newReview, name: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#ffffff',
+                      fontSize: '0.88rem'
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#cbd5e1', marginBottom: '6px' }}>
+                    Chức danh / Công ty (Tùy chọn):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: Fullstack Developer @ Startup / Tech Lead"
+                    value={newReview.role}
+                    onChange={(e) => setNewReview({ ...newReview, role: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#ffffff',
+                      fontSize: '0.88rem'
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#cbd5e1', marginBottom: '6px' }}>
+                    Đánh giá chất lượng:
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setNewReview({ ...newReview, rating: star })}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px'
+                        }}
+                      >
+                        <Star
+                          size={24}
+                          fill={star <= newReview.rating ? '#fbbf24' : 'none'}
+                          color={star <= newReview.rating ? '#fbbf24' : '#4b5563'}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '24px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '600', color: '#cbd5e1', marginBottom: '6px' }}>
+                    Nội dung nhận xét trải nghiệm: *
+                  </label>
+                  <textarea
+                    rows={4}
+                    required
+                    placeholder="Cảm nhận thực tế của bạn khi sử dụng các tính năng Code Review, Auto-Fix, hoặc báo cáo an toàn mã nguồn của Lunar..."
+                    value={newReview.comment}
+                    onChange={(e) => setNewReview({ ...newReview, comment: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#ffffff',
+                      fontSize: '0.88rem',
+                      resize: 'vertical'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowReviewModal(false)}
+                    style={{
+                      padding: '10px 18px',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingReview}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '10px 22px',
+                      borderRadius: '10px',
+                      background: 'linear-gradient(135deg, #6c8eef, #9d6ef5)',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontWeight: '700',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Send size={15} />
+                    {submittingReview ? 'Đang gửi...' : 'Gửi Nhận Xét'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
 
 
         {/* ---------------------------------------------------- */}

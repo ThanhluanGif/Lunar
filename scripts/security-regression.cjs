@@ -1,6 +1,9 @@
 const { spawn } = require('child_process');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const {
   REDACTED,
   REDACTED_PII,
@@ -10,6 +13,12 @@ const {
 } = require('../server/middleware/logger');
 const { createAuditReportCsv, sanitizeCsvField } = require('../server/services/reportService');
 const { providerFetch, providerPolicy } = require('../server/services/providerHttp');
+const { readRuntimeSecret } = require('../server/services/runtimeSecrets');
+const {
+  authIdentifierKey,
+  validateRateLimitDeployment
+} = require('../server/middleware/rateLimiter');
+const { webhookTimestampIsFresh } = require('../server/services/paymentWebhookPolicy');
 const {
   UNVERIFIED_EMAIL_LINK_CODE,
   githubEmailMatchesLunarAccount,
@@ -27,6 +36,41 @@ assert.throws(
 );
 assert.equal(githubEmailMatchesLunarAccount('Owner@Example.com', 'owner@example.com'), true);
 assert.equal(githubEmailMatchesLunarAccount('attacker@example.com', 'victim@example.com'), false);
+
+const secretDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'lunar-secret-regression-'));
+const secretPath = path.join(secretDirectory, 'jwt_secret');
+fs.writeFileSync(secretPath, 'file-backed-regression-secret\n', { mode: 0o600 });
+try {
+  assert.equal(
+    readRuntimeSecret('JWT_SECRET', { env: { JWT_SECRET_FILE: secretPath } }),
+    'file-backed-regression-secret'
+  );
+  assert.throws(
+    () => readRuntimeSecret('JWT_SECRET', {
+      env: { JWT_SECRET: 'direct-value', JWT_SECRET_FILE: secretPath }
+    }),
+    /cannot both be configured/
+  );
+} finally {
+  fs.rmSync(secretDirectory, { recursive: true, force: true });
+}
+
+assert.doesNotThrow(() => validateRateLimitDeployment({ NODE_ENV: 'production', WEB_CONCURRENCY: '1' }));
+assert.throws(
+  () => validateRateLimitDeployment({ NODE_ENV: 'production', WEB_CONCURRENCY: '2' }),
+  /shared rate-limit store/
+);
+const identifierKey = authIdentifierKey({
+  body: { email: 'Security.User@Example.com' },
+  ip: '203.0.113.10'
+});
+assert.match(identifierKey, /^identifier:[a-f0-9]{64}$/);
+assert.equal(identifierKey.includes('security.user@example.com'), false);
+
+const webhookNow = Date.now();
+assert.equal(webhookTimestampIsFresh(new Date(webhookNow).toISOString(), { now: webhookNow }), true);
+assert.equal(webhookTimestampIsFresh(webhookNow - (10 * 60 * 1000), { now: webhookNow }), false);
+assert.equal(webhookTimestampIsFresh(webhookNow + (2 * 60 * 1000), { now: webhookNow }), false);
 
 const acceptedCorrelationId = '0123456789abcdef0123456789abcdef';
 assert.equal(correlationIdFromRequest(acceptedCorrelationId, true), acceptedCorrelationId);
@@ -257,8 +301,10 @@ const child = spawn(process.execPath, ['server/index.js'], {
     AUTH_EMAIL_DRY_RUN: 'true',
     AUTH_EMAIL_ALLOW_INSECURE_BASE_URL: 'true',
     AUTH_EMAIL_BASE_URL: baseUrl,
+    PUBLIC_APP_URL: 'https://app.example.com',
+    COOKIE_SAME_SITE: 'strict',
     TRUST_PROXY: 'loopback',
-    CORS_ORIGINS: 'http://localhost:3000,http://127.0.0.1:3000'
+    CORS_ORIGINS: 'http://localhost:3000,http://127.0.0.1:3000,https://app.example.com'
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -349,6 +395,37 @@ async function run() {
       body: JSON.stringify({ email: 42, nickname: {}, password: 42 })
     }, 400);
 
+    let identifierThrottleResponse;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      identifierThrottleResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-forwarded-for': `198.51.100.${attempt + 10}`
+        },
+        body: JSON.stringify({ email: 'distributed-probe@example.com', password: 'StrongPass123!' })
+      });
+      assert.equal(identifierThrottleResponse.status, attempt < 5 ? 503 : 429);
+    }
+    assert.ok(identifierThrottleResponse.headers.get('retry-after'));
+
+    let ipThrottleResponse;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      ipThrottleResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-forwarded-for': '198.51.100.250'
+        },
+        body: JSON.stringify({
+          email: `ip-probe-${attempt}@example.com`,
+          password: 'StrongPass123!'
+        })
+      });
+      assert.equal(ipThrottleResponse.status, attempt < 5 ? 503 : 429);
+    }
+    assert.ok(ipThrottleResponse.headers.get('retry-after'));
+
     let deeplyNested = { value: 'bounded' };
     for (let depth = 0; depth < 70; depth += 1) deeplyNested = { child: deeplyNested };
     await expectStatus('/api/v1/payment/plans', {
@@ -376,6 +453,26 @@ async function run() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ orderCode: 'REGRESSION' })
     }, 404);
+    const stalePaymentPayload = JSON.stringify({
+      eventId: 'stale-regression-event',
+      transactionId: 'stale-regression-transaction',
+      orderCode: 'REGRESSION',
+      amount: 290000,
+      status: 'PAID',
+      timestamp: new Date(Date.now() - (10 * 60 * 1000)).toISOString()
+    });
+    const stalePaymentSignature = crypto
+      .createHmac('sha256', 'regression-payment-secret-at-least-32-characters')
+      .update(stalePaymentPayload)
+      .digest('hex');
+    await expectStatus('/api/v1/payment/webhook', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-lunar-signature': `sha256=${stalePaymentSignature}`
+      },
+      body: stalePaymentPayload
+    }, 400);
     await expectStatus('/api/v1/github/webhook', {
       method: 'POST',
       headers: {
@@ -396,16 +493,34 @@ async function run() {
       redirect: 'manual'
     });
     const oauthLocation = new URL(oauthStart.headers.get('location'));
+    const oauthStateCookie = oauthStart.headers.get('set-cookie') || '';
     if (
       oauthStart.status !== 302
       || oauthLocation.origin !== 'https://github.com'
       || oauthLocation.pathname !== '/login/oauth/authorize'
       || oauthLocation.searchParams.has('redirect_uri')
       || !oauthLocation.searchParams.get('state')
+      || !/HttpOnly/i.test(oauthStateCookie)
+      || !/Secure/i.test(oauthStateCookie)
+      || !/SameSite=Lax/i.test(oauthStateCookie)
     ) {
       throw new Error('GitHub registered-callback OAuth mode emitted an unsafe or mismatched authorization URL.');
     }
-    const oauthConfig = await expectStatus('/api/v1/auth/github/config', {}, 200);
+    const invalidCallback = await fetch(`${baseUrl}/api/v1/auth/github/callback?state=invalid`, {
+      redirect: 'manual'
+    });
+    if (invalidCallback.headers.get('location') !== 'https://app.example.com/?github_auth=unavailable') {
+      throw new Error('GitHub OAuth callback did not redirect to the configured public app origin.');
+    }
+    const oauthConfig = await expectStatus('/api/v1/auth/github/config', {
+      headers: { origin: 'https://app.example.com' }
+    }, 200);
+    if (
+      oauthConfig.headers.get('access-control-allow-origin') !== 'https://app.example.com'
+      || oauthConfig.headers.get('access-control-allow-credentials') !== 'true'
+    ) {
+      throw new Error('Split-origin GitHub configuration request did not receive credentialed CORS headers.');
+    }
     const oauthConfigPayload = await oauthConfig.json();
     if (oauthConfigPayload.authFlow !== 'web') {
       throw new Error('GitHub OAuth config did not expose the selected authentication flow.');
@@ -464,6 +579,10 @@ async function run() {
       csvFormulaInjectionProtection: 'PASS',
       modalFocusTrapContract: 'PASS',
       githubWebhookSignatureGuard: 'PASS',
+      paymentWebhookFreshnessGuard: 'PASS',
+      authIpAndIdentifierThrottling: 'PASS',
+      runtimeSecretFileSupport: 'PASS',
+      multiInstanceRateLimitFailClosed: 'PASS',
       reportAuthenticationGuard: 'PASS',
       providerTimeoutAndRetryPolicy: 'PASS',
       providerCredentialFailClosed: 'PASS'

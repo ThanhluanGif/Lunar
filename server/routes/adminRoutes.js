@@ -501,4 +501,61 @@ router.get('/audit-log', async (req, res) => {
   }
 });
 
+router.get('/analytics', async (req, res) => {
+
+  const pool = databaseRequired(res);
+  if (!pool) return;
+
+  const days = [7, 14, 30, 90].includes(Number.parseInt(req.query.days, 10))
+    ? Number.parseInt(req.query.days, 10)
+    : 14;
+
+  try {
+    const [activityResult, recentLoginsResult, tierBreakdownResult] = await Promise.all([
+      pool.query(
+        `SELECT
+           day::date AS date,
+           (SELECT COUNT(*)::int FROM users WHERE created_at >= day AND created_at < day + INTERVAL '1 day') AS "newUsers",
+           (SELECT COUNT(*)::int FROM scans WHERE created_at >= day AND created_at < day + INTERVAL '1 day') AS "scansCount",
+           (SELECT COUNT(*)::int FROM vulnerabilities WHERE created_at >= day AND created_at < day + INTERVAL '1 day') AS "vulnsFound",
+           (SELECT COUNT(*)::int FROM vulnerabilities WHERE status = 'patched' AND created_at >= day AND created_at < day + INTERVAL '1 day') AS "vulnsPatched"
+         FROM generate_series(
+           CURRENT_DATE - (($1 - 1) * INTERVAL '1 day'),
+           CURRENT_DATE,
+           INTERVAL '1 day'
+         ) day
+         ORDER BY day ASC`,
+        [days]
+      ),
+      pool.query(
+        `SELECT
+           id, nickname, name, email, tier, role, status,
+           daily_scans_used AS "dailyScansUsed",
+           last_login_at AS "lastLoginAt",
+           created_at AS "createdAt"
+         FROM users
+         ORDER BY COALESCE(last_login_at, created_at) DESC
+         LIMIT 30`
+      ),
+      pool.query(
+        `SELECT tier, COUNT(*)::int AS count
+         FROM users
+         GROUP BY tier`
+      )
+    ]);
+
+    return res.json({
+      success: true,
+      rangeDays: days,
+      dailyActivity: activityResult.rows,
+      recentLogins: recentLoginsResult.rows,
+      tierBreakdown: tierBreakdownResult.rows
+    });
+  } catch (error) {
+    req.log?.error('Admin analytics query failed.', error, 500);
+    return res.status(500).json({ success: false, error: 'Unable to load analytics trends.' });
+  }
+});
+
 module.exports = router;
+

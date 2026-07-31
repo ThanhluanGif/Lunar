@@ -64,6 +64,12 @@ jobs:
       - name: Run security regression gates
         run: npm run qa:security
 
+      - name: Validate split-origin production frontend build
+        run: npm run qa:production-routing:browser
+
+      - name: Validate cross-origin login logout lifecycle
+        run: npm run qa:auth-lifecycle:browser
+
       - name: Run accessibility browser gate
         run: npm run qa:a11y
 

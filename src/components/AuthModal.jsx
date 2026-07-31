@@ -46,12 +46,20 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
       window.clearTimeout(devicePollTimerRef.current);
       setDeviceAuth(null);
       setLoading(false);
+      setActiveTab(initialResetToken ? 'email' : 'github');
+      setAuthMode(initialResetToken ? 'reset' : 'login');
+      setEmail('');
+      setPassword('');
+      setFullName('');
+      setConfirmPassword('');
+      setErrorMsg('');
+      setNoticeMsg('');
     }
     return () => {
       deviceFlowActiveRef.current = false;
       window.clearTimeout(devicePollTimerRef.current);
     };
-  }, [isOpen]);
+  }, [isOpen, initialResetToken]);
 
   if (!isOpen) return null;
 
@@ -107,7 +115,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
         window.open(authorization.verificationUri, '_blank', 'noopener,noreferrer');
         return;
       }
-      window.location.assign('/api/v1/auth/github/start');
+      window.location.assign(lunarApi.getGitHubOAuthStartUrl());
     } catch (error) {
       setLoading(false);
       setErrorMsg(error.message || 'Không thể khởi tạo kết nối GitHub.');

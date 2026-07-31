@@ -3,10 +3,11 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, verifyToken } = require('../middleware/auth');
-const { authRateLimiter } = require('../middleware/rateLimiter');
+const { authRateLimiter, authIdentifierRateLimiter } = require('../middleware/rateLimiter');
 const { queryDb, getIsPgConnected, getPool } = require('../db/connection');
 const { getAccountEmailConfiguration, sendEmailVerification } = require('../services/accountEmailService');
 const { PURPOSES, issueAccountToken } = require('../services/accountTokenService');
+const { createCookieOptions } = require('../services/cookiePolicy');
 const { serializeUser, tokenPayload } = require('../services/userSerializer');
 
 const router = express.Router();
@@ -17,14 +18,10 @@ const usersDb = [];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NICKNAME_PATTERN = /^[A-Za-z0-9_.-]{2,49}$/;
 
-// Cookie security configuration (HttpOnly, Secure, SameSite=Strict)
+const COOKIE_BASE_OPTIONS = createCookieOptions({ defaultSameSite: 'strict' });
 const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.COOKIE_SECURE !== undefined
-    ? process.env.COOKIE_SECURE === 'true'
-    : process.env.NODE_ENV === 'production',
-  sameSite: 'strict',
-  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ngày
+  ...COOKIE_BASE_OPTIONS,
+  maxAge: 7 * 24 * 60 * 60 * 1000
 };
 
 function normalizeEmail(value) {
@@ -50,7 +47,7 @@ function normalizeName(value, fallback) {
  * POST /api/v1/auth/register
  * Zero-Trust Secured Registration Endpoint with Rate Limiter
  */
-router.post('/register', authRateLimiter, async (req, res) => {
+router.post('/register', authRateLimiter, authIdentifierRateLimiter, async (req, res) => {
   try {
     const { name, nickname, email, password } = req.body;
     const cleanEmail = normalizeEmail(email);
@@ -174,7 +171,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
  * POST /api/v1/auth/login
  * Zero-Trust Secured Login Endpoint (Brute-Force Protected & Anti-Enumeration)
  */
-router.post('/login', authRateLimiter, async (req, res) => {
+router.post('/login', authRateLimiter, authIdentifierRateLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const cleanEmail = normalizeEmail(email);
@@ -259,7 +256,7 @@ router.post('/login', authRateLimiter, async (req, res) => {
  * Đăng xuất và xóa HttpOnly Auth Cookie
  */
 router.post('/logout', (req, res) => {
-  res.clearCookie('access_token', COOKIE_OPTIONS);
+  res.clearCookie('access_token', COOKIE_BASE_OPTIONS);
   res.json({ success: true, message: 'Đã đăng xuất an toàn.' });
 });
 

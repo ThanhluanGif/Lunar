@@ -6,12 +6,14 @@ WORKDIR /app
 
 ARG VITE_SUPABASE_URL=""
 ARG PUBLIC_SUPABASE_ANON_TOKEN=""
+ARG VITE_API_BASE_URL=""
 
 COPY package*.json ./
 RUN npm ci --include=optional
 COPY . .
 RUN VITE_SUPABASE_URL="$VITE_SUPABASE_URL" \
     VITE_SUPABASE_ANON_KEY="$PUBLIC_SUPABASE_ANON_TOKEN" \
+    VITE_API_BASE_URL="$VITE_API_BASE_URL" \
     npm run build
 
 # Stage 2: Production Express Backend + Static Assets

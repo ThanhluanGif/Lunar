@@ -12,6 +12,9 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 - [x] Cả hai lệnh `npm audit` ở threshold High: 0 vulnerability.
 - [x] Image `lunar:production-readiness-qa-20260731`: Docker Scout báo `0C/0H/0M/0L`.
 - [x] Compose QA dùng `--env-file /dev/null`, app/db healthy, runtime non-root/read-only.
+- [x] `npm run qa:production-routing`: API origin, OAuth redirect và cross-site cookie policy đạt.
+- [x] `npm run qa:production-routing:browser`: frontend preview gọi đúng backend origin và CORS đạt.
+- [x] `npm run qa:auth-lifecycle:browser`: register, logout, session clear và re-login qua CORS đạt.
 - [ ] Đây chưa phải production sign-off; các mục browser/screen reader/provider/ops thủ công bên dưới vẫn bắt buộc.
 
 ## 1. Điều kiện trước test
@@ -34,6 +37,8 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 - [ ] `/api/v1/health` trả 200 khi process sống.
 - [ ] `/api/v1/ready` trả 503 khi DB mất và 200 sau reconnect/restart theo thiết kế.
 - [ ] Static app và 404 route hoạt động.
+- [ ] Production `/api/v1/health` trả JSON, không bị static host trả `index.html`.
+- [ ] `VITE_API_BASE_URL` được đặt trước build nếu frontend/backend khác origin.
 
 ## 3. Authentication
 
@@ -43,11 +48,15 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 - [ ] Login đúng/sai/unknown account không làm lộ enumeration quá mức.
 - [ ] Brute-force đạt rate limit; headers retry đúng.
 - [ ] Logout xóa cookie và session không dùng lại được.
+- [ ] Sau logout có thể đăng nhập lại bằng email mà không có failed fetch hoặc state form cũ.
+- [ ] Auth response có `Cache-Control: no-store` và không bị CDN trả session cũ.
 - [ ] JWT hết hạn, sai chữ ký, auth_version cũ, user bị xóa/suspend đều bị chặn.
 - [ ] Forgot-password luôn trả response trung tính.
 - [ ] Reset/verify token hết hạn, sai, đã dùng, gửi lặp bị từ chối.
 - [ ] Đổi password vô hiệu hóa session cũ trên các thiết bị theo policy.
 - [ ] GitHub OAuth kiểm tra state, callback error và replay.
+- [ ] GitHub OAuth start gọi đúng backend origin; callback redirect về đúng `PUBLIC_APP_URL`.
+- [ ] Cross-site session chỉ dùng `SameSite=None; Secure` với CORS origin chính xác.
 
 ## 4. Authorization/IDOR
 
@@ -154,6 +163,9 @@ thái dự án và backlog nằm tại [`PROJECT_STATUS.md`](./PROJECT_STATUS.md
 - [ ] `npm run build`
 - [ ] `npm run qa:docker`
 - [ ] `npm run qa:security`
+- [ ] `npm run qa:production-routing`
+- [ ] `npm run qa:production-routing:browser`
+- [ ] `npm run qa:auth-lifecycle:browser`
 - [ ] `npm run qa:sast`
 - [ ] `npm run qa:a11y`
 - [ ] `npm run qa:ui:mac`

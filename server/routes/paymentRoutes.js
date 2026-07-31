@@ -4,6 +4,7 @@ const { verifyToken } = require('../middleware/auth');
 const { paymentRateLimiter } = require('../middleware/rateLimiter');
 const { getPool } = require('../db/connection');
 const { getPlan, listPublicPlans } = require('../services/planCatalog');
+const { webhookTimestampIsFresh } = require('../services/paymentWebhookPolicy');
 
 const router = express.Router();
 
@@ -202,6 +203,12 @@ router.post('/webhook', async (req, res) => {
   const suppliedSignature = req.get('x-lunar-signature') || req.get('x-webhook-signature');
   if (!signatureMatches(req.rawBody, suppliedSignature, secret)) {
     return res.status(401).json({ success: false, error: 'Invalid payment webhook signature.' });
+  }
+  if (!webhookTimestampIsFresh(req.body?.timestamp)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Payment webhook timestamp is missing, expired, or in the future.'
+    });
   }
 
   const orderCode = String(req.body?.orderCode || '').trim();

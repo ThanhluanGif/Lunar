@@ -18,6 +18,9 @@ Các gate tự động đã đạt trên baseline:
 - `npm run build`
 - `npm run qa:docker`
 - `npm run qa:security`
+- `npm run qa:production-routing`
+- `npm run qa:production-routing:browser`
+- `npm run qa:auth-lifecycle:browser`
 - `npm run qa:sast`
 - `npm run qa:a11y`
 - `npm run qa:ui:mac`
@@ -111,6 +114,12 @@ production. Tất cả kết quả kiểm thử đã được hợp nhất tại
   capability, `no-new-privileges`, tmpfs và local log rotation.
 - Reverse proxy mẫu bỏ query string và địa chỉ client đầy đủ khỏi access log;
   retention/redaction policy và provider runbook đã được tài liệu hóa.
+- Production frontend có `VITE_API_BASE_URL` riêng thay vì phụ thuộc Vite dev
+  proxy. GitHub OAuth start dùng đúng backend origin, callback có thể redirect
+  về `PUBLIC_APP_URL`, và cross-site session chỉ cho phép
+  `COOKIE_SAME_SITE=none` khi `COOKIE_SECURE=true`.
+- Auth API trả `Cache-Control: no-store`; modal reset credential/tab sau khi
+  đóng và UI chỉ chuyển sang trạng thái logout khi backend đã xóa session.
 - CI dựng PostgreSQL disposable, chạy QA, security regression, accessibility
   browser gate và build image.
 
@@ -119,7 +128,8 @@ production. Tất cả kết quả kiểm thử đã được hợp nhất tại
 ### Bắt buộc
 
 1. Cấu hình secret production bằng secret manager; bật HTTPS,
-   `LUNAR_COOKIE_SECURE=true` và CORS allowlist theo domain thật.
+   `LUNAR_COOKIE_SECURE=true`, CORS allowlist và frontend/API origin theo
+   `docs/PRODUCTION_DEPLOYMENT.md`.
 2. Kiểm thử payment sandbox bằng tài khoản thụ hưởng và hợp đồng webhook thật.
 3. Chạy E2E OAuth thật cho GitHub; xác nhận callback, revoke và rate-limit.
 4. Nghiệm thu tạo PR trên repository sandbox có quyền ghi và kiểm tra retry,

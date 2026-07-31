@@ -189,6 +189,34 @@ npm run build
 npm run preview
 ```
 
+### 6. Production Khi Frontend Và Backend Khác Domain
+
+`VITE_API_PROXY_TARGET` chỉ hoạt động với `npm run dev`. Bản build production
+phải dùng `VITE_API_BASE_URL` hoặc một reverse proxy same-origin cho `/api`.
+
+```bash
+# Build-time frontend variable; không chứa secret.
+VITE_API_BASE_URL=https://api.example.com npm run build
+```
+
+Backend tương ứng cần cấu hình:
+
+```bash
+PUBLIC_APP_URL=https://app.example.com
+CORS_ORIGINS=https://app.example.com
+COOKIE_SECURE=true
+COOKIE_SAME_SITE=strict
+GITHUB_OAUTH_CALLBACK_URL=https://api.example.com/api/v1/auth/github/callback
+GITHUB_AUTH_FLOW=web
+GITHUB_OAUTH_REDIRECT_MODE=explicit
+```
+
+Nếu frontend và API cùng site/domain thông qua reverse proxy, để
+`VITE_API_BASE_URL` và `PUBLIC_APP_URL` trống, dùng `COOKIE_SAME_SITE=strict`.
+Nếu frontend và backend khác site hoàn toàn, ví dụ `vercel.app` và
+`onrender.com`, mới dùng `COOKIE_SAME_SITE=none` cùng HTTPS ở cả hai phía.
+Xem checklist đầy đủ tại [`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md).
+
 ---
 
 ## 🔒 Bảo Mật & Quản Lý Secret (Security Guidelines)
@@ -216,6 +244,9 @@ Dự án Lunar tuân thủ nghiêm ngặt các tiêu chuẩn an toàn bảo mậ
 | `DATABASE_URL` | Chuỗi kết nối PostgreSQL | `postgres://lunar:lunar_pass@localhost:5433/lunar_db` |
 | `LOG_LEVEL` | Mức log JSON của backend | `INFO` ở production |
 | `TRUST_PROXY` | CIDR/địa chỉ reverse proxy được tin cậy | Không để trống sau proxy production |
+| `VITE_API_BASE_URL` | Origin HTTPS của backend khi frontend host riêng | Để trống khi dùng `/api` same-origin |
+| `PUBLIC_APP_URL` | Origin frontend để backend redirect sau OAuth | Để trống khi backend phục vụ frontend |
+| `COOKIE_SAME_SITE` | Chính sách session cookie | `strict`; dùng `none` cho cross-site |
 | `LUNAR_GITHUB_CLIENT_ID` | OAuth App Client ID từ GitHub | *GitHub Client ID* |
 | `LUNAR_GITHUB_CLIENT_SECRET` | OAuth App Client Secret từ GitHub | *GitHub Client Secret* |
 | `LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY` | Khóa mã hóa token GitHub (AES-256) | *Chuỗi ngẫu nhiên 32+ ký tự* |
@@ -243,6 +274,9 @@ npm run qa:docker
 
 # Chạy kiểm thử giao diện tự động (macOS Chrome Headless)
 npm run qa:ui:mac
+
+# Kiểm tra register → logout → xóa session → đăng nhập lại qua CORS
+npm run qa:auth-lifecycle:browser
 
 # Kiểm tra dependency production và toàn bộ dependency
 npm audit --omit=dev --audit-level=high

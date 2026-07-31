@@ -15,22 +15,30 @@ const {
 } = require('../services/githubAccountLinking');
 const { serializeUser, tokenPayload } = require('../services/userSerializer');
 const { writeSystemLog } = require('../middleware/logger');
+const { createCookieOptions } = require('../services/cookiePolicy');
 const { providerFetch } = require('../services/providerHttp');
+const { createAppRedirectUrl, normalizePublicAppUrl } = require('../services/publicAppUrl');
 
 const router = express.Router();
 const GITHUB_API = 'https://api.github.com';
 const GITHUB_DEVICE_COOKIE = 'github_device_session';
 
-const cookieSecure = process.env.COOKIE_SECURE !== undefined
-  ? process.env.COOKIE_SECURE === 'true'
-  : process.env.NODE_ENV === 'production';
-
+const githubCookieOptions = createCookieOptions({ defaultSameSite: 'lax' });
+const oauthStateCookieOptions = {
+  ...githubCookieOptions,
+  sameSite: 'lax'
+};
 const authCookieOptions = {
-  httpOnly: true,
-  secure: cookieSecure,
-  sameSite: 'lax',
+  ...githubCookieOptions,
   maxAge: 7 * 24 * 60 * 60 * 1000
 };
+const publicAppUrl = normalizePublicAppUrl(process.env.PUBLIC_APP_URL, {
+  production: process.env.NODE_ENV === 'production'
+});
+
+function redirectToApp(res, status) {
+  return res.redirect(createAppRedirectUrl(status, publicAppUrl));
+}
 
 function getOAuthConfig() {
   const clientId = process.env.GITHUB_CLIENT_ID;
@@ -315,9 +323,7 @@ router.get('/start', githubAuthStartRateLimiter, (req, res) => {
 
   const state = crypto.randomBytes(32).toString('base64url');
   res.cookie('github_oauth_state', state, {
-    httpOnly: true,
-    secure: cookieSecure,
-    sameSite: 'lax',
+    ...oauthStateCookieOptions,
     maxAge: 10 * 60 * 1000
   });
 
@@ -383,9 +389,7 @@ router.post('/device/start', githubAuthStartRateLimiter, async (req, res) => {
       interval
     }), config.encryptionKey);
     res.cookie(GITHUB_DEVICE_COOKIE, encryptedSession, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: 'lax',
+      ...githubCookieOptions,
       maxAge: expiresIn * 1000
     });
 
@@ -433,11 +437,7 @@ router.post('/device/poll', githubAuthPollRateLimiter, optionalToken, async (req
       throw new Error('Expired GitHub device session.');
     }
   } catch {
-    res.clearCookie(GITHUB_DEVICE_COOKIE, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: 'lax'
-    });
+    res.clearCookie(GITHUB_DEVICE_COOKIE, githubCookieOptions);
     return res.status(400).json({
       success: false,
       error: 'Phiên xác thực GitHub không hợp lệ hoặc đã hết hạn.'
@@ -477,11 +477,7 @@ router.post('/device/poll', githubAuthPollRateLimiter, optionalToken, async (req
       });
     }
     if (!response.ok || githubToken.error || !githubToken.access_token) {
-      res.clearCookie(GITHUB_DEVICE_COOKIE, {
-        httpOnly: true,
-        secure: cookieSecure,
-        sameSite: 'lax'
-      });
+      res.clearCookie(GITHUB_DEVICE_COOKIE, githubCookieOptions);
       return res.status(400).json({
         success: false,
         error: githubToken.error === 'access_denied'
@@ -500,11 +496,7 @@ router.post('/device/poll', githubAuthPollRateLimiter, optionalToken, async (req
     });
     const token = jwt.sign(tokenPayload(result.user), JWT_SECRET, { expiresIn: '7d' });
     res.cookie('access_token', token, authCookieOptions);
-    res.clearCookie(GITHUB_DEVICE_COOKIE, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: 'lax'
-    });
+    res.clearCookie(GITHUB_DEVICE_COOKIE, githubCookieOptions);
     return res.json({
       success: true,
       connected: true,
@@ -537,21 +529,17 @@ router.get('/callback', optionalToken, async (req, res) => {
   const pool = getPool();
   const suppliedState = String(req.query.state || '');
   const expectedState = String(req.cookies?.github_oauth_state || '');
-  res.clearCookie('github_oauth_state', {
-    httpOnly: true,
-    secure: cookieSecure,
-    sameSite: 'lax'
-  });
+  res.clearCookie('github_oauth_state', oauthStateCookieOptions);
 
-  if (!config || !pool) return res.redirect('/?github_auth=unavailable');
+  if (!config || !pool) return redirectToApp(res, 'unavailable');
   if (
     !suppliedState
     || suppliedState.length !== expectedState.length
     || !crypto.timingSafeEqual(Buffer.from(suppliedState), Buffer.from(expectedState))
   ) {
-    return res.redirect('/?github_auth=invalid_state');
+    return redirectToApp(res, 'invalid_state');
   }
-  if (!req.query.code) return res.redirect('/?github_auth=denied');
+  if (!req.query.code) return redirectToApp(res, 'denied');
 
   try {
     const tokenResponse = await providerFetch('https://github.com/login/oauth/access_token', {
@@ -587,13 +575,13 @@ router.get('/callback', optionalToken, async (req, res) => {
     });
     const token = jwt.sign(tokenPayload(result.user), JWT_SECRET, { expiresIn: '7d' });
     res.cookie('access_token', token, authCookieOptions);
-    return res.redirect('/?github_auth=success');
+    return redirectToApp(res, 'success');
   } catch (error) {
     req.log?.error('GitHub OAuth callback failed.', error, 500);
     if (error.code === UNVERIFIED_EMAIL_LINK_CODE) {
-      return res.redirect('/?github_auth=link_required');
+      return redirectToApp(res, 'link_required');
     }
-    return res.redirect('/?github_auth=failed');
+    return redirectToApp(res, 'failed');
   }
 });
 

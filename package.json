@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "qa": "npm run build && node scripts/qa-smoke.cjs",
     "qa:a11y": "npm run build && node scripts/accessibility-regression.cjs",
-    "qa:security": "node scripts/security-regression.cjs && node scripts/sast-regression.cjs && node scripts/sast-self-audit.cjs",
+    "qa:security": "node scripts/security-regression.cjs && node scripts/production-routing-regression.mjs && node scripts/sast-regression.cjs && node scripts/sast-self-audit.cjs",
+    "qa:production-routing": "node scripts/production-routing-regression.mjs",
+    "qa:production-routing:browser": "node scripts/production-routing-browser.cjs",
+    "qa:auth-lifecycle:browser": "node scripts/auth-lifecycle-browser.cjs",
     "qa:sast": "node scripts/sast-regression.cjs && node scripts/sast-self-audit.cjs",
     "qa:docker": "node scripts/qa-docker.cjs",
     "qa:ui:mac": "node scripts/ui-smoke-mac.mjs"

@@ -265,7 +265,7 @@ export default function UserGitHubWorkspace({ currentUser, onSelectProject, onOp
         onOpenGitHubAuth();
         return;
       }
-      window.location.assign('/api/v1/auth/github/start');
+      window.location.assign(lunarApi.getGitHubOAuthStartUrl());
     } catch (error) {
       setScanError(error.message || 'Không thể khởi tạo kết nối GitHub.');
     }

@@ -25,6 +25,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const assistantRoutes = require('./routes/assistantRoutes');
 const deepScanRoutes = require('./routes/deepScanRoutes');
+const publicRoutes = require('./routes/publicRoutes');
 
 const { initPgDatabase, getIsPgConnected } = require('./db/connection');
 
@@ -106,6 +107,15 @@ app.use(inputSanitizer);
 // 5. Global Rate Limiter for general public endpoints
 app.use('/api/v1/public', publicApiRateLimiter);
 
+// Session responses must never be reused across login/logout transitions.
+app.use('/api/v1/auth', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.vary('Cookie');
+  return next();
+});
+
 // 6. Registered Business Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/auth', accountRoutes);
@@ -121,6 +131,7 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/assistant', assistantRoutes);
 app.use('/api/v1/deep-scans', deepScanRoutes);
+app.use('/api/v1/public', publicRoutes);
 
 // Health check endpoint
 app.get('/api/v1/health', (req, res) => {

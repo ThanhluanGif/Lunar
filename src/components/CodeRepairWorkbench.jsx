@@ -23,6 +23,13 @@ function matchesActiveFinding(finding, activeFile, activeVuln) {
   return false;
 }
 
+function validatedPatchFor(finding) {
+  const remediation = finding?.remediation;
+  const patch = remediation?.patchCode || finding?.patchedCode || '';
+  const validated = remediation?.patchValidated === true || finding?.patchValidated === true;
+  return validated && patch ? patch : '';
+}
+
 export default function CodeRepairWorkbench({
   activeFile,
   activeVuln,
@@ -65,7 +72,7 @@ export default function CodeRepairWorkbench({
   const attackVector = liveFinding?.hackerAttackVector || activeVuln?.hackerAttackVector;
   const remediation = liveFinding?.remediation || activeVuln?.remediation;
   const originalCode = activeFile?.content || activeVuln?.originalCode || '';
-  const generatedPatch = remediation?.patchCode || activeVuln?.patchedCode || '';
+  const generatedPatch = validatedPatchFor(liveFinding) || validatedPatchFor(activeVuln);
   const patchedCode = appliedPatch || generatedPatch || originalCode;
   const threatLevel = attackVector?.threatLevel || activeVuln?.severity || liveFinding?.severity || 'MEDIUM';
   const canApplyPatch = Boolean(generatedPatch && generatedPatch !== originalCode);

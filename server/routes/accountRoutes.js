@@ -3,7 +3,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const {
   accountMutationRateLimiter,
-  accountRecoveryRateLimiter
+  accountRecoveryRateLimiter,
+  accountRecoveryIdentifierRateLimiter
 } = require('../middleware/rateLimiter');
 const { JWT_SECRET, verifyToken } = require('../middleware/auth');
 const { getPool } = require('../db/connection');
@@ -17,16 +18,14 @@ const {
   hashAccountToken,
   issueAccountToken
 } = require('../services/accountTokenService');
+const { createCookieOptions } = require('../services/cookiePolicy');
 const { serializeUser } = require('../services/userSerializer');
 
 const router = express.Router();
 const GENERIC_FORGOT_RESPONSE = 'Nếu email tồn tại, Lunar đã gửi liên kết đặt lại mật khẩu.';
+const COOKIE_BASE_OPTIONS = createCookieOptions({ defaultSameSite: 'strict' });
 const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.COOKIE_SECURE !== undefined
-    ? process.env.COOKIE_SECURE === 'true'
-    : process.env.NODE_ENV === 'production',
-  sameSite: 'strict',
+  ...COOKIE_BASE_OPTIONS,
   maxAge: 7 * 24 * 60 * 60 * 1000
 };
 
@@ -36,7 +35,7 @@ function passwordIsValid(password) {
     && Buffer.byteLength(password, 'utf8') <= 72;
 }
 
-router.post('/forgot-password', accountRecoveryRateLimiter, async (req, res) => {
+router.post('/forgot-password', accountRecoveryRateLimiter, accountRecoveryIdentifierRateLimiter, async (req, res) => {
   const cleanEmail = String(req.body?.email || '').trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes('@')) {
     return res.status(400).json({ success: false, error: 'Email không hợp lệ.' });
@@ -75,7 +74,7 @@ router.post('/forgot-password', accountRecoveryRateLimiter, async (req, res) => 
   }
 });
 
-router.post('/reset-password', accountRecoveryRateLimiter, async (req, res) => {
+router.post('/reset-password', accountRecoveryRateLimiter, accountRecoveryIdentifierRateLimiter, async (req, res) => {
   const token = String(req.body?.token || '');
   const newPassword = req.body?.password;
   if (token.length < 32 || !passwordIsValid(newPassword)) {
@@ -122,7 +121,7 @@ router.post('/reset-password', accountRecoveryRateLimiter, async (req, res) => {
       [actionToken.user_id, PURPOSES.PASSWORD_RESET]
     );
     await client.query('COMMIT');
-    res.clearCookie('access_token');
+    res.clearCookie('access_token', COOKIE_BASE_OPTIONS);
     return res.json({ success: true, message: 'Mật khẩu đã được đặt lại. Hãy đăng nhập lại.' });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -133,7 +132,7 @@ router.post('/reset-password', accountRecoveryRateLimiter, async (req, res) => {
   }
 });
 
-router.post('/verify-email', accountRecoveryRateLimiter, async (req, res) => {
+router.post('/verify-email', accountRecoveryRateLimiter, accountRecoveryIdentifierRateLimiter, async (req, res) => {
   const token = String(req.body?.token || '');
   if (token.length < 32) {
     return res.status(400).json({ success: false, error: 'Token xác minh không hợp lệ.' });
@@ -180,7 +179,12 @@ router.post('/verify-email', accountRecoveryRateLimiter, async (req, res) => {
   }
 });
 
-router.post('/resend-verification', verifyToken, accountRecoveryRateLimiter, async (req, res) => {
+router.post(
+  '/resend-verification',
+  verifyToken,
+  accountRecoveryRateLimiter,
+  accountRecoveryIdentifierRateLimiter,
+  async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ success: false, error: 'DATABASE_UNAVAILABLE' });
   if (!getAccountEmailConfiguration().configured) {
@@ -216,7 +220,8 @@ router.post('/resend-verification', verifyToken, accountRecoveryRateLimiter, asy
     req.log?.error('Verification email resend failed.', error, 500);
     return res.status(502).json({ success: false, error: 'Không thể gửi email xác minh.' });
   }
-});
+  }
+);
 
 router.patch('/account', verifyToken, accountMutationRateLimiter, async (req, res) => {
   const name = String(req.body?.name || '').trim();

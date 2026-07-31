@@ -2,12 +2,22 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const { writeSystemLog } = require('../middleware/logger');
+const { readRuntimeSecret } = require('../services/runtimeSecrets');
 
-const connectionString = process.env.DATABASE_URL || [
+const configuredDatabaseUrl = readRuntimeSecret('DATABASE_URL');
+const configuredPassword = readRuntimeSecret('POSTGRES_PASSWORD');
+
+if (process.env.NODE_ENV === 'production' && !configuredDatabaseUrl && !configuredPassword) {
+  throw new Error(
+    'Production database credentials are required via DATABASE_URL(_FILE) or POSTGRES_PASSWORD(_FILE).'
+  );
+}
+
+const connectionString = configuredDatabaseUrl || [
   'postgresql://',
   encodeURIComponent(process.env.POSTGRES_USER || 'postgres'),
   ':',
-  encodeURIComponent(process.env.POSTGRES_PASSWORD || 'postgres'),
+  encodeURIComponent(configuredPassword),
   '@',
   process.env.POSTGRES_HOST || 'localhost',
   ':',

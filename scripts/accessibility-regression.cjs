@@ -162,6 +162,10 @@ async function verifyDialogKeyboardContract(page) {
 
   await page.keyboard.press('Escape');
   await page.waitForSelector('[role="dialog"][aria-modal="true"]', { hidden: true, timeout: 5000 });
+  await page.waitForFunction(
+    () => document.activeElement?.matches('[data-a11y-login-trigger="true"]'),
+    { timeout: 2000 }
+  );
   const restored = await page.evaluate(() => document.activeElement?.matches('[data-a11y-login-trigger="true"]'));
   if (!restored) throw new Error('Focus was not restored to the dialog trigger after Escape.');
 
