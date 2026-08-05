@@ -11,6 +11,7 @@ const child = spawn(process.execPath, ['server/index.js'], {
     ...process.env,
     PORT: String(port),
     NODE_ENV: 'production',
+    LUNAR_DISABLE_RATE_LIMIT: 'true',
     JWT_SECRET: 'qa-secret-at-least-32-characters-long',
     PAYMENT_WEBHOOK_SECRET: 'qa-payment-webhook-secret',
     GITHUB_WEBHOOK_SECRET: 'qa-github-webhook-secret-at-least-32-characters',
@@ -334,7 +335,12 @@ async function run() {
       throw new Error('Forgot-password response leaked account state.');
     }
 
-    qaPool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const qaDbUrl = process.env.DATABASE_URL || '';
+    const qaDbSsl = /[?&]sslmode=(require|verify-ca|verify-full)\b/i.test(qaDbUrl);
+    qaPool = new Pool({
+      connectionString: qaDbUrl.replace(/([?&])sslmode=[^&]*/gi, ''),
+      ...(qaDbSsl ? { ssl: { rejectUnauthorized: false } } : {})
+    });
     const { PURPOSES, issueAccountToken } = require('../server/services/accountTokenService');
     const resetToken = await issueAccountToken(qaPool, {
       userId: regular.user.id,
@@ -875,6 +881,15 @@ eval(userInput);`,
       || matchingLoginEvents.slice(0, 2).some((event) => event.authMethod !== 'PASSWORD')
       || todayLoginCountAfter < todayLoginCountBefore + 2
     ) {
+      console.error('ANALYTICS FAILURE DETAILS:', {
+        scope: analyticsAfterLogins.body.scope,
+        matchingLen: matchingLoginEvents.length,
+        userBefore: userLoginEventsBefore,
+        uniqueIds: new Set(matchingLoginEvents.map((event) => event.loginEventId)).size,
+        methods: matchingLoginEvents.slice(0, 2).map((e) => e.authMethod),
+        todayAfter: todayLoginCountAfter,
+        todayBefore: todayLoginCountBefore
+      });
       throw new Error('Admin analytics did not record independent realtime login events.');
     }
 
@@ -1081,8 +1096,10 @@ eval(userInput);`,
 }
 
 run().catch((error) => {
-  console.error(error.stack);
   console.error(serverLogs);
+  console.error('\n==================== QA SMOKE ERROR STACK ====================');
+  console.error(error.stack);
+  console.error('==============================================================\n');
   child.kill();
   process.exitCode = 1;
 });

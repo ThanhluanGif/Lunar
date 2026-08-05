@@ -26,7 +26,8 @@ const result = spawnSync(npmCommand, ['run', 'qa'], {
   env: {
     ...process.env,
     DATABASE_URL: databaseUrl,
-    COOKIE_SECURE: 'false'
+    COOKIE_SECURE: 'false',
+    NODE_ENV: 'test'
   }
 });
 

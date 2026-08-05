@@ -14,8 +14,13 @@ async function fetchApi(path, options) {
   } catch (cause) {
     if (cause?.name === 'AbortError') throw cause;
     const target = API_BASE_URL || 'backend cùng domain';
+    const frontendOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    const crossOrigin = Boolean(API_BASE_URL && frontendOrigin && API_BASE_URL !== frontendOrigin);
     const error = new Error(
       `Không thể kết nối máy chủ Lunar (${target}). `
+      + (crossOrigin
+        ? `Frontend ${frontendOrigin} đang gọi API khác origin; hãy kiểm tra CORS allowlist, HTTPS và cookie cross-site. `
+        : '')
       + 'Vui lòng thử lại sau hoặc liên hệ quản trị viên nếu lỗi vẫn tiếp diễn.'
     );
     error.status = 502;
@@ -33,12 +38,39 @@ async function fetchApi(path, options) {
 async function readJsonResponse(response) {
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.toLowerCase().includes('application/json')) {
-    const error = new Error(
-      'Máy chủ Lunar trả về phản hồi không hợp lệ. Vui lòng thử lại sau.'
+    const status = response.status || 502;
+    const responseText = await response.text().catch(() => '');
+    const vercelRequestId = response.headers.get('x-vercel-id') || '';
+    const vercelError = response.headers.get('x-vercel-error') || '';
+    const looksLikeVercelProtection = Boolean(
+      vercelError
+      || /vercel authentication|deployment protection|security checkpoint/i.test(responseText)
     );
-    error.status = 502;
-    error.code = 'INVALID_API_RESPONSE';
-    error.payload = { error: error.message, code: error.code };
+    const looksLikeVercelEdge = Boolean(
+      vercelRequestId || /^vercel$/i.test(response.headers.get('server') || '')
+    );
+    const errorMsg = status === 403 && looksLikeVercelProtection
+      ? 'Vercel đã chặn request trước khi tới Lunar API (HTTP 403). Hãy tắt Deployment Protection cho production hoặc dùng đúng production domain.'
+      : status === 403 && looksLikeVercelEdge
+      ? 'Vercel Edge/Firewall đã trả HTTP 403 trước khi Lunar API trả JSON. Hãy kiểm tra custom firewall, IP block, attack mode và production domain.'
+      : status === 403
+      ? 'Gateway/WAF của hosting đã từ chối request trước khi trả JSON (HTTP 403). CORS không tạo ra phản hồi HTTP 403 đọc được; hãy kiểm tra firewall rule và request ID.'
+      : (status === 502 || status === 503 || status === 504)
+      ? `Máy chủ Lunar hiện đang bận hoặc tạm thời chưa kết nối được (HTTP ${status}). Bạn có thể Đăng Nhập bằng Email / Nickname.`
+      : `Máy chủ Lunar phản hồi không theo định dạng JSON (HTTP ${status}). Vui lòng thử lại hoặc đăng nhập bằng Email / Nickname.`;
+    const requestId = vercelRequestId || response.headers.get('x-correlation-id') || '';
+    const error = new Error(`${errorMsg}${requestId ? ` Mã request: ${requestId}.` : ''}`);
+    error.status = status;
+    error.code = status === 403
+      ? (looksLikeVercelProtection
+        ? 'DEPLOYMENT_PROTECTED'
+        : (looksLikeVercelEdge ? 'VERCEL_EDGE_FORBIDDEN' : 'HOSTING_FORBIDDEN'))
+      : 'INVALID_API_RESPONSE';
+    error.payload = {
+      error: error.message,
+      code: error.code,
+      requestId: requestId || null
+    };
     throw error;
   }
 

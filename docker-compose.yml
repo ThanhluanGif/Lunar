@@ -25,6 +25,9 @@ services:
       JWT_SECRET: ${LUNAR_JWT_SECRET:?Set LUNAR_JWT_SECRET to a strong random value}
       DATABASE_URL: postgresql://${LUNAR_POSTGRES_USER:-lunar_admin}:${LUNAR_POSTGRES_PASSWORD:?Set LUNAR_POSTGRES_PASSWORD to a strong random value}@db:5432/${LUNAR_POSTGRES_DB:-lunar_db}
       DATABASE_SSL: ${LUNAR_DATABASE_SSL:-false}
+      DATABASE_POOL_MAX: ${LUNAR_DATABASE_POOL_MAX:-10}
+      DATABASE_CONNECT_TIMEOUT_MS: ${LUNAR_DATABASE_CONNECT_TIMEOUT_MS:-3000}
+      DATABASE_IDLE_TIMEOUT_MS: ${LUNAR_DATABASE_IDLE_TIMEOUT_MS:-30000}
       CORS_ORIGINS: ${LUNAR_CORS_ORIGINS:-http://localhost:5050,http://127.0.0.1:5050,http://localhost:3000,http://127.0.0.1:3000}
       PUBLIC_APP_URL: ${LUNAR_PUBLIC_APP_URL:-}
       # An empty secret disables webhook confirmation with HTTP 503; never use a public default.

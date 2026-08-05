@@ -242,14 +242,17 @@ Dự án Lunar tuân thủ nghiêm ngặt các tiêu chuẩn an toàn bảo mậ
 | `NODE_ENV` | Môi trường ứng dụng | `development` / `production` |
 | `JWT_SECRET` | Khóa bí mật ký mã JWT (bắt buộc đổi ở prod) | *Chuỗi mã hóa ngẫu nhiên* |
 | `DATABASE_URL` | Chuỗi kết nối PostgreSQL | `postgres://lunar:lunar_pass@localhost:5433/lunar_db` |
+| `DATABASE_POOL_MAX` | Số connection tối đa mỗi process/serverless instance | `2` trên Vercel, `10` ở môi trường khác |
+| `DATABASE_CONNECT_TIMEOUT_MS` | Timeout mở connection PostgreSQL | `3000` |
 | `LOG_LEVEL` | Mức log JSON của backend | `INFO` ở production |
 | `TRUST_PROXY` | CIDR/địa chỉ reverse proxy được tin cậy | Không để trống sau proxy production |
 | `VITE_API_BASE_URL` | Origin HTTPS của backend khi frontend host riêng | Để trống khi dùng `/api` same-origin |
 | `PUBLIC_APP_URL` | Origin frontend để backend redirect sau OAuth | Để trống khi backend phục vụ frontend |
 | `COOKIE_SAME_SITE` | Chính sách session cookie | `strict`; dùng `none` cho cross-site |
-| `LUNAR_GITHUB_CLIENT_ID` | OAuth App Client ID từ GitHub | *GitHub Client ID* |
-| `LUNAR_GITHUB_CLIENT_SECRET` | OAuth App Client Secret từ GitHub | *GitHub Client Secret* |
-| `LUNAR_GITHUB_TOKEN_ENCRYPTION_KEY` | Khóa mã hóa token GitHub (AES-256) | *Chuỗi ngẫu nhiên 32+ ký tự* |
+| `GITHUB_CLIENT_ID` | OAuth App Client ID từ GitHub | *GitHub Client ID* |
+| `GITHUB_CLIENT_SECRET` | OAuth App Client Secret từ GitHub | *GitHub Client Secret* |
+| `GITHUB_OAUTH_CALLBACK_URL` | Callback phải khớp OAuth App GitHub | `https://<api-domain>/api/v1/auth/github/callback` |
+| `GITHUB_TOKEN_ENCRYPTION_KEY` | Khóa mã hóa token GitHub (AES-256) | *Chuỗi ngẫu nhiên 32+ ký tự* |
 | `LUNAR_AUTH_EMAIL_BASE_URL` | Origin HTTPS dùng trong email tài khoản | `https://<production-domain>` |
 | `LUNAR_AUTH_EMAIL_ALLOW_INSECURE_BASE_URL` | Chỉ cho QA dry-run dùng URL HTTP | Luôn `false` ở production |
 
@@ -272,8 +275,8 @@ npm run qa:sast
 # Chạy kiểm thử tích hợp Docker Stack
 npm run qa:docker
 
-# Chạy kiểm thử giao diện tự động (macOS Chrome Headless)
-npm run qa:ui:mac
+# Chạy kiểm thử giao diện Chrome Headless đa nền tảng (macOS/Linux CI)
+npm run qa:ui
 
 # Kiểm tra register → logout → xóa session → đăng nhập lại qua CORS
 npm run qa:auth-lifecycle:browser

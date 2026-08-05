@@ -18,7 +18,8 @@
     "qa:remediation-report": "node scripts/remediation-report-regression.mjs",
     "qa:sast": "node scripts/sast-regression.cjs && node scripts/auto-patch-regression.mjs && node scripts/sast-self-audit.cjs",
     "qa:docker": "node scripts/qa-docker.cjs",
-    "qa:ui:mac": "node scripts/ui-smoke-mac.mjs"
+    "qa:ui": "npm run build && node scripts/ui-smoke-mac.mjs",
+    "qa:ui:mac": "npm run qa:ui"
   },
   "dependencies": {
     "@babel/parser": "^7.29.7",

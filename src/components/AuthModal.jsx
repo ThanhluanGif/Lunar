@@ -30,7 +30,20 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
   const [deviceAuth, setDeviceAuth] = useState(null);
   const devicePollTimerRef = useRef(null);
   const deviceFlowActiveRef = useRef(false);
+  const emailInputRef = useRef(null);
   const dialogRef = useModalFocusTrap({ isOpen, onClose });
+
+  const switchToEmailTab = () => {
+    stopDevicePolling();
+    setDeviceAuth(null);
+    setActiveTab('email');
+    setAuthMode('login');
+    setErrorMsg('');
+    setNoticeMsg('');
+    setTimeout(() => {
+      emailInputRef.current?.focus();
+    }, 100);
+  };
 
   useEffect(() => {
     if (!initialResetToken) return;
@@ -239,14 +252,12 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
               ? 'Khôi phục tài khoản'
               : authMode === 'reset'
                 ? 'Đặt lại mật khẩu'
-                : activeTab === 'github'
-                  ? 'Đăng nhập bằng GitHub'
-                  : 'Đăng Nhập Lunar.dev'}
+                : 'Đăng Nhập Bằng GitHub'}
           </h2>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {activeTab === 'github' && authMode !== 'forgot' && authMode !== 'reset'
+            {authMode !== 'forgot' && authMode !== 'reset'
               ? 'Đăng nhập Lunar và đồng bộ repository chỉ trong một bước.'
-              : 'Dùng email hoặc nickname và mật khẩu để truy cập tài khoản Lunar.'}
+              : 'Nhập thông tin để thực hiện khôi phục tài khoản.'}
           </p>
         </div>
 
@@ -260,36 +271,11 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
             fontSize: '0.82rem',
             marginBottom: '16px',
             display: 'flex',
-            flexDirection: 'column',
+            alignItems: 'center',
             gap: '8px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertCircle size={18} style={{ flexShrink: 0 }} />
-              <span>{errorMsg}</span>
-            </div>
-            {activeTab === 'github' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('email');
-                  setErrorMsg('');
-                }}
-                style={{
-                  alignSelf: 'flex-start',
-                  background: 'rgba(255,255,255,0.12)',
-                  border: '1px solid rgba(248, 113, 113, 0.4)',
-                  color: '#ffffff',
-                  padding: '5px 12px',
-                  borderRadius: '6px',
-                  fontSize: '0.78rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  marginTop: '2px'
-                }}
-              >
-                👉 Chuyển sang Đăng Nhập bằng Email / Nickname
-              </button>
-            )}
+            <AlertCircle size={18} style={{ flexShrink: 0 }} />
+            <span>{errorMsg}</span>
           </div>
         )}
         {noticeMsg && (
@@ -459,6 +445,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
             {authMode !== 'reset' && <div className="input-group">
               <label className="input-label">{authMode === 'login' ? 'Email hoặc nickname' : 'Email'}</label>
               <input
+                ref={emailInputRef}
                 type={authMode === 'login' ? 'text' : 'email'}
                 placeholder={authMode === 'login' ? 'developer@lunar.dev hoặc @developer' : 'developer@lunar.dev'}
                 autoComplete={authMode === 'login' ? 'username' : 'email'}

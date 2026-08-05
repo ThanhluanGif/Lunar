@@ -27,6 +27,15 @@ import UserGitHubWorkspace from './components/UserGitHubWorkspace';
 import RealTimeStatsBanner from './components/RealTimeStatsBanner';
 import { subscribeToRealtimeSync } from './services/dashboardSync';
 
+const GITHUB_AUTH_ERROR_MESSAGES = {
+  unavailable: 'GitHub OAuth hoặc database đang không sẵn sàng trên máy chủ.',
+  invalid_state: 'Phiên GitHub OAuth không hợp lệ hoặc state cookie đã bị mất. Hãy dùng đúng production domain và cho phép cookie.',
+  denied: 'Bạn đã hủy hoặc từ chối cấp quyền GitHub.',
+  link_required: 'Email GitHub đã thuộc một tài khoản Lunar chưa xác minh. Hãy đăng nhập bằng email và xác minh tài khoản trước.',
+  session_failed: 'GitHub đã xác thực nhưng trình duyệt không nhận được session cookie của Lunar.',
+  failed: 'GitHub đã xác thực nhưng Lunar không thể hoàn tất lưu tài khoản hoặc repositories.'
+};
+
 export default function App() {
   const [projects, setProjects] = useState(SECURITY_PROJECTS_MOCK);
   const [activeTab, setActiveTab] = useState('explore'); // 'explore' | 'dashboard' | 'detail' | 'admin'
@@ -36,7 +45,7 @@ export default function App() {
   
   const [currentUser, setCurrentUser] = useState(null);
   const [currentTier, setCurrentTier] = useState('FREE');
-  const [githubAuthToast, setGithubAuthToast] = useState(''); // '' | 'success' | 'failed'
+  const [githubAuthToast, setGithubAuthToast] = useState('');
   const [accountToast, setAccountToast] = useState('');
   const [accountError, setAccountError] = useState('');
   const [resetToken, setResetToken] = useState('');
@@ -126,10 +135,12 @@ export default function App() {
           setCurrentTier(user.tier || 'FREE');
         })
         .catch(() => {
-          setGithubAuthToast('failed');
+          setGithubAuthToast('session_failed');
         });
     } else {
-      setGithubAuthToast('failed');
+      setGithubAuthToast(Object.hasOwn(GITHUB_AUTH_ERROR_MESSAGES, githubAuth)
+        ? githubAuth
+        : 'failed');
     }
 
     const timer = setTimeout(() => setGithubAuthToast(''), 4000);
@@ -364,7 +375,7 @@ export default function App() {
               ✅ Đăng nhập GitHub thành công! Repositories của bạn đã được đồng bộ.
             </div>
           )}
-          {githubAuthToast === 'failed' && (
+          {githubAuthToast && githubAuthToast !== 'success' && (
             <div style={{
               background: 'rgba(220, 38, 38, 0.15)',
               borderBottom: '1px solid #dc2626',
@@ -377,7 +388,7 @@ export default function App() {
               justifyContent: 'center',
               gap: '10px'
             }}>
-              ❌ Kết nối GitHub thất bại. Vui lòng thử lại hoặc kiểm tra cấu hình OAuth.
+              ❌ {GITHUB_AUTH_ERROR_MESSAGES[githubAuthToast] || GITHUB_AUTH_ERROR_MESSAGES.failed}
             </div>
           )}
           {accountToast && (
@@ -441,8 +452,8 @@ export default function App() {
               key={`account-dashboard:${currentUser?.id || 'guest'}`}
               onBackToSite={() => setActiveTab('explore')}
               onSelectProject={handleSelectProject}
+              onOpenScan={() => setIsSubmitOpen(true)}
               currentUser={currentUser}
-              onOpenPricing={handleOpenPricing}
             />
           </div>
         )}

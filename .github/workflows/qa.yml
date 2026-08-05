@@ -73,5 +73,12 @@ jobs:
       - name: Run accessibility browser gate
         run: npm run qa:a11y
 
+      - name: Run end-to-end Chrome UI gate
+        run: npm run qa:ui
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+          DATABASE_URL: postgresql://lunar_admin:qa_postgres_password@localhost:5432/lunar_db
+          LUNAR_DISABLE_RATE_LIMIT: "true"
+
       - name: Validate production container
         run: docker build -t lunar:readiness-qa-${{ github.sha }} .

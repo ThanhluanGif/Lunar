@@ -12,6 +12,7 @@ import {
   notifyUserUpdated,
   subscribeToRealtimeSync
 } from '../services/dashboardSync';
+import { ConfirmDialog } from './ui';
 
 export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
   const [activeSubTab, setActiveSubTab] = useState('analytics'); // 'analytics' | 'users' | 'transactions' | 'audit'
@@ -28,6 +29,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
   const [loading, setLoading] = useState(true);
   const [daysRange, setDaysRange] = useState(14);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [pendingAdminAction, setPendingAdminAction] = useState(null);
   const requestGateRef = useRef(createLatestRequestGate());
   const requestControllerRef = useRef(null);
   const adminUserId = currentUser?.id || null;
@@ -263,9 +265,6 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
 
   const handleResetQuota = async (userId, targetName) => {
     const displayName = targetName || 'người dùng này';
-    if (!window.confirm(`Xác nhận reset hạn ngạch lượt quét hàng ngày của ${displayName} về 0 lượt?`)) {
-      return;
-    }
     setResettingQuotaIds((prev) => new Set(prev).add(userId));
 
     // Optimistic local state updates
@@ -300,9 +299,6 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
   };
 
   const handleCleanupQaUsers = async () => {
-    if (!window.confirm('Xác nhận xóa toàn bộ dữ liệu lượt quét cũ, nhật ký truy cập cũ và các tài khoản rác khỏi hệ thống?')) {
-      return;
-    }
     setIsCleaningQa(true);
     try {
       const res = await lunarApi.purgeOldAdminData('Admin thực hiện dọn dẹp và xóa sạch toàn bộ dữ liệu cũ trong dashboard.');
@@ -350,8 +346,29 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
     ))
   );
 
+  const confirmAdminAction = async () => {
+    const action = pendingAdminAction;
+    if (!action) return;
+    setPendingAdminAction(null);
+    if (action.type === 'cleanup') await handleCleanupQaUsers();
+    if (action.type === 'reset-quota') await handleResetQuota(action.userId, action.targetName);
+    if (action.type === 'tier') await handleChangeUserTier(action.userId, action.value);
+    if (action.type === 'status') await handleChangeUserStatus(action.userId, action.value);
+    if (action.type === 'payment') await handleApproveTransaction(action.transaction);
+  };
+
+  const adminDialogCopy = pendingAdminAction?.type === 'cleanup'
+    ? ['Clean old system data?', 'This removes old scan history, access logs and disposable QA accounts. The action is recorded in the audit trail.', 'Clean old data']
+    : pendingAdminAction?.type === 'reset-quota'
+      ? ['Reset daily quota?', `Reset daily scan usage for ${pendingAdminAction.targetName || 'this user'} to zero.`, 'Reset quota']
+      : pendingAdminAction?.type === 'tier'
+        ? ['Change account plan?', `Grant ${pendingAdminAction.value} access to this account. This changes feature and quota entitlement.`, 'Change plan']
+        : pendingAdminAction?.type === 'status'
+          ? [pendingAdminAction.value === 'SUSPENDED' ? 'Suspend this account?' : 'Reactivate this account?', pendingAdminAction.value === 'SUSPENDED' ? 'The user will lose access until an administrator reactivates the account.' : 'The user will regain access under their existing role and plan.', pendingAdminAction.value === 'SUSPENDED' ? 'Suspend account' : 'Reactivate account']
+          : ['Approve this payment?', 'Confirm that the payment was verified before granting the target plan.', 'Approve payment'];
+
   return (
-    <div style={{ maxWidth: '1280px', margin: '0 auto', paddingTop: '20px' }}>
+    <div className="admin-dashboard" style={{ maxWidth: '1280px', margin: '0 auto', paddingTop: '20px' }}>
       
       {/* Admin Header Banner */}
       <div style={{
@@ -392,7 +409,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
               Đồng Bộ Dữ Liệu
             </button>
             <button
-              onClick={handleCleanupQaUsers}
+              onClick={() => setPendingAdminAction({ type: 'cleanup' })}
               disabled={isCleaningQa}
               className="btn btn-rose btn-sm"
               style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -672,17 +689,17 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                         <td style={{ padding: '12px 10px', textAlign: 'right' }}>
                           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
                             {currentTier !== 'PRO' && (
-                              <button onClick={() => handleChangeUserTier(u.id, 'PRO')} className="btn btn-purple btn-sm" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
+                              <button onClick={() => setPendingAdminAction({ type: 'tier', userId: u.id, value: 'PRO' })} className="btn btn-purple btn-sm" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
                                 + Cấp Pro
                               </button>
                             )}
                             {currentTier !== 'ENTERPRISE' && (
-                              <button onClick={() => handleChangeUserTier(u.id, 'ENTERPRISE')} className="btn btn-cyan btn-sm" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
+                              <button onClick={() => setPendingAdminAction({ type: 'tier', userId: u.id, value: 'ENTERPRISE' })} className="btn btn-cyan btn-sm" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
                                 + Enterprise
                               </button>
                             )}
                             <button
-                              onClick={() => handleResetQuota(u.id, u.name || u.nickname || u.email)}
+                              onClick={() => setPendingAdminAction({ type: 'reset-quota', userId: u.id, targetName: u.name || u.nickname || u.email })}
                               disabled={resettingQuotaIds.has(u.id)}
                               className="btn btn-secondary btn-sm"
                               style={{ fontSize: '0.72rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
@@ -740,7 +757,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
               <button onClick={() => setUserTierFilter('PRO')} className={`btn btn-sm ${userTierFilter === 'PRO' ? 'btn-purple' : 'btn-secondary'}`}>Pro</button>
               <button onClick={() => setUserTierFilter('ENTERPRISE')} className={`btn btn-sm ${userTierFilter === 'ENTERPRISE' ? 'btn-cyan' : 'btn-secondary'}`}>Enterprise</button>
               <button
-                onClick={handleCleanupQaUsers}
+                onClick={() => setPendingAdminAction({ type: 'cleanup' })}
                 disabled={isCleaningQa}
                 className="btn btn-secondary btn-sm"
                 style={{ fontSize: '0.78rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#f87171', borderColor: 'rgba(248, 113, 113, 0.3)', marginLeft: '8px' }}
@@ -812,7 +829,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                       {/* Tier Change Dropdown */}
                       <select
                         value={user.tier}
-                        onChange={(e) => handleChangeUserTier(user.id, e.target.value)}
+                        onChange={(e) => setPendingAdminAction({ type: 'tier', userId: user.id, value: e.target.value })}
                         style={{
                           background: 'rgba(15, 23, 42, 0.9)',
                           color: '#ffffff',
@@ -824,12 +841,12 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                         }}
                       >
                         <option value="FREE">Gói FREE</option>
-                        <option value="PRO">Gói PRO ⭐</option>
-                        <option value="ENTERPRISE">Gói ENTERPRISE 🤖</option>
+                        <option value="PRO">Gói PRO</option>
+                        <option value="ENTERPRISE">Gói ENTERPRISE</option>
                       </select>
 
                       <button
-                        onClick={() => handleResetQuota(user.id, user.name || user.email)}
+                        onClick={() => setPendingAdminAction({ type: 'reset-quota', userId: user.id, targetName: user.name || user.email })}
                         disabled={resettingQuotaIds.has(user.id)}
                         className="btn btn-secondary btn-sm"
                         style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
@@ -841,7 +858,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
 
                       {user.status === 'ACTIVE' ? (
                         <button
-                          onClick={() => handleChangeUserStatus(user.id, 'SUSPENDED')}
+                          onClick={() => setPendingAdminAction({ type: 'status', userId: user.id, value: 'SUSPENDED' })}
                           className="btn btn-rose btn-sm"
                           style={{ fontSize: '0.75rem', padding: '4px 10px' }}
                         >
@@ -849,7 +866,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                         </button>
                       ) : (
                         <button
-                          onClick={() => handleChangeUserStatus(user.id, 'ACTIVE')}
+                          onClick={() => setPendingAdminAction({ type: 'status', userId: user.id, value: 'ACTIVE' })}
                           className="btn btn-emerald btn-sm"
                           style={{ fontSize: '0.75rem', padding: '4px 10px' }}
                         >
@@ -910,7 +927,7 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
                     </td>
                     <td style={{ padding: '14px 18px', textAlign: 'right' }}>
                       {tx.status === 'PENDING' ? (
-                        <button onClick={() => handleApproveTransaction(tx)} className="btn btn-emerald btn-sm">
+                        <button onClick={() => setPendingAdminAction({ type: 'payment', transaction: tx })} className="btn btn-emerald btn-sm">
                           <CheckCircle2 size={14} /> Duyệt Cấp Pro
                         </button>
                       ) : (
@@ -955,6 +972,16 @@ export default function AdminDashboard({ currentUser, onUpgradeUserTier }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingAdminAction)}
+        title={adminDialogCopy[0]}
+        description={adminDialogCopy[1]}
+        confirmLabel={adminDialogCopy[2]}
+        tone={pendingAdminAction?.type === 'cleanup' || (pendingAdminAction?.type === 'status' && pendingAdminAction?.value === 'SUSPENDED') ? 'danger' : 'primary'}
+        onConfirm={confirmAdminAction}
+        onClose={() => setPendingAdminAction(null)}
+      />
 
     </div>
   );

@@ -17,6 +17,7 @@ import { createGitHubSecurityPR } from '../services/githubBotService';
 import { simulateProjectHackerAttack } from '../services/geminiService';
 import { normalizeAutoPatch } from '../services/autoPatchPolicy';
 import { getUpgradeQuotaContext } from '../services/quotaUpgrade';
+import { Button, ConfirmDialog, StatusBadge } from './ui';
 
 function matchesActiveFinding(finding, activeFile, activeVuln) {
   const filePath = activeFile?.path || activeVuln?.filePath;
@@ -47,6 +48,7 @@ export default function CodeRepairWorkbench({
   const [patchStatus, setPatchStatus] = useState('triaged');
   const [isCreatingPR, setIsCreatingPR] = useState(false);
   const [prResult, setPrResult] = useState(null);
+  const [confirmApplyOpen, setConfirmApplyOpen] = useState(false);
 
   useEffect(() => {
     setLiveFinding(simulationFinding);
@@ -75,8 +77,16 @@ export default function CodeRepairWorkbench({
   const patchOwner = livePatch.available ? liveFinding : activeVuln || liveFinding;
   const patch = livePatch.available ? livePatch : activePatch;
   const patchedCode = patch.available ? patch.after : null;
-  const threatLevel = attackVector?.threatLevel || activeVuln?.severity || liveFinding?.severity || 'MEDIUM';
-  const canApplyPatch = patch.available && patch.before === originalCode;
+  const normalizeCode = (str) => String(str || '').replace(/\r\n/g, '\n').trim();
+  const canApplyPatch = patch.available && (!patch.before || normalizeCode(patch.before) === normalizeCode(originalCode));
+  const rawThreatLevel = liveFinding?.hackerAttackVector?.threatLevel
+    || liveFinding?.severity
+    || activeVuln?.hackerAttackVector?.threatLevel
+    || activeVuln?.severity
+    || 'MEDIUM';
+  const threatLevel = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(String(rawThreatLevel).toUpperCase())
+    ? String(rawThreatLevel).toUpperCase()
+    : 'MEDIUM';
 
   const handleSimulateAttack = async () => {
     if (!activeFile?.content) return;
@@ -270,10 +280,6 @@ export default function CodeRepairWorkbench({
         <ol style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.65, paddingLeft: '20px' }}>
           {(remediation?.stepByStepGuide || []).map((step) => <li key={step}>{step}</li>)}
         </ol>
-        <button className="btn btn-emerald" onClick={handleApplyPatch} disabled={!canApplyPatch || ['applied', 'verified'].includes(patchStatus)} data-testid="apply-project-patch">
-          {patchStatus === 'verified' ? <CheckCircle size={16} /> : <Wrench size={16} />}
-          {patchStatus === 'verified' ? 'Đã xác minh' : patchStatus === 'applied' ? 'Đang rescan…' : '1-Click Apply Patch'}
-        </button>
         {!patch.available && (
           <p role="status" style={{ color: '#fbbf24', fontSize: '0.82rem', marginTop: '10px' }}>
             {patch.reasonUnavailable}
@@ -291,6 +297,25 @@ export default function CodeRepairWorkbench({
             {patch.unifiedDiff}
           </pre>
         ))}
+
+      {patch.available && (
+        <div className="patch-review-gate">
+          <div>
+            <StatusBadge status={patchStatus === 'verified' ? 'resolved' : patchStatus === 'applied' ? 'running' : 'medium'} label={patchStatus === 'verified' ? 'Verified' : patchStatus === 'applied' ? 'Validating patch' : 'Approval required'} />
+            <strong>Review the complete diff before applying</strong>
+            <p>The change is only counted as fixed after validation and a clean rescan.</p>
+          </div>
+          <Button
+            variant={patchStatus === 'verified' ? 'secondary' : 'success'}
+            icon={patchStatus === 'verified' ? CheckCircle : Wrench}
+            onClick={() => setConfirmApplyOpen(true)}
+            disabled={!canApplyPatch || ['applied', 'verified'].includes(patchStatus)}
+            data-testid="apply-project-patch"
+          >
+            {patchStatus === 'verified' ? 'Patch verified' : patchStatus === 'applied' ? 'Validating…' : 'Confirm patch'}
+          </Button>
+        </div>
+      )}
 
       {simulationError && (
         <p role="alert" style={{ color: '#fda4af', fontSize: '0.82rem', marginBottom: '12px' }}>{simulationError}</p>
@@ -314,6 +339,15 @@ export default function CodeRepairWorkbench({
           Xem PR #{prResult.prNumber} <ExternalLink size={14} />
         </a>
       )}
+      <ConfirmDialog
+        open={confirmApplyOpen}
+        title="Apply the reviewed patch?"
+        description="Lunar will apply the diff shown above, validate the changed file and run the security scan again. Failed validation will not be recorded as resolved."
+        confirmLabel="Apply and rescan"
+        tone="primary"
+        onConfirm={async () => { setConfirmApplyOpen(false); await handleApplyPatch(); }}
+        onClose={() => setConfirmApplyOpen(false)}
+      />
     </div>
   );
 }

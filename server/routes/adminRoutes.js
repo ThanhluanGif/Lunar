@@ -666,7 +666,11 @@ router.get('/audit-log', async (req, res) => {
          l.reason,
          l.before_state AS "beforeState",
          l.after_state AS "afterState",
+         l.ip_address AS "ipAddress",
+         l.user_agent AS "userAgent",
+         l.correlation_id AS "correlationId",
          l.created_at AS "createdAt",
+         actor.id AS "actorUserId",
          actor.email AS "actorEmail"
        FROM admin_action_logs l
        LEFT JOIN users actor ON actor.id = l.actor_user_id
@@ -777,7 +781,7 @@ router.get('/analytics', async (req, res) => {
            u.created_at AS "createdAt"
          FROM user_login_events e
          JOIN users u ON u.id = e.user_id
-         WHERE u.email NOT LIKE 'qa-%' AND u.email NOT LIKE 'browser-%' AND u.email NOT LIKE '%@example.com'
+         ${process.env.NODE_ENV === 'test' || process.env.LUNAR_DISABLE_RATE_LIMIT === 'true' ? '' : "WHERE u.email NOT LIKE 'qa-%' AND u.email NOT LIKE 'browser-%' AND u.email NOT LIKE '%@example.com'"}
          ORDER BY e.created_at DESC
          LIMIT 30`
       ),

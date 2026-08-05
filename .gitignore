@@ -52,3 +52,9 @@ flow/.lock
 *.sln
 *.swp
 *.swo
+.vercel
+
+# /flow run-state (generated; safe to ignore)
+MODE
+PROJECT_TYPE
+.flow/

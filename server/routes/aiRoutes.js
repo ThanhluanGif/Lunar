@@ -665,7 +665,7 @@ async function handleProjectAttackSimulation(req, res) {
       return Boolean(process.env[envName]);
     })
     : provider;
-  const selectedProvider = externalProvider || 'lunar-sast-native';
+  let selectedProvider = externalProvider || 'lunar-sast-native';
   if (selectedProvider !== 'lunar-sast-native' && !providers[selectedProvider]) {
     return res.status(400).json({ success: false, error: 'Unsupported project simulation provider.' });
   }
@@ -674,17 +674,35 @@ async function handleProjectAttackSimulation(req, res) {
     await enforceQuota(req.user, pool);
     const safeRepositoryName = String(repositoryName).slice(0, 300);
     const startedAt = Date.now();
-    const output = selectedProvider === 'lunar-sast-native'
-      ? {
-          model: 'lunar-cross-file-sast-v1',
-          result: nativeProjectSimulation(files, safeRepositoryName)
-        }
-      : await providers[selectedProvider](
+    let output;
+    if (selectedProvider === 'lunar-sast-native') {
+      output = {
+        model: 'lunar-cross-file-sast-v1',
+        result: nativeProjectSimulation(files, safeRepositoryName)
+      };
+    } else {
+      try {
+        output = await providers[selectedProvider](
           buildProjectPrompt({ projectFiles: files, repositoryName: safeRepositoryName }),
           PROJECT_ATTACK_SIMULATION_SCHEMA,
           'lunar_project_attack_simulation',
           { correlationId: req.correlationId }
         );
+      } catch (providerError) {
+        if (provider !== 'auto' || ![429, 502, 503].includes(providerError.status)) {
+          throw providerError;
+        }
+        req.log?.warn('Automatic AI provider failed; using the native SAST simulation fallback.', {
+          provider: selectedProvider,
+          error: providerError
+        });
+        selectedProvider = 'lunar-sast-native';
+        output = {
+          model: 'lunar-cross-file-sast-v1',
+          result: nativeProjectSimulation(files, safeRepositoryName)
+        };
+      }
+    }
     const simulation = normalizePatchContracts(output.result);
     assertProjectSimulation(simulation);
     const inputCharacters = files.reduce((total, file) => total + file.content.length, 0);

@@ -44,10 +44,13 @@ function authIdentifierKey(req) {
 
 validateRateLimitDeployment();
 
+const isRateLimitDisabled = () => process.env.NODE_ENV === 'test' || process.env.LUNAR_DISABLE_RATE_LIMIT === 'true';
+
 // 1. Auth Rate Limiter - Chống Brute-Force Password & Enumeration (Max 5 req / 1 phút)
 const authRateLimiter = rateLimit({
   windowMs: AUTH_WINDOW_MS,
   max: 5,
+  skip: isRateLimitDisabled,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -61,6 +64,7 @@ const authRateLimiter = rateLimit({
 const authIdentifierRateLimiter = rateLimit({
   windowMs: AUTH_WINDOW_MS,
   max: 5,
+  skip: isRateLimitDisabled,
   keyGenerator: authIdentifierKey,
   standardHeaders: true,
   legacyHeaders: false,

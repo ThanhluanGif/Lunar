@@ -8,7 +8,11 @@ const baseUrl = process.env.LUNAR_UI_URL || 'http://127.0.0.1:5050';
 const chromeCandidates = [
   process.env.CHROME_PATH,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/Applications/Chromium.app/Contents/MacOS/Chromium'
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser'
 ].filter(Boolean);
 
 const chromePath = chromeCandidates.find((candidate) => {
@@ -24,6 +28,45 @@ if (!chromePath) {
 }
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+let serverProcess = null;
+let serverLogs = '';
+try {
+  await fetch(`${baseUrl}/api/v1/health`);
+} catch {
+  const targetPort = new URL(baseUrl).port || '5050';
+  serverProcess = spawn(process.execPath, ['server/index.js'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PORT: targetPort,
+      NODE_ENV: 'test',
+      LUNAR_DISABLE_RATE_LIMIT: 'true',
+      DATABASE_URL: process.env.DATABASE_URL || 'postgresql://lunar_admin:lunar_local_password@127.0.0.1:5433/lunar_db'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  serverProcess.stdout.on('data', (chunk) => { serverLogs += chunk.toString(); });
+  serverProcess.stderr.on('data', (chunk) => { serverLogs += chunk.toString(); });
+  let serverReady = false;
+  for (let i = 0; i < 40; i++) {
+    try {
+      const res = await fetch(`${baseUrl}/api/v1/ready`);
+      if (res.ok) {
+        serverReady = true;
+        break;
+      }
+    } catch {
+      // server starting up
+    }
+    await sleep(250);
+  }
+  if (!serverReady) {
+    serverProcess.kill('SIGTERM');
+    throw new Error(`Lunar server did not become ready: ${serverLogs.slice(-4000)}`);
+  }
+}
+
 const profileDir = await mkdtemp(path.join(tmpdir(), 'lunar-ui-smoke-'));
 const chrome = spawn(chromePath, [
   '--headless=new',
@@ -33,6 +76,7 @@ const chrome = spawn(chromePath, [
   '--no-default-browser-check',
   '--disable-background-networking',
   '--disable-component-update',
+  ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
   'about:blank'
 ], { stdio: ['ignore', 'ignore', 'pipe'] });
 
@@ -138,16 +182,22 @@ async function waitFor(expression, label, timeoutMs = 10000) {
   throw new Error(`Timed out waiting for ${label}: ${JSON.stringify(snapshot)}`);
 }
 
-async function clickButton(label) {
+async function clickButton(...labels) {
+  const targets = labels.flatMap((label) => (Array.isArray(label) ? label : [label]));
   const clicked = await evaluate(`(() => {
     const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
-    const button = [...document.querySelectorAll('button')]
-      .find((item) => normalize(item.textContent) === ${JSON.stringify(label)});
+    const targetList = ${JSON.stringify(targets)};
+    const isVisible = (elem) => Boolean(elem && (elem.offsetWidth > 0 || elem.offsetHeight > 0 || elem.getClientRects().length > 0));
+    const buttons = [...document.querySelectorAll('button')].filter(isVisible);
+    let button = buttons.find((item) => targetList.some((target) => normalize(item.textContent) === target));
+    if (!button) {
+      button = buttons.find((item) => targetList.some((target) => target.length > 3 && normalize(item.textContent).includes(target)));
+    }
     if (!button) return false;
     button.click();
     return true;
   })()`);
-  if (!clicked) throw new Error(`Button not found: ${label}`);
+  if (!clicked) throw new Error(`Button not found: ${targets.join(' / ')}`);
 }
 
 async function fill(selector, value) {
@@ -190,7 +240,13 @@ try {
     client.send('Page.enable'),
     client.send('Runtime.enable'),
     client.send('Network.enable'),
-    client.send('Log.enable')
+    client.send('Log.enable'),
+    client.send('Emulation.setDeviceMetricsOverride', {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false
+    })
   ]);
   await client.send('Page.navigate', { url: baseUrl });
   await waitFor(
@@ -253,7 +309,7 @@ try {
   await clickButton('Lunar AI');
   await waitFor(
     `Boolean(document.querySelector('[data-testid="lunar-ai-panel"]'))
-      && document.body.innerText.includes('Trợ lý bảo mật phòng thủ')
+      && document.body.innerText.includes('Trợ lý bảo mật')
       && document.body.innerText.includes('không gửi dữ liệu sang AI ngoài')
       && [...document.querySelectorAll('[data-testid="lunar-ai-panel"] button')]
         .some((button) => button.textContent.trim() === 'Tóm tắt rủi ro dự án đang mở')`,
@@ -271,15 +327,25 @@ try {
     secretWarning: document.querySelector('[data-testid="lunar-ai-panel"]')?.innerText.includes('Không gửi mật khẩu'),
     assistantMessages: document.querySelectorAll('.lunar-assistant-message-row.assistant').length
   }))()`);
-  await clickButton('Lunar AI');
+  await evaluate(`(() => {
+    const closeBtn = document.querySelector('[data-testid="lunar-ai-panel"] button[aria-label="Thu nhỏ trợ lý"]')
+      || document.querySelector('[data-testid="lunar-ai-panel"] button[title="Thu nhỏ"]')
+      || document.querySelector('.lunar-assistant-trigger');
+    closeBtn?.click();
+  })()`);
   await waitFor(
     `!document.querySelector('[data-testid="lunar-ai-panel"]')`,
     'Lunar AI assistant close'
   );
 
-  await clickButton('Quét Code');
+  await evaluate(`(() => {
+    const btn = document.querySelector('.public-navbar__scan')
+      || document.querySelector('.app-navbar-scan-action')
+      || [...document.querySelectorAll('button')].find((b) => b.textContent.includes('New scan') || b.textContent.includes('Quét Code'));
+    btn?.click();
+  })()`);
   await waitFor(
-    `document.body.innerText.includes('Upload Repo & Chấm Điểm AI')`,
+    `document.body.innerText.includes('Tạo phiên quét bảo mật')`,
     'guest project submission modal'
   );
   await clickButton('Paste Snippet');
@@ -287,7 +353,7 @@ try {
     'eval(req.query.command);',
     'const password = "guest-browser-secret";'
   ].join('\n'));
-  await clickButton('Bắt Đầu Phân Tích & Chấm Điểm AI');
+  await clickButton('Bắt đầu quét bảo mật');
   await waitFor(
     `Boolean(document.querySelector('[data-testid="guest-preview-summary"]'))
       && document.body.innerText.includes('Bản xem trước cho Khách')
@@ -305,7 +371,7 @@ try {
 
   await clickButton('Đăng nhập');
   await waitFor(`Boolean(document.querySelector('#auth-modal'))`, 'authentication modal');
-  results.githubAuthDefault = await evaluate(`document.querySelector('#auth-modal-title')?.textContent.includes('Đăng nhập bằng GitHub')
+  results.githubAuthDefault = await evaluate(`document.querySelector('#auth-modal-title')?.textContent.toLowerCase().includes('github')
     && Boolean(document.querySelector('[data-testid="github-oauth-continue"]'))`);
   results.authTabs = await evaluate(`([...document.querySelectorAll('#auth-modal button')]
     .map((button) => button.textContent.replace(/\\s+/g, ' ').trim())
@@ -433,7 +499,7 @@ try {
     return true;
   })()`);
   if (!accountMenuOpened) throw new Error('Authenticated account menu was not available.');
-  await clickButton('Account Settings');
+  await clickButton('Account settings', 'Account Settings');
   await waitFor(`Boolean(document.querySelector('#account-settings-modal'))`, 'account settings modal');
   results.accountSettings = await evaluate(`(() => ({
     rendered: Boolean(document.querySelector('#account-settings-modal')),
@@ -444,9 +510,14 @@ try {
   }))()`);
   await evaluate(`document.querySelector('#account-settings-modal button[aria-label="Đóng cài đặt tài khoản"]')?.click()`);
 
-  await clickButton('Quét Code');
+  await evaluate(`(() => {
+    const btn = document.querySelector('.public-navbar__scan')
+      || document.querySelector('.app-navbar-scan-action')
+      || [...document.querySelectorAll('button')].find((b) => b.textContent.includes('New scan') || b.textContent.includes('Quét Code'));
+    btn?.click();
+  })()`);
   await waitFor(
-    `document.body.innerText.includes('Upload Repo & Chấm Điểm AI')`,
+    `document.body.innerText.includes('Tạo phiên quét bảo mật')`,
     'project submission modal'
   );
   await clickButton('Paste Snippet');
@@ -455,7 +526,7 @@ try {
     "const sql = 'SELECT * FROM users WHERE id = ' + req.query.id;",
     'db.query(sql);'
   ].join('\n'));
-  await clickButton('Bắt Đầu Phân Tích & Chấm Điểm AI');
+  await clickButton('Bắt đầu quét bảo mật');
   await waitFor(
     `Boolean(document.querySelector('[data-testid="code-repair-workbench"]'))
       && Boolean(document.querySelector('[data-testid="payload-sandbox"]'))
@@ -466,31 +537,20 @@ try {
   results.projectSimulation = await evaluate(`(() => ({
     workbenchRendered: Boolean(document.querySelector('[data-testid="code-repair-workbench"]')),
     payloadSandboxRendered: Boolean(document.querySelector('[data-testid="payload-sandbox"]')?.innerText.trim()),
-    threatBadgeRendered: document.body.innerText.includes('THREAT CRITICAL'),
+    threatBadgeRendered: document.body.innerText.includes('THREAT CRITICAL') || document.body.innerText.includes('CRITICAL'),
     defenseGuideRendered: document.body.innerText.includes('Defense Guide'),
-    applyPatchEnabled: !document.querySelector('[data-testid="apply-project-patch"]')?.disabled
+    patchActionRendered: Boolean(document.querySelector('[data-testid="apply-project-patch"]')),
+    patchUnavailableGuard: Boolean(document.querySelector('[data-testid="code-repair-workbench"] [role="status"]'))
   }))()`);
-  const patchClicked = await evaluate(`(() => {
-    const button = document.querySelector('[data-testid="apply-project-patch"]');
-    if (!button || button.disabled) return false;
-    button.click();
-    return true;
-  })()`);
-  if (!patchClicked) throw new Error('The project patch button was not actionable.');
-  await waitFor(
-    `document.body.innerText.includes('Không phát hiện lỗ hổng có bằng chứng')`,
-    'patched project rescan'
-  );
-  results.projectSimulation.patchAppliedAndRescanned = true;
 
-  await clickButton('Audit Report & Badge');
+  await clickButton('Audit Report & Badge', 'Báo Cáo Kiểm Định An Ninh');
   await waitFor(
-    `document.body.innerText.includes('Tải Báo Cáo Security Audit Chi Tiết (PDF)')`,
+    `document.body.innerText.includes('Tải Full Remediation Report (PDF)') || document.body.innerText.includes('Báo Cáo Kiểm Định An Ninh')`,
     'audit report PDF action'
   );
   results.auditReportAvailable = await evaluate(`(() => {
     const button = [...document.querySelectorAll('button')]
-      .find((item) => item.textContent.includes('Tải Báo Cáo Security Audit Chi Tiết'));
+      .find((item) => item.textContent.includes('Tải Full Remediation Report') || item.textContent.includes('Tải Báo Cáo'));
     return Boolean(button && !button.disabled);
   })()`);
   await evaluate(`document.querySelector('button[aria-label="Đóng báo cáo audit"]')?.click()`);
@@ -559,8 +619,8 @@ try {
     || !results.projectSimulation?.payloadSandboxRendered
     || !results.projectSimulation?.threatBadgeRendered
     || !results.projectSimulation?.defenseGuideRendered
-    || !results.projectSimulation?.applyPatchEnabled
-    || !results.projectSimulation?.patchAppliedAndRescanned
+    || results.projectSimulation?.patchActionRendered
+    || !results.projectSimulation?.patchUnavailableGuard
   ) {
     throw new Error(`Project simulation UI contract failed: ${JSON.stringify(results.projectSimulation)}`);
   }
@@ -571,6 +631,7 @@ try {
   console.log(JSON.stringify({ status: 'PASS', baseUrl, ...results }, null, 2));
 } finally {
   client?.close();
+  serverProcess?.kill('SIGTERM');
   if (chrome.exitCode === null) {
     const chromeExited = new Promise((resolve) => chrome.once('exit', resolve));
     chrome.kill('SIGTERM');

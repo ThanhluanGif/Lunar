@@ -29,16 +29,43 @@ const connectionString = configuredDatabaseUrl || [
 const databaseSslEnabled = process.env.DATABASE_SSL === 'true'
   || /[?&]sslmode=(require|verify-ca|verify-full)\b/i.test(connectionString);
 
+function withoutSslMode(value) {
+  try {
+    const parsed = new URL(value);
+    parsed.searchParams.delete('sslmode');
+    return parsed.toString();
+  } catch {
+    return value;
+  }
+}
+
+function boundedInteger(value, fallback, minimum, maximum) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed)
+    ? Math.min(maximum, Math.max(minimum, parsed))
+    : fallback;
+}
+
+const cleanConnectionString = withoutSslMode(connectionString);
+const poolMax = boundedInteger(
+  process.env.DATABASE_POOL_MAX,
+  process.env.VERCEL ? 2 : 10,
+  1,
+  50
+);
+
 const pool = new Pool({
-  connectionString,
+  connectionString: cleanConnectionString,
   ...(databaseSslEnabled
     ? { ssl: { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false' } }
     : {}),
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 3000
+  max: poolMax,
+  idleTimeoutMillis: boundedInteger(process.env.DATABASE_IDLE_TIMEOUT_MS, 30000, 1000, 300000),
+  connectionTimeoutMillis: boundedInteger(process.env.DATABASE_CONNECT_TIMEOUT_MS, 3000, 500, 30000)
 });
 
 let isPgConnected = false;
+let initPromise = null;
 
 async function initPgDatabase() {
   let client;
@@ -59,7 +86,21 @@ async function initPgDatabase() {
   }
 }
 
+async function ensurePgConnected() {
+  if (isPgConnected) return true;
+  if (!initPromise) {
+    initPromise = initPgDatabase().finally(() => {
+      initPromise = null;
+    });
+  }
+  await initPromise;
+  return isPgConnected;
+}
+
 async function queryDb(text, params) {
+  if (!isPgConnected) {
+    await ensurePgConnected();
+  }
   if (!isPgConnected) return null;
   try {
     return await pool.query(text, params);
@@ -74,5 +115,7 @@ module.exports = {
   getPool: () => (isPgConnected ? pool : null),
   queryDb,
   initPgDatabase,
-  getIsPgConnected: () => isPgConnected
+  ensurePgConnected,
+  getIsPgConnected: () => isPgConnected,
+  getPoolConfig: () => ({ max: poolMax })
 };

@@ -5,6 +5,7 @@ import { createApiUrl, normalizeApiBaseUrl } from '../src/services/apiUrl.js';
 
 const require = createRequire(import.meta.url);
 const { resolveCookiePolicy } = require('../server/services/cookiePolicy');
+const { resolveAllowedOrigins } = require('../server/services/corsPolicy');
 const { createAppRedirectUrl, normalizePublicAppUrl } = require('../server/services/publicAppUrl');
 
 assert.equal(normalizeApiBaseUrl(''), '');
@@ -25,6 +26,11 @@ assert.equal(
   createApiUrl('/auth/github/start', 'https://api.example.com'),
   'https://api.example.com/api/v1/auth/github/start'
 );
+
+assert.deepEqual(resolveAllowedOrigins({
+  CORS_ORIGINS: 'https://old.example.com,https://old.example.com/path',
+  PUBLIC_APP_URL: 'https://app.example.com/dashboard'
+}), ['https://old.example.com', 'https://app.example.com']);
 
 assert.deepEqual(resolveCookiePolicy({ env: { NODE_ENV: 'production' } }), {
   httpOnly: true,
@@ -67,6 +73,8 @@ const githubRouteSource = fs.readFileSync('server/routes/githubAuthRoutes.js', '
 assert.match(githubRouteSource, /redirectToApp\(res, 'success'\)/);
 assert.match(githubRouteSource, /oauthStateCookieOptions = \{[\s\S]*sameSite: 'lax'/);
 assert.doesNotMatch(githubRouteSource, /res\.redirect\(['"]\/\?github_auth=/);
+assert.match(githubRouteSource, /configured: Boolean\(config\)/);
+assert.doesNotMatch(githubRouteSource, /developer@lunar\.dev/);
 
 const viteConfigSource = fs.readFileSync('vite.config.js', 'utf8');
 const envExampleSource = fs.readFileSync('.env.example', 'utf8');
@@ -76,7 +84,11 @@ assert.match(envExampleSource, /^VITE_API_PROXY_TARGET=http:\/\/127\.0\.0\.1:500
 
 const lunarApiSource = fs.readFileSync('src/services/lunarApi.js', 'utf8');
 assert.match(lunarApiSource, /code = 'API_UNREACHABLE'/);
-assert.doesNotMatch(lunarApiSource, /Kiểm tra VITE_API_BASE_URL, HTTPS và CORS/);
+assert.match(lunarApiSource, /DEPLOYMENT_PROTECTED/);
+assert.match(lunarApiSource, /CORS không tạo ra phản hồi HTTP 403 đọc được/);
+
+const serverSource = fs.readFileSync('server/index.js', 'utf8');
+assert.match(serverSource, /resolveAllowedOrigins\(\)/);
 
 console.log(JSON.stringify({
   productionApiOrigin: 'PASS',
@@ -84,5 +96,6 @@ console.log(JSON.stringify({
   githubCallbackPublicAppRedirect: 'PASS',
   crossSiteCookiePolicy: 'PASS',
   localApiProxyAlignment: 'PASS',
-  userFacingNetworkError: 'PASS'
+  userFacingNetworkError: 'PASS',
+  publicAppCorsFallback: 'PASS'
 }, null, 2));

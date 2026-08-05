@@ -1,4 +1,6 @@
+const initialNodeEnv = process.env.NODE_ENV;
 require('dotenv').config({ quiet: true });
+if (initialNodeEnv) process.env.NODE_ENV = initialNodeEnv;
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -27,7 +29,8 @@ const assistantRoutes = require('./routes/assistantRoutes');
 const deepScanRoutes = require('./routes/deepScanRoutes');
 const publicRoutes = require('./routes/publicRoutes');
 
-const { initPgDatabase, getIsPgConnected } = require('./db/connection');
+const { initPgDatabase, ensurePgConnected, getIsPgConnected } = require('./db/connection');
+const { resolveAllowedOrigins } = require('./services/corsPolicy');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -47,17 +50,10 @@ app.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY));
 app.use(securityHeaders);
 app.use(correlationLogger);
 
-// 2. CORS configuration with credential & origin validation
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5050,http://127.0.0.1:5050,http://localhost:3000,http://127.0.0.1:3000')
-  .split(',')
-  .map((origin) => {
-    try {
-      return new URL(origin.trim()).origin;
-    } catch {
-      return '';
-    }
-  })
-  .filter(Boolean);
+// 2. CORS configuration with credential & origin validation. PUBLIC_APP_URL is
+// always merged into an explicit CORS allowlist so a stale CORS_ORIGINS value
+// cannot accidentally exclude the canonical frontend after a domain change.
+const allowedOrigins = resolveAllowedOrigins();
 
 app.use(cors({
   origin: allowedOrigins,
@@ -116,6 +112,15 @@ app.use(['/api/v1/auth', '/api/v1/dashboard', '/api/v1/admin'], (req, res, next)
   return next();
 });
 
+// Vercel imports the Express app without calling app.listen(). Initialize the
+// database on the first API request so routes using getPool() do not return a
+// false DATABASE_UNAVAILABLE response during a serverless cold start.
+app.use('/api/v1', async (req, res, next) => {
+  if (req.path === '/health') return next();
+  await ensurePgConnected();
+  return next();
+});
+
 // 6. Registered Business Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/auth', accountRoutes);
@@ -142,7 +147,8 @@ app.get('/api/v1/health', (req, res) => {
   });
 });
 
-app.get('/api/v1/ready', (req, res) => {
+app.get('/api/v1/ready', async (req, res) => {
+  await ensurePgConnected();
   const databaseConnected = getIsPgConnected();
   return res.status(databaseConnected ? 200 : 503).json({
     status: databaseConnected ? 'READY' : 'NOT_READY',

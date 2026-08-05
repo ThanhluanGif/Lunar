@@ -1,10 +1,25 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { 
-  Moon, Search, Sparkles, Shield, AlertTriangle, Activity, Wrench, 
-  CheckCircle2, XCircle, Clock, ChevronDown, Bell, Settings, Filter, 
-  ArrowUpRight, BarChart3, PieChart, Layers, GitPullRequest, GitFork, 
-  FolderGit2, ShieldAlert, Cpu, Lock, Sliders, ExternalLink, HelpCircle, 
-  ArrowLeft, RefreshCw, Zap, User, Database, CreditCard, RotateCcw, Trash2
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Activity,
+  ArrowLeft,
+  Bell,
+  CheckCircle2,
+  FileClock,
+  FileText,
+  FolderGit2,
+  LayoutDashboard,
+  Menu,
+  Moon,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+  Shield,
+  ShieldAlert,
+  Sun,
+  Trash2,
+  Wrench,
+  X
 } from 'lucide-react';
 import { lunarApi } from '../services/lunarApi';
 import {
@@ -12,24 +27,75 @@ import {
   createLatestRequestGate,
   isDashboardResponseForUser
 } from '../services/dashboardSync';
+import {
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  MetricCard,
+  SeverityBadge,
+  Skeleton,
+  StatusBadge
+} from './ui';
 
-export default function LunarDashboard({ 
-  onBackToSite, 
-  onSelectProject, 
-  currentUser, 
-  onOpenPricing 
+const NAV_ITEMS = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard, group: 'Workspace' },
+  { id: 'repositories', label: 'Repositories', icon: FolderGit2, countKey: 'repositories' },
+  { id: 'scans', label: 'Scan History', icon: FileClock, countKey: 'scansInRange' },
+  { id: 'vulnerabilities', label: 'Vulnerabilities', icon: ShieldAlert, countKey: 'openFindings', group: 'Security' },
+  { id: 'fixes', label: 'Fix Center', icon: Wrench, countKey: 'patchedFindings' },
+  { id: 'reports', label: 'Reports', icon: FileText },
+  { id: 'settings', label: 'Settings', icon: Settings, group: 'Manage' }
+];
+
+const PAGE_COPY = {
+  overview: ['Security overview', 'Verified posture and scan activity from your account.'],
+  repositories: ['Repositories', 'Monitor connected repositories and their latest security score.'],
+  scans: ['Scan history', 'Review recent scans, findings, and completion status.'],
+  vulnerabilities: ['Vulnerabilities', 'Prioritize findings by severity before opening a repository.'],
+  fixes: ['Fix Center', 'Track validated remediations without applying an AI patch blindly.'],
+  reports: ['Reports', 'Open a scanned repository to export its verified audit report.'],
+  settings: ['Workspace settings', 'Account and integration settings remain connected to the existing controls.']
+};
+
+function scoreTone(score) {
+  if (score >= 90) return '#2fb77a';
+  if (score >= 75) return '#4d8df7';
+  if (score >= 50) return '#e9a23b';
+  return '#f05252';
+}
+
+function formatDate(value) {
+  if (!value) return 'Not scanned';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Unknown date' : date.toLocaleString();
+}
+
+export default function LunarDashboard({
+  onBackToSite,
+  onSelectProject,
+  onOpenScan,
+  currentUser
 }) {
-  const [activeSidebarTab, setActiveSidebarTab] = useState('Overview');
+  const [activeView, setActiveView] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
-  const [timeRange, setTimeRange] = useState('Last 28 days');
-  const [hoveredBarIndex, setHoveredBarIndex] = useState(null);
-  const [selectedRepoFilter, setSelectedRepoFilter] = useState('ALL');
+  const [repoStatus, setRepoStatus] = useState('ALL');
   const [dashboard, setDashboard] = useState(null);
   const [loadError, setLoadError] = useState('');
-  const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [actionNotice, setActionNotice] = useState('');
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem('lunar-theme') || 'dark');
   const requestGateRef = useRef(createLatestRequestGate());
   const userId = currentUser?.id || null;
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('lunar-theme', theme);
+  }, [theme]);
 
   const loadDashboard = useCallback(async ({ background = false } = {}) => {
     if (!userId) return;
@@ -50,994 +116,224 @@ export default function LunarDashboard({
     }
   }, [userId]);
 
-  const handleClearScanHistory = async () => {
-    if (!window.confirm('Xác nhận xóa toàn bộ dữ liệu lịch sử quét cũ trong dashboard của bạn?')) {
-      return;
-    }
-    setIsClearingHistory(true);
-    try {
-      const res = await lunarApi.clearScanHistory();
-      await loadDashboard();
-      setActionNotice(res.message || 'Đã xóa dữ liệu lịch sử quét cũ thành công.');
-      setTimeout(() => setActionNotice(''), 4000);
-    } catch (err) {
-      setActionNotice(`Lỗi: ${err.message}`);
-      setTimeout(() => setActionNotice(''), 4000);
-    } finally {
-      setIsClearingHistory(false);
-    }
-  };
-
   useEffect(() => {
     requestGateRef.current.invalidate();
     setDashboard(null);
     setLoadError('');
     if (!userId) return undefined;
-
     loadDashboard();
-    const refreshVisibleDashboard = () => {
-      if (document.visibilityState === 'visible') loadDashboard({ background: true });
-    };
-    const intervalId = window.setInterval(refreshVisibleDashboard, USER_DASHBOARD_REFRESH_INTERVAL_MS);
-    window.addEventListener('focus', refreshVisibleDashboard);
-    document.addEventListener('visibilitychange', refreshVisibleDashboard);
-
+    const refresh = () => document.visibilityState === 'visible' && loadDashboard({ background: true });
+    const intervalId = window.setInterval(refresh, USER_DASHBOARD_REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
       window.clearInterval(intervalId);
-      window.removeEventListener('focus', refreshVisibleDashboard);
-      document.removeEventListener('visibilitychange', refreshVisibleDashboard);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
       requestGateRef.current.invalidate();
     };
   }, [loadDashboard, userId]);
 
-  const liveRepos = dashboard?.repositories?.map((repo) => {
-    const score = Number(repo.securityScore || 0);
-    const passing = score >= 80;
-    return {
-      id: repo.id,
-      name: repo.name,
-      lang: repo.language || 'Unknown',
-      prs: repo.scanCount || 0,
-      score,
-      scoreColor: score >= 90 ? '#10b981' : score >= 80 ? '#3b82f6' : '#f97316',
-      issues: repo.issuesCount || 0,
-      lastUpdated: repo.lastScannedAt ? new Date(repo.lastScannedAt).toLocaleString() : 'Not scanned',
-      status: passing ? 'passing' : 'failed',
-      statusColor: passing ? '#10b981' : '#ef4444',
-      repoUrl: repo.repoUrl
-    };
-  }) || [];
-  const repos = dashboard ? liveRepos : [];
-  const activity = dashboard?.activity || [];
-  const maxReviews = Math.max(...activity.map((item) => Number(item.reviews)), 1);
-  const liveBarData = activity.map((item) => Math.max((Number(item.reviews) / maxReviews) * 100, 2));
-  const displayedBarData = dashboard ? liveBarData : [];
-  const liveIssueTypes = (dashboard?.findingsBySeverity || []).map((item) => ({
-    label: item.severity,
-    count: item.count,
-    color: item.severity === 'critical' ? '#ef4444' : item.severity === 'high' ? '#f97316' : item.severity === 'medium' ? '#3b82f6' : '#a855f7'
-  }));
-  const displayedIssueTypes = dashboard ? liveIssueTypes : [];
-  const issueTotal = displayedIssueTypes.reduce((total, item) => total + Number(item.count || 0), 0);
-  let issueOffset = 0;
-  const issueGradient = issueTotal
-    ? `conic-gradient(${displayedIssueTypes.map((item) => {
-        const start = issueOffset;
-        issueOffset += (Number(item.count || 0) / issueTotal) * 100;
-        return `${item.color} ${start}% ${issueOffset}%`;
-      }).join(', ')})`
-    : 'rgba(255,255,255,0.05)';
-  const liveRecentReviews = (dashboard?.recentScans || []).map((scan) => ({
-    id: scan.id,
-    prNumber: `#${String(scan.id).slice(0, 6)}`,
-    title: `Security scan · score ${scan.score}`,
-    repo: scan.repository || 'Repository',
-    time: new Date(scan.createdAt).toLocaleString(),
-    author: currentUser?.name || 'Lunar user',
-    avatar: (currentUser?.name || 'LU').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase(),
-    avatarBg: '#7c3aed',
-    autoFixed: false,
-    status: Number(scan.score) >= 80 ? 'passing' : 'failed'
-  }));
-  const displayedRecentReviews = dashboard ? liveRecentReviews : [];
-  const displayName = currentUser?.name || currentUser?.nickname || currentUser?.email || 'Lunar user';
-  const userInitials = displayName
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || 'LU';
+  const handleClearScanHistory = async () => {
+    setIsClearingHistory(true);
+    try {
+      const response = await lunarApi.clearScanHistory();
+      await loadDashboard();
+      setActionNotice(response.message || 'Scan history was cleared.');
+      setClearDialogOpen(false);
+    } catch (error) {
+      setActionNotice(`Không thể xóa lịch sử: ${error.message}`);
+    } finally {
+      setIsClearingHistory(false);
+      window.setTimeout(() => setActionNotice(''), 4500);
+    }
+  };
 
-  const filteredRepos = repos.filter(r => {
-    const matchesQuery = r.name.toLowerCase().includes(searchQuery.toLowerCase()) || r.lang.toLowerCase().includes(searchQuery.toLowerCase());
-    if (selectedRepoFilter === 'PASSING') return matchesQuery && r.status === 'passing';
-    if (selectedRepoFilter === 'FAILED') return matchesQuery && r.status === 'failed';
-    return matchesQuery;
+  const repositories = useMemo(() => (dashboard?.repositories || []).map((repo) => {
+    const score = Number(repo.securityScore || 0);
+    return {
+      ...repo,
+      score,
+      status: score >= 80 ? 'passing' : 'attention'
+    };
+  }), [dashboard]);
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredRepositories = repositories.filter((repo) => {
+    const matchesText = !normalizedQuery || `${repo.name} ${repo.language || ''}`.toLowerCase().includes(normalizedQuery);
+    const matchesStatus = repoStatus === 'ALL' || repo.status === repoStatus;
+    return matchesText && matchesStatus;
+  });
+  const recentScans = (dashboard?.recentScans || []).filter((scan) => (
+    !normalizedQuery || `${scan.repository || ''} ${scan.id || ''}`.toLowerCase().includes(normalizedQuery)
+  ));
+  const severities = ['critical', 'high', 'medium', 'low'].map((severity) => ({
+    severity,
+    count: Number(dashboard?.findingsBySeverity?.find((item) => String(item.severity).toLowerCase() === severity)?.count || 0)
+  }));
+  const totalFindings = severities.reduce((sum, item) => sum + item.count, 0);
+  const maxActivity = Math.max(...(dashboard?.activity || []).map((item) => Number(item.reviews || 0)), 1);
+  const displayName = currentUser?.name || currentUser?.email || 'Lunar user';
+  const initials = displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+  const [pageTitle, pageDescription] = PAGE_COPY[activeView];
+
+  const openRepository = (repo) => onSelectProject?.({
+    id: repo.id,
+    title: repo.name,
+    description: `${repo.language || 'Unknown language'} repository monitored by Lunar.`,
+    githubUrl: repo.repoUrl,
+    files: []
   });
 
+  const changeView = (view) => {
+    setActiveView(view);
+    setSidebarOpen(false);
+    setSearchQuery('');
+  };
+
+  const renderRepositoryTable = () => {
+    if (!filteredRepositories.length) {
+      return <EmptyState icon={FolderGit2} title={repositories.length ? 'No repositories match this filter' : 'No connected repositories'} description={repositories.length ? 'Clear the search or choose another status.' : 'Start a scan to add a repository to this verified workspace.'} action={!repositories.length && <Button variant="primary" size="sm" icon={Plus} onClick={onOpenScan}>New scan</Button>} />;
+    }
+    return (
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead><tr><th>Repository</th><th>Security score</th><th>Issues</th><th>Scans</th><th>Last scan</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
+          <tbody>
+            {filteredRepositories.map((repo) => (
+              <tr key={repo.id}>
+                <td><span className="data-table__primary" title={repo.name}>{repo.name}</span><span className="data-table__secondary">{repo.language || 'Unknown language'}</span></td>
+                <td><span className="score-ring" style={{ '--score-color': scoreTone(repo.score) }}>{repo.score}</span></td>
+                <td>{Number(repo.issuesCount || 0).toLocaleString()}</td>
+                <td>{Number(repo.scanCount || 0).toLocaleString()}</td>
+                <td>{formatDate(repo.lastScannedAt)}</td>
+                <td><StatusBadge status={repo.status === 'passing' ? 'passing' : 'high'} label={repo.status === 'passing' ? 'Passing' : 'Needs attention'} /></td>
+                <td><Button variant="ghost" size="sm" onClick={() => openRepository(repo)}>View details</Button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderScanTable = () => {
+    if (!recentScans.length) return <EmptyState icon={FileClock} title={dashboard?.recentScans?.length ? 'No scans match your search' : 'No scan history yet'} description="Completed scans will appear here with repository, score, issue count and model evidence." action={!dashboard?.recentScans?.length && <Button variant="primary" size="sm" icon={Plus} onClick={onOpenScan}>Start first scan</Button>} />;
+    return (
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead><tr><th>Scan</th><th>Repository</th><th>Score</th><th>Issues</th><th>AI model</th><th>Started</th><th>Status</th></tr></thead>
+          <tbody>
+            {recentScans.map((scan) => (
+              <tr key={scan.id}>
+                <td><span className="data-table__primary">#{String(scan.id).slice(0, 8)}</span></td>
+                <td>{scan.repository || 'Repository'}</td>
+                <td><span style={{ color: scoreTone(Number(scan.score || 0)), fontWeight: 800 }}>{Number(scan.score || 0)}</span></td>
+                <td>{Number(scan.issuesCount || 0)}</td>
+                <td>{scan.modelUsed || 'Rule-based SAST'}</td>
+                <td>{formatDate(scan.createdAt)}</td>
+                <td><StatusBadge status="completed" label="Completed" /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderOverview = () => (
+    <>
+      <div className="product-metrics">
+        <MetricCard label="Repositories" value={dashboard?.summary?.repositories ?? 0} hint="Connected workspace" icon={FolderGit2} tone="primary" />
+        <MetricCard label="Open findings" value={dashboard?.summary?.openFindings ?? 0} hint="Require review" icon={ShieldAlert} tone="critical" />
+        <MetricCard label="Security score" value={dashboard?.summary?.averageScore ?? 0} hint="Last 28 days" icon={Shield} tone="success" />
+        <MetricCard label="Resolved issues" value={dashboard?.summary?.patchedFindings ?? 0} hint="Validated patches" icon={CheckCircle2} tone="success" />
+      </div>
+      <div className="product-grid">
+        <Card className="product-panel">
+          <div className="product-panel__header"><div><h3>Scan activity</h3><p>Daily verified scans for the last 28 days</p></div><StatusBadge status="success" label={`${dashboard?.summary?.scansInRange ?? 0} scans`} /></div>
+          {(dashboard?.activity || []).length ? (
+            <>
+              <div className="product-chart" aria-label="Scan activity chart">
+                {dashboard.activity.map((item) => <span key={item.date} className="product-chart__bar" style={{ height: `${Math.max(4, Number(item.reviews || 0) / maxActivity * 100)}%` }} title={`${item.date}: ${item.reviews} scans`} />)}
+              </div>
+              <div className="product-chart__axis"><span>{dashboard.activity[0]?.date}</span><span>{dashboard.activity.at(-1)?.date}</span></div>
+            </>
+          ) : <EmptyState icon={Activity} title="No activity in this range" description="Run a scan to establish a security baseline." />}
+        </Card>
+        <Card className="product-panel">
+          <div className="product-panel__header"><div><h3>Findings by severity</h3><p>Risk distribution from verified scans</p></div><strong>{totalFindings}</strong></div>
+          {totalFindings ? <div className="severity-overview">{severities.map((item) => (
+            <div className="severity-overview__row" key={item.severity}>
+              <SeverityBadge severity={item.severity} />
+              <div className="severity-overview__track"><span style={{ width: `${item.count / totalFindings * 100}%`, background: `var(--severity-${item.severity})` }} /></div>
+              <span className="severity-overview__count">{item.count}</span>
+            </div>
+          ))}</div> : <EmptyState icon={Shield} title="No findings" description="No vulnerability distribution is available for this period." />}
+        </Card>
+      </div>
+      <Card className="product-panel">
+        <div className="product-panel__header"><div><h3>Highest-risk repositories</h3><p>Sorted by the latest security score</p></div><Button variant="link" onClick={() => changeView('repositories')}>View all repositories</Button></div>
+        {renderRepositoryTable()}
+      </Card>
+    </>
+  );
+
+  const renderView = () => {
+    if (activeView === 'overview') return renderOverview();
+    if (activeView === 'repositories') return <Card className="product-panel">{renderRepositoryTable()}</Card>;
+    if (activeView === 'scans') return <Card className="product-panel">{renderScanTable()}</Card>;
+    if (activeView === 'vulnerabilities') return (
+      <Card className="product-panel">
+        <div className="product-panel__header"><div><h3>Severity inventory</h3><p>Aggregated from existing findings; open a repository for line-level evidence.</p></div><strong>{dashboard?.summary?.openFindings ?? 0} open</strong></div>
+        {totalFindings ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Severity</th><th>Findings</th><th>Share</th><th>Recommended priority</th></tr></thead><tbody>{severities.map((item) => <tr key={item.severity}><td><SeverityBadge severity={item.severity} /></td><td>{item.count}</td><td>{Math.round(item.count / totalFindings * 100)}%</td><td>{item.severity === 'critical' ? 'Immediate triage' : item.severity === 'high' ? 'Review within 24 hours' : 'Schedule remediation'}</td></tr>)}</tbody></table></div> : <EmptyState icon={Shield} title="No findings in this range" description="The API has not returned any severity evidence for your account." />}
+      </Card>
+    );
+    if (activeView === 'fixes') return <Card className="product-panel"><EmptyState icon={Wrench} title={`${dashboard?.summary?.patchedFindings ?? 0} validated patches recorded`} description="Open a repository finding to review the original code, suggested diff and validation result before applying a patch." action={<Button variant="outline" size="sm" onClick={() => changeView('repositories')}>Browse repositories</Button>} /></Card>;
+    if (activeView === 'reports') return <Card className="product-panel"><EmptyState icon={FileText} title="Reports are repository-scoped" description="Choose a scanned repository, inspect its findings, then export PDF, CSV or Markdown using the existing report controls." action={<Button variant="outline" size="sm" onClick={() => changeView('repositories')}>Choose repository</Button>} /></Card>;
+    return <Card className="product-panel"><EmptyState icon={Settings} title="Workspace settings" description="Use Account Settings on the main site for profile and password controls. GitHub connection settings remain in the repository scanner to preserve the current API flow." action={<Button variant="outline" size="sm" onClick={onBackToSite}>Back to account controls</Button>} /></Card>;
+  };
+
   return (
-    <div style={{
-      display: 'flex',
-      minHeight: '100vh',
-      backgroundColor: '#090a12',
-      color: '#e2e8f0',
-      fontFamily: 'Inter, -apple-system, sans-serif',
-      fontSize: '14px',
-      margin: '-0px -0px'
-    }}>
-      {/* ---------------------------------------------------- */}
-      {/* LEFT SIDEBAR NAVIGATION */}
-      {/* ---------------------------------------------------- */}
-      <aside style={{
-        width: '240px',
-        backgroundColor: '#0c0d18',
-        borderRight: '1px solid rgba(255, 255, 255, 0.07)',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        padding: '20px 16px',
-        flexShrink: 0
-      }}>
-        <div>
-          {/* Top Logo */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '4px 8px 24px 8px'
-          }}>
-            <div style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 16px rgba(124, 58, 237, 0.5)'
-            }}>
-              <Moon size={16} color="#fff" />
-            </div>
-            <span style={{
-              fontWeight: '800',
-              fontSize: '1.25rem',
-              letterSpacing: '-0.02em',
-              color: '#ffffff'
-            }}>
-              lunar
-            </span>
-          </div>
-
-          {/* Org Workspace Card */}
-          <div style={{
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '10px',
-            padding: '10px 12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '24px',
-            cursor: 'pointer'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: '700',
-                fontSize: '0.8rem',
-                color: '#fff'
-              }}>
-                {userInitials}
-              </div>
-              <div>
-                <div style={{ fontWeight: '700', fontSize: '0.88rem', color: '#f1f5f9', lineHeight: '1.2' }}>
-                  {currentUser ? displayName : 'Guest'}
-                </div>
-                <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                  {currentUser ? `${dashboard?.identity?.tier || currentUser.tier || 'FREE'} plan` : 'Sign in required'}
-                </div>
-              </div>
-            </div>
-            <ChevronDown size={14} color="#64748b" />
-          </div>
-
-          {/* Nav Items */}
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {[
-              { name: 'Overview', icon: Layers, badge: null },
-              { name: 'Reviews', icon: GitPullRequest, badge: dashboard ? String(dashboard.summary?.scansInRange || 0) : null, badgeBg: 'rgba(59, 130, 246, 0.2)', badgeColor: '#93c5fd' },
-              { name: 'Repositories', icon: FolderGit2, badge: dashboard ? String(dashboard.summary?.repositories || 0) : null, badgeBg: 'rgba(34, 197, 94, 0.16)', badgeColor: '#86efac' },
-              { name: 'Security', icon: Shield, badge: dashboard ? String(dashboard.summary?.openFindings || 0) : null, badgeBg: 'rgba(239, 68, 68, 0.2)', badgeColor: '#f87171' },
-              { name: 'Auto-Fix', icon: Sparkles, badge: null },
-              { name: 'Analytics', icon: BarChart3, badge: null },
-              { name: 'Settings', icon: Settings, badge: null },
-              { name: 'Billing', icon: CreditCard, badge: null }
-            ].map((item) => {
-              const Icon = item.icon;
-              const isActive = activeSidebarTab === item.name;
-              return (
-                <button
-                  key={item.name}
-                  onClick={() => setActiveSidebarTab(item.name)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: isActive ? 'rgba(255, 255, 255, 0.07)' : 'transparent',
-                    color: isActive ? '#ffffff' : '#94a3b8',
-                    fontWeight: isActive ? '600' : '500',
-                    fontSize: '0.88rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) e.currentTarget.style.color = '#e2e8f0';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) e.currentTarget.style.color = '#94a3b8';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Icon size={16} color={isActive ? '#a78bfa' : '#64748b'} />
-                    <span>{item.name}</span>
-                  </div>
-                  {item.badge && (
-                    <span style={{
-                      fontSize: '0.72rem',
-                      fontWeight: '700',
-                      padding: '1px 7px',
-                      borderRadius: '999px',
-                      background: item.badgeBg,
-                      color: item.badgeColor
-                    }}>
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Verified data source */}
-        <div style={{ paddingTop: '20px', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-            <Database size={14} color="#22d3ee" />
-            <span style={{ color: '#cbd5e1', fontSize: '0.75rem', fontWeight: '700' }}>PostgreSQL verified</span>
-          </div>
-          <div style={{ color: '#64748b', fontSize: '0.7rem', lineHeight: 1.45 }}>
-            {dashboard?.generatedAt
-              ? `Synced ${new Date(dashboard.generatedAt).toLocaleString()}`
-              : 'Waiting for account data'}
-          </div>
-        </div>
+    <div className={`product-shell${sidebarOpen ? ' is-sidebar-open' : ''}`}>
+      {sidebarOpen && <button type="button" className="mobile-sidebar-backdrop" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} />}
+      <aside className="product-sidebar" aria-label="Product navigation">
+        <div className="product-brand"><span className="product-brand__mark"><Moon size={16} /></span><span>lunar.dev</span><IconButton className="product-mobile-trigger" label="Close navigation" icon={X} onClick={() => setSidebarOpen(false)} /></div>
+        <div className="product-workspace"><span className="product-workspace__avatar">{initials}</span><div className="product-workspace__copy"><strong>{displayName}</strong><span>{dashboard?.identity?.tier || currentUser?.tier || 'FREE'} workspace</span></div></div>
+        <nav className="product-nav">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return <React.Fragment key={item.id}>{item.group && <div className="product-nav__label">{item.group}</div>}<button type="button" onClick={() => changeView(item.id)} aria-current={activeView === item.id ? 'page' : undefined}><Icon size={16} aria-hidden="true" /><span>{item.label}</span>{item.countKey && dashboard && <span className="product-nav__count">{dashboard.summary?.[item.countKey] ?? 0}</span>}</button></React.Fragment>;
+          })}
+        </nav>
+        <div className="product-sidebar__footer"><div className="product-sidebar__status"><span />PostgreSQL verified</div><div className="product-sidebar__sync">{dashboard?.generatedAt ? `Synced ${formatDate(dashboard.generatedAt)}` : 'Waiting for account data'}</div></div>
       </aside>
 
-      {/* ---------------------------------------------------- */}
-      {/* MAIN CONTENT AREA */}
-      {/* ---------------------------------------------------- */}
-      <main style={{
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        minWidth: 0,
-        backgroundColor: '#090a12'
-      }}>
-        {/* Top Header */}
-        <header style={{
-          height: '64px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 28px',
-          backgroundColor: '#0c0d18'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button
-              onClick={onBackToSite}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                color: '#cbd5e1',
-                fontSize: '0.8rem',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
-            >
-              <ArrowLeft size={14} /> Back to site
-            </button>
-            <h1 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#ffffff', margin: 0 }}>
-              {activeSidebarTab}
-            </h1>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* Search Box */}
-            <div style={{ position: 'relative' }}>
-              <Search size={14} color="#64748b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input
-                type="text"
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: '200px',
-                  height: '34px',
-                  borderRadius: '8px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  paddingLeft: '34px',
-                  paddingRight: '36px',
-                  color: '#ffffff',
-                  fontSize: '0.82rem',
-                  outline: 'none'
-                }}
-              />
-              <span style={{
-                position: 'absolute',
-                right: '8px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                fontSize: '0.7rem',
-                color: '#64748b',
-                background: 'rgba(255, 255, 255, 0.08)',
-                padding: '2px 5px',
-                borderRadius: '4px',
-                fontWeight: '600'
-              }}>
-                ⌘K
-              </span>
-            </div>
-
-            {/* Clear Old Data Button */}
-            <button
-              onClick={handleClearScanHistory}
-              disabled={isClearingHistory}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                background: 'rgba(239, 68, 68, 0.12)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                color: '#fca5a5',
-                fontSize: '0.8rem',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
-              title="Xóa toàn bộ dữ liệu lượt quét cũ trong dashboard của bạn"
-            >
-              <RotateCcw size={14} className={isClearingHistory ? "animate-spin" : ""} />
-              {isClearingHistory ? 'Đang xóa...' : 'Xóa Dữ Liệu Cũ'}
-            </button>
-
-            {/* Notification Bell */}
-            <div style={{
-              position: 'relative',
-              width: '34px',
-              height: '34px',
-              borderRadius: '50%',
-              backgroundColor: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}>
-              <Bell size={16} color="#94a3b8" />
-              <span style={{
-                position: 'absolute',
-                top: '6px',
-                right: '6px',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: '#ef4444'
-              }} />
-            </div>
-
-            {/* User Avatar */}
-            <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: '700',
-              fontSize: '0.82rem',
-              color: '#fff',
-              cursor: 'pointer'
-            }}>
-              {userInitials}
-            </div>
+      <main className="product-main">
+        <header className="product-topbar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}><IconButton className="product-mobile-trigger" label="Open navigation" icon={Menu} onClick={() => setSidebarOpen(true)} /><div className="product-topbar__title"><p>Workspace / {pageTitle}</p><h1>{pageTitle}</h1></div></div>
+          <div className="product-topbar__actions">
+            <label className="product-search"><span className="sr-only">Search current view</span><Search size={15} /><input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search repositories or scans…" /></label>
+            <IconButton label={theme === 'dark' ? 'Use light theme' : 'Use dark theme'} icon={theme === 'dark' ? Sun : Moon} onClick={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')} />
+            <IconButton label="Notifications" icon={Bell} />
+            <Button variant="outline" size="sm" icon={ArrowLeft} onClick={onBackToSite}>Site</Button>
           </div>
         </header>
-
-        {actionNotice && (
-          <div style={{
-            background: 'rgba(16, 185, 129, 0.15)',
-            borderBottom: '1px solid rgba(16, 185, 129, 0.3)',
-            color: '#34d399',
-            padding: '10px 28px',
-            fontSize: '0.85rem',
-            fontWeight: '600',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <CheckCircle2 size={16} /> {actionNotice}
+        {actionNotice && <div className={`product-notice${actionNotice.startsWith('Không thể') ? ' is-error' : ''}`} role="status"><CheckCircle2 size={15} />{actionNotice}</div>}
+        <div className="product-content">
+          <div className="product-page-header">
+            <div><h2>{pageTitle}</h2><p>{pageDescription}</p></div>
+            <div className="product-page-header__actions">
+              {activeView === 'repositories' && <select className="product-filter" aria-label="Filter repository status" value={repoStatus} onChange={(event) => setRepoStatus(event.target.value)}><option value="ALL">All statuses</option><option value="passing">Passing</option><option value="attention">Needs attention</option></select>}
+              {(activeView === 'overview' || activeView === 'scans') && <Button variant="outline" size="sm" icon={RefreshCw} onClick={() => loadDashboard()} disabled={!userId}>Refresh</Button>}
+              {activeView === 'scans' && <Button variant="danger" size="sm" icon={Trash2} onClick={() => setClearDialogOpen(true)} disabled={!dashboard?.recentScans?.length}>Clear history</Button>}
+              <Button variant="primary" size="sm" icon={Plus} onClick={onOpenScan}>New scan</Button>
+            </div>
           </div>
-        )}
-
-        {/* Scrollable Dashboard Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '28px' }}>
-          <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
-            {!currentUser && (
-              <div style={{ padding: '14px 18px', marginBottom: '18px', borderRadius: '10px', background: 'rgba(124,58,237,.12)', border: '1px solid rgba(124,58,237,.3)' }}>
-                Sign in to load your verified repositories, scans and findings from PostgreSQL.
-              </div>
-            )}
-            {loadError && (
-              <div style={{ padding: '14px 18px', marginBottom: '18px', borderRadius: '10px', color: '#fca5a5', background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.3)' }}>
-                Unable to load verified dashboard data: {loadError}
-              </div>
-            )}
-            
-            {/* ---------------------------------------------------- */}
-            {/* SECTION 1: TOP 4 STAT CARDS */}
-            {/* ---------------------------------------------------- */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '16px',
-              marginBottom: '28px'
-            }}>
-              {/* Card 1: Active Repos */}
-              <div style={{
-                backgroundColor: '#0c0d18',
-                border: '1px solid rgba(255, 255, 255, 0.07)',
-                borderRadius: '12px',
-                padding: '20px',
-                position: 'relative'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                  <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: '500' }}>Active Repos</span>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '6px',
-                    background: 'rgba(59, 130, 246, 0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <Sparkles size={14} color="#3b82f6" />
-                  </div>
-                </div>
-                <div style={{ fontSize: '2.2rem', fontWeight: '800', color: '#ffffff', lineHeight: '1', marginBottom: '8px' }}>
-                  {dashboard?.summary?.repositories ?? 0}
-                </div>
-                <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                  {dashboard?.summary?.scansInRange ?? 0} scans in range
-                </div>
-              </div>
-
-              {/* Card 2: Open Issues */}
-              <div style={{
-                backgroundColor: '#0c0d18',
-                border: '1px solid rgba(255, 255, 255, 0.07)',
-                borderRadius: '12px',
-                padding: '20px',
-                position: 'relative'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                  <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: '500' }}>Open Issues</span>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '6px',
-                    background: 'rgba(239, 68, 68, 0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <ShieldAlert size={14} color="#ef4444" />
-                  </div>
-                </div>
-                <div style={{ fontSize: '2.2rem', fontWeight: '800', color: '#ffffff', lineHeight: '1', marginBottom: '8px' }}>
-                  {dashboard?.summary?.openFindings ?? 0}
-                </div>
-                <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                  <span style={{ color: '#ef4444', fontWeight: '600' }}>{displayedIssueTypes.find((item) => item.label === 'critical')?.count || 0} critical</span>
-                </div>
-              </div>
-
-              {/* Card 3: Avg Quality Score */}
-              <div style={{
-                backgroundColor: '#0c0d18',
-                border: '1px solid rgba(255, 255, 255, 0.07)',
-                borderRadius: '12px',
-                padding: '20px',
-                position: 'relative'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                  <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: '500' }}>Avg Quality Score</span>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '6px',
-                    background: 'rgba(16, 185, 129, 0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <Activity size={14} color="#10b981" />
-                  </div>
-                </div>
-                <div style={{ fontSize: '2.2rem', fontWeight: '800', color: '#ffffff', lineHeight: '1', marginBottom: '8px' }}>
-                  {dashboard?.summary?.averageScore ?? 0}
-                </div>
-                <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                  <span style={{ color: '#10b981', fontWeight: '600' }}>{dashboard?.summary?.findings ?? 0} findings in range</span>
-                </div>
-              </div>
-
-              {/* Card 4: Auto-fixes Applied */}
-              <div style={{
-                backgroundColor: '#0c0d18',
-                border: '1px solid rgba(255, 255, 255, 0.07)',
-                borderRadius: '12px',
-                padding: '20px',
-                position: 'relative'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                  <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: '500' }}>Auto-fixes Applied</span>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '6px',
-                    background: 'rgba(168, 85, 247, 0.15)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <Wrench size={14} color="#a855f7" />
-                  </div>
-                </div>
-                <div style={{ fontSize: '2.2rem', fontWeight: '800', color: '#ffffff', lineHeight: '1', marginBottom: '8px' }}>
-                  {dashboard?.summary?.patchedFindings ?? 0}
-                </div>
-                <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                  Last 28 days
-                </div>
-              </div>
-            </div>
-
-            {/* ---------------------------------------------------- */}
-            {/* SECTION 2: CHARTS (REVIEW ACTIVITY & ISSUES BY TYPE) */}
-            {/* ---------------------------------------------------- */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '2fr 1fr',
-              gap: '20px',
-              marginBottom: '28px'
-            }}>
-              {/* Review Activity Bar Chart Card */}
-              <div style={{
-                backgroundColor: '#0c0d18',
-                border: '1px solid rgba(255, 255, 255, 0.07)',
-                borderRadius: '12px',
-                padding: '24px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#ffffff', margin: 0 }}>
-                    Review Activity
-                  </h3>
-                  <div style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '0.78rem',
-                    color: '#94a3b8',
-                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    padding: '4px 10px',
-                    borderRadius: '6px',
-                    cursor: 'pointer'
-                  }}>
-                    <span>{timeRange}</span>
-                    <ChevronDown size={12} />
-                  </div>
-                </div>
-
-                {/* Bar Chart Graphics */}
-                <div style={{
-                  height: '140px',
-                  display: 'flex',
-                  alignItems: 'flex-end',
-                  gap: '6px',
-                  paddingTop: '20px',
-                  position: 'relative'
-                }}>
-                  {displayedBarData.map((val, idx) => (
-                    <div
-                      key={idx}
-                      onMouseEnter={() => setHoveredBarIndex(idx)}
-                      onMouseLeave={() => setHoveredBarIndex(null)}
-                      style={{
-                        flex: 1,
-                        height: `${val}%`,
-                        backgroundColor: hoveredBarIndex === idx ? '#818cf8' : '#5865f2',
-                        borderRadius: '4px 4px 2px 2px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        position: 'relative'
-                      }}
-                    >
-                      {hoveredBarIndex === idx && (
-                        <div style={{
-                          position: 'absolute',
-                          bottom: '100%',
-                          left: '50%',
-                          transform: 'translateX(-50%) translateY(-6px)',
-                          backgroundColor: '#1e293b',
-                          border: '1px solid rgba(255, 255, 255, 0.15)',
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.72rem',
-                          color: '#fff',
-                          whiteSpace: 'nowrap',
-                          zIndex: 10,
-                          pointerEvents: 'none',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-                        }}>
-                          {activity[idx]?.date}: {activity[idx]?.reviews || 0} reviews
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* X Axis Labels */}
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginTop: '12px',
-                  fontSize: '0.74rem',
-                  color: '#64748b'
-                }}>
-                  <span>{activity[0]?.date || '—'}</span>
-                  <span>{activity[activity.length - 1]?.date || '—'}</span>
-                </div>
-              </div>
-
-              {/* Issues by Type Donut Chart Card */}
-              <div style={{
-                backgroundColor: '#0c0d18',
-                border: '1px solid rgba(255, 255, 255, 0.07)',
-                borderRadius: '12px',
-                padding: '24px',
-                display: 'flex',
-                flexDirection: 'column'
-              }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#ffffff', marginBottom: '20px' }}>
-                  Issues by Type
-                </h3>
-
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '24px',
-                  flex: 1
-                }}>
-                  {/* Donut chart calculated from the live severity counts. */}
-                  <div style={{
-                    position: 'relative',
-                    width: '110px',
-                    height: '110px',
-                    borderRadius: '50%',
-                    flexShrink: 0,
-                    background: issueGradient
-                  }}>
-                    <div style={{
-                      position: 'absolute',
-                      inset: '18px',
-                      borderRadius: '50%',
-                      background: '#0c0d18',
-                      display: 'grid',
-                      placeItems: 'center',
-                      color: '#e2e8f0',
-                      fontSize: '0.82rem',
-                      fontWeight: '800'
-                    }}>
-                      {issueTotal}
-                    </div>
-                  </div>
-
-                  {/* Legend List */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
-                    {displayedIssueTypes.map((item) => (
-                      <div key={item.label} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        fontSize: '0.82rem'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: item.color
-                          }} />
-                          <span style={{ color: '#cbd5e1' }}>{item.label}</span>
-                        </div>
-                        <span style={{ color: '#ffffff', fontWeight: '700' }}>{item.count}</span>
-                      </div>
-                    ))}
-                    {!displayedIssueTypes.length && (
-                      <div style={{ color: '#64748b', fontSize: '0.78rem', lineHeight: 1.5 }}>
-                        No findings in this range.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ---------------------------------------------------- */}
-            {/* SECTION 3: REPOSITORIES LIST */}
-            {/* ---------------------------------------------------- */}
-            <div style={{
-              backgroundColor: '#0c0d18',
-              border: '1px solid rgba(255, 255, 255, 0.07)',
-              borderRadius: '12px',
-              padding: '24px',
-              marginBottom: '28px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#ffffff', margin: 0 }}>
-                  Repositories
-                </h3>
-                <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '500' }}>
-                  {filteredRepos.length} connected
-                </span>
-              </div>
-
-              {/* Repos Table / List Rows */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {filteredRepos.map((repo) => (
-                  <div
-                    key={repo.id}
-                    onClick={() => onSelectProject && onSelectProject({
-                      id: repo.id,
-                      title: repo.name,
-                      description: `${repo.lang} Repository with ${repo.prs} pull requests monitored by Lunar.`,
-                      githubUrl: repo.repoUrl || `https://github.com/${repo.name}`,
-                      files: []
-                    })}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '14px 18px',
-                      borderRadius: '8px',
-                      backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px solid rgba(255, 255, 255, 0.04)',
-                      transition: 'all 0.15s ease',
-                      cursor: 'pointer'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.04)';
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.04)';
-                    }}
-                  >
-                    {/* Left: Score & Repo Info */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      {/* Circular Quality Score Badge */}
-                      <div style={{
-                        position: 'relative',
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        border: `2px solid ${repo.scoreColor}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.78rem',
-                        fontWeight: '800',
-                        color: repo.scoreColor,
-                        backgroundColor: 'rgba(255, 255, 255, 0.02)'
-                      }}>
-                        {repo.score}
-                      </div>
-
-                      <div>
-                        <div style={{ fontWeight: '700', color: '#ffffff', fontSize: '0.92rem' }}>
-                          {repo.name}
-                        </div>
-                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                          {repo.lang} · {repo.prs} PRs
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right: Issues count, last updated & status badge */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                      <div style={{ textAlign: 'right', fontSize: '0.78rem', color: '#94a3b8' }}>
-                        <span style={{
-                          color: repo.issues > 5 ? '#f97316' : '#cbd5e1',
-                          fontWeight: repo.issues > 5 ? '700' : '500'
-                        }}>
-                          {repo.issues} issues
-                        </span>
-                        <span style={{ margin: '0 6px', color: '#475569' }}>·</span>
-                        <span>{repo.lastUpdated}</span>
-                      </div>
-
-                      <div style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '4px 10px',
-                        borderRadius: '999px',
-                        fontSize: '0.75rem',
-                        fontWeight: '600',
-                        backgroundColor: repo.status === 'passing' ? 'rgba(16, 185, 129, 0.12)' :
-                                       repo.status === 'reviewing' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                        color: repo.statusColor,
-                        border: `1px solid ${repo.statusColor}33`
-                      }}>
-                        <span style={{
-                          width: '6px',
-                          height: '6px',
-                          borderRadius: '50%',
-                          backgroundColor: repo.statusColor
-                        }} />
-                        <span>{repo.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {!filteredRepos.length && (
-                  <div style={{ padding: '18px', borderRadius: '8px', background: 'rgba(255,255,255,.02)', color: '#64748b', fontSize: '0.82rem' }}>
-                    {dashboard ? 'No repositories have been scanned for this account.' : 'Sign in to load your repositories.'}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ---------------------------------------------------- */}
-            {/* SECTION 4: RECENT REVIEWS FEED */}
-            {/* ---------------------------------------------------- */}
-            <div style={{
-              backgroundColor: '#0c0d18',
-              border: '1px solid rgba(255, 255, 255, 0.07)',
-              borderRadius: '12px',
-              padding: '24px'
-            }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: '700', color: '#ffffff', marginBottom: '16px' }}>
-                Recent Reviews
-              </h3>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {displayedRecentReviews.map((rev) => (
-                  <div
-                    key={rev.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '12px 16px',
-                      borderRadius: '8px',
-                      backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px solid rgba(255, 255, 255, 0.04)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      {/* Avatar */}
-                      <div style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        backgroundColor: rev.avatarBg,
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: '700',
-                        fontSize: '0.78rem'
-                      }}>
-                        {rev.avatar}
-                      </div>
-
-                      <div>
-                        <div style={{ fontWeight: '600', color: '#ffffff', fontSize: '0.88rem' }}>
-                          <span style={{ color: '#64748b', marginRight: '6px' }}>{rev.prNumber}</span>
-                          {rev.title}
-                        </div>
-                        <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
-                          {rev.repo} · {rev.time}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {rev.autoFixed && (
-                        <span style={{
-                          fontSize: '0.72rem',
-                          fontWeight: '700',
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          backgroundColor: 'rgba(168, 85, 247, 0.15)',
-                          color: '#c084fc',
-                          border: '1px solid rgba(168, 85, 247, 0.3)'
-                        }}>
-                          auto-fixed
-                        </span>
-                      )}
-
-                      <div style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '4px 10px',
-                        borderRadius: '999px',
-                        fontSize: '0.75rem',
-                        fontWeight: '600',
-                        backgroundColor: rev.status === 'passing' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                        color: rev.status === 'passing' ? '#10b981' : '#ef4444',
-                        border: `1px solid ${rev.status === 'passing' ? '#10b981' : '#ef4444'}33`
-                      }}>
-                        <span style={{
-                          width: '6px',
-                          height: '6px',
-                          borderRadius: '50%',
-                          backgroundColor: rev.status === 'passing' ? '#10b981' : '#ef4444'
-                        }} />
-                        <span>{rev.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {!displayedRecentReviews.length && (
-                  <div style={{ padding: '18px', borderRadius: '8px', background: 'rgba(255,255,255,.02)', color: '#64748b', fontSize: '0.82rem' }}>
-                    {dashboard ? 'No security scans have been recorded yet.' : 'Sign in to load your scan history.'}
-                  </div>
-                )}
-              </div>
-            </div>
-
-          </div>
+          {!currentUser ? <ErrorState title="Sign in required" description="Sign in to load verified repositories and findings." /> : loadError ? <ErrorState description={loadError} onRetry={() => loadDashboard()} /> : !dashboard ? <Card className="product-panel"><Skeleton lines={8} /></Card> : renderView()}
         </div>
       </main>
+      <ConfirmDialog open={clearDialogOpen} title="Clear scan history?" description="This removes your historical scan records from the dashboard. This action cannot be undone." confirmLabel="Clear scan history" loading={isClearingHistory} onConfirm={handleClearScanHistory} onClose={() => setClearDialogOpen(false)} />
     </div>
   );
 }

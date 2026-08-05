@@ -122,7 +122,10 @@ async function run() {
     await page.goto(frontendUrl, { waitUntil: 'networkidle0', timeout: 30000 });
     const markedLogin = await page.evaluate(() => {
       const loginButton = [...document.querySelectorAll('button')]
-        .find((button) => button.textContent.trim() === 'Đăng nhập');
+        .find((button) => (
+          ['Đăng nhập', 'Sign in'].includes(button.textContent.trim())
+          && button.getClientRects().length > 0
+        ));
       loginButton?.setAttribute('data-production-routing-login', 'true');
       return Boolean(loginButton);
     });

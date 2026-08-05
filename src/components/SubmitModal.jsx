@@ -5,6 +5,7 @@ import { scanRepository } from '../services/repoScanner';
 import { lunarApi } from '../services/lunarApi';
 import { getUpgradeQuotaContext } from '../services/quotaUpgrade';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+import { Button, Progress } from './ui';
 
 const MAX_LOCAL_FILE_BYTES = 512000;
 
@@ -172,7 +173,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
   };
 
   return (
-    <div style={{
+    <div className="scan-dialog-backdrop" style={{
       position: 'fixed',
       inset: 0,
       zIndex: 100,
@@ -185,7 +186,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
     }}>
       <div
         ref={dialogRef}
-        className="glass-panel"
+        className="glass-panel scan-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="submit-dialog-title"
@@ -231,16 +232,22 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
           </div>
           <div>
             <h2 id="submit-dialog-title" style={{ fontFamily: 'var(--font-heading)', fontSize: '1.3rem', fontWeight: '800' }}>
-              Upload Repo & Chấm Điểm AI
+              Tạo phiên quét bảo mật
             </h2>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Nhập link GitHub hoặc dán code để AI tự động review và tạo scorecard Portfolio
+              Chọn nguồn mã. Lunar sẽ phân tích SAST trước khi hiển thị bằng chứng và đề xuất sửa.
             </p>
           </div>
         </div>
 
+        <ol className="scan-steps" aria-label="Scan progress">
+          <li className={!loading ? 'is-current' : 'is-complete'}><span>1</span><div><strong>Source</strong><small>Choose code</small></div></li>
+          <li className={loading ? 'is-current' : ''}><span>2</span><div><strong>Analyze</strong><small>SAST & AI review</small></div></li>
+          <li><span>3</span><div><strong>Review</strong><small>Verify findings</small></div></li>
+        </ol>
+
         {/* Mode Selector Tabs */}
-        <div style={{
+        <div className="scan-mode-tabs" role="tablist" aria-label="Code source" style={{
           display: 'flex',
           gap: '6px',
           margin: '20px 0',
@@ -250,6 +257,8 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
         }}>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeMode === 'github'}
             onClick={() => setActiveMode('github')}
             className={`btn btn-sm ${activeMode === 'github' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ flex: 1, fontSize: '0.78rem' }}
@@ -259,6 +268,8 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeMode === 'local'}
             onClick={() => setActiveMode('local')}
             className={`btn btn-sm ${activeMode === 'local' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ flex: 1, fontSize: '0.78rem' }}
@@ -268,6 +279,8 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeMode === 'snippet'}
             onClick={() => setActiveMode('snippet')}
             className={`btn btn-sm ${activeMode === 'snippet' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ flex: 1, fontSize: '0.78rem' }}
@@ -278,7 +291,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
         </div>
 
         {errorMsg && (
-          <div style={{
+          <div role="alert" style={{
             padding: '12px 16px',
             background: 'rgba(244, 63, 94, 0.15)',
             border: '1px solid rgba(244, 63, 94, 0.4)',
@@ -298,8 +311,9 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
         <form onSubmit={handleSubmit}>
           {activeMode === 'github' && (
             <div className="input-group">
-              <label className="input-label">GitHub Repository URL (Public)</label>
+              <label className="input-label" htmlFor="scan-github-url">GitHub repository URL <span aria-hidden="true">*</span></label>
               <input
+                id="scan-github-url"
                 type="text"
                 placeholder="https://github.com/username/repository-name"
                 className="input-control"
@@ -316,7 +330,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
 
           {activeMode === 'local' && (
             <div className="input-group">
-              <label className="input-label">Chọn File Mã Nguồn Local (.js, .jsx, .ts, .py, .json...)</label>
+              <label className="input-label" htmlFor="local-file-input">Source file <span aria-hidden="true">*</span></label>
               <div style={{
                 border: '2px dashed rgba(167, 139, 250, 0.4)',
                 borderRadius: 'var(--radius-md)',
@@ -335,7 +349,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
                 <label htmlFor="local-file-input" style={{ cursor: 'pointer', display: 'block' }}>
                   <Code size={32} color="var(--accent-purple-light)" style={{ marginBottom: '8px' }} />
                   <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#fff' }}>
-                    {localFileName ? `📄 ${localFileName}` : 'Nhấp vào đây để chọn file local từ máy tính'}
+                    {localFileName ? localFileName : 'Choose a source file from this device'}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                     Hỗ trợ .js, .jsx, .ts, .tsx, .py, .sql, .json, .css
@@ -344,8 +358,9 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
               </div>
               {customCode && (
                 <div style={{ marginTop: '12px' }}>
-                  <label className="input-label">Xem Trước Mã File Local:</label>
+                  <label className="input-label" htmlFor="scan-local-preview">Source preview</label>
                   <textarea
+                    id="scan-local-preview"
                     rows="5"
                     className="input-control"
                     value={customCode}
@@ -359,8 +374,9 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
 
           {activeMode === 'snippet' && (
             <div className="input-group">
-              <label className="input-label">Mã nguồn của bạn (JavaScript, Python, Go, TypeScript...)</label>
+              <label className="input-label" htmlFor="scan-code-snippet">Source code <span aria-hidden="true">*</span></label>
               <textarea
+                id="scan-code-snippet"
                 rows="8"
                 placeholder="Dán mã nguồn bạn muốn AI review và tính điểm tại đây..."
                 className="input-control"
@@ -374,7 +390,7 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
           )}
 
           {loading ? (
-            <div style={{
+            <div className="scan-progress" role="status" aria-live="polite" style={{
               padding: '20px',
               textAlign: 'center',
               background: 'rgba(99, 102, 241, 0.1)',
@@ -389,12 +405,13 @@ export default function SubmitModal({ isOpen, onClose, onAddProject, onQuotaExce
               <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
                 {stepText}
               </p>
+              <Progress value={56} label="Analyzing repository" detail="In progress" />
             </div>
           ) : (
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '12px' }}>
-              <ShieldCheck size={18} />
-              Bắt Đầu Phân Tích & Chấm Điểm AI
-            </button>
+            <>
+              <div className="scan-safety-note"><ShieldCheck size={16} aria-hidden="true" /><span><strong>Human verification required.</strong> AI findings and patches are suggestions; review evidence and diff before applying a fix.</span></div>
+              <Button type="submit" variant="primary" size="lg" icon={ShieldCheck} style={{ width: '100%' }}>Bắt đầu quét bảo mật</Button>
+            </>
           )}
         </form>
 
