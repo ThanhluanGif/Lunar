@@ -1,4 +1,8 @@
 import { createApiUrl, normalizeApiBaseUrl } from './apiUrl';
+import {
+  assertDownloadResponseMediaType,
+  readJsonApiResponse
+} from './apiResponseError';
 
 const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL, {
   requireHttps: import.meta.env.PROD
@@ -30,21 +34,6 @@ async function fetchApi(path, options) {
   }
 }
 
-async function readJsonResponse(response) {
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.toLowerCase().includes('application/json')) {
-    const error = new Error(
-      'Máy chủ Lunar trả về phản hồi không hợp lệ. Vui lòng thử lại sau.'
-    );
-    error.status = 502;
-    error.code = 'INVALID_API_RESPONSE';
-    error.payload = { error: error.message, code: error.code };
-    throw error;
-  }
-
-  return response.json().catch(() => ({}));
-}
-
 async function request(path, options = {}) {
   const { acceptedStatuses = [], ...fetchOptions } = options;
   const response = await fetchApi(path, {
@@ -57,7 +46,7 @@ async function request(path, options = {}) {
     }
   });
 
-  const payload = await readJsonResponse(response);
+  const payload = await readJsonApiResponse(response);
   if (!response.ok && !acceptedStatuses.includes(response.status)) {
     const error = new Error(payload.error || payload.message || `HTTP ${response.status}`);
     error.status = response.status;
@@ -78,11 +67,12 @@ async function download(path, options = {}) {
     }
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
+    const payload = await readJsonApiResponse(response);
     const error = new Error(payload.error || `HTTP ${response.status}`);
     error.status = response.status;
     throw error;
   }
+  assertDownloadResponseMediaType(response);
   return {
     blob: await response.blob(),
     contentDisposition: response.headers.get('content-disposition') || ''

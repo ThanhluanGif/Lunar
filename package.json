@@ -11,6 +11,7 @@
     "qa:a11y": "npm run build && node scripts/accessibility-regression.cjs",
     "qa:security": "node scripts/security-regression.cjs && node scripts/production-routing-regression.mjs && node scripts/sast-regression.cjs && node scripts/auto-patch-regression.mjs && node scripts/remediation-report-regression.mjs && node scripts/sast-self-audit.cjs",
     "qa:production-routing": "node scripts/production-routing-regression.mjs",
+    "qa:production-routing:live": "node scripts/production-routing-live.mjs",
     "qa:production-routing:browser": "node scripts/production-routing-browser.cjs",
     "qa:auth-lifecycle:browser": "node scripts/auth-lifecycle-browser.cjs",
     "qa:dashboard": "node scripts/dashboard-sync-regression.mjs",
