@@ -138,6 +138,7 @@ const renderBlueprintSource = fs.readFileSync('render.yaml', 'utf8');
 assert.match(renderBlueprintSource, /^\s+runtime: docker$/m);
 assert.match(renderBlueprintSource, /^\s+plan: free$/m);
 assert.match(renderBlueprintSource, /^\s+region: singapore$/m);
+assert.match(renderBlueprintSource, /^\s+branch: card\/C-002$/m);
 assert.match(renderBlueprintSource, /^\s+dockerfilePath: \.\/Dockerfile\.backend$/m);
 assert.match(renderBlueprintSource, /^\s+healthCheckPath: \/api\/v1\/ready$/m);
 assert.match(renderBlueprintSource, /^\s+autoDeployTrigger: off$/m);

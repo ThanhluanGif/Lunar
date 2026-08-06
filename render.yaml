@@ -4,7 +4,9 @@ services:
     runtime: docker
     plan: free
     region: singapore
-    branch: main
+    # Deploy the card branch for live verification. Switch this to `main` in
+    # the merge commit after C-002 passes its production gates.
+    branch: card/C-002
     dockerfilePath: ./Dockerfile.backend
     dockerContext: .
     healthCheckPath: /api/v1/ready
