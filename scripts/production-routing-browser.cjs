@@ -26,9 +26,8 @@ const build = spawnSync(npmCommand, ['run', 'build'], {
   env: {
     ...process.env,
     VITE_API_BASE_URL: backendUrl,
-    // Exercise the config/device branch; production web flow intentionally
-    // skips this fetch and navigates directly to OAuth start.
-    VITE_GITHUB_AUTH_FLOW: 'device'
+    // A web-flow build must still verify backend readiness before navigation.
+    VITE_GITHUB_AUTH_FLOW: 'web'
   },
   stdio: 'inherit'
 });
@@ -44,7 +43,7 @@ const backend = spawn(process.execPath, ['server/index.js'], {
     JWT_SECRET: 'routing-browser-jwt-secret-at-least-32-characters',
     DATABASE_URL: 'postgresql://127.0.0.1:1/routing_browser_unavailable',
     CORS_ORIGINS: frontendUrl,
-    PUBLIC_APP_URL: frontendUrl,
+    PUBLIC_APP_URL: 'https://app.example.com',
     COOKIE_SECURE: 'false',
     COOKIE_SAME_SITE: 'strict',
     GEMINI_API_KEY: '',
@@ -54,6 +53,7 @@ const backend = spawn(process.execPath, ['server/index.js'], {
     VERCEL_OIDC_TOKEN: '',
     GITHUB_CLIENT_ID: '',
     GITHUB_CLIENT_SECRET: '',
+    GITHUB_OAUTH_CALLBACK_URL: '',
     GITHUB_TOKEN_ENCRYPTION_KEY: '',
     AUTH_EMAIL_DRY_RUN: 'true',
     AUTH_EMAIL_ALLOW_INSECURE_BASE_URL: 'true',
@@ -152,6 +152,9 @@ async function run() {
     );
 
     const pageText = await page.evaluate(() => document.body.innerText);
+    if (page.url() !== `${frontendUrl}/`) {
+      throw new Error(`Missing OAuth configuration triggered navigation to ${page.url()}.`);
+    }
     if (pageText.includes('Không thể kết nối Lunar API')) {
       throw new Error('Frontend still reported a production API connectivity failure.');
     }
@@ -163,6 +166,30 @@ async function run() {
     }
     if (githubConfigApiMarker !== '1') {
       throw new Error(`GitHub config response did not include the Lunar API marker: ${githubConfigApiMarker}`);
+    }
+    const configResponse = await fetch(`${backendUrl}/api/v1/auth/github/config`);
+    const configPayload = await configResponse.json();
+    const expectedMissing = [
+      'GITHUB_CLIENT_ID',
+      'GITHUB_CLIENT_SECRET',
+      'GITHUB_OAUTH_CALLBACK_URL',
+      'GITHUB_TOKEN_ENCRYPTION_KEY'
+    ];
+    if (
+      configPayload.configured !== false
+      || configPayload.code !== 'GITHUB_OAUTH_NOT_CONFIGURED'
+      || JSON.stringify(configPayload.missingEnvironmentVariables) !== JSON.stringify(expectedMissing)
+    ) {
+      throw new Error(`GitHub config diagnostics were incomplete: ${JSON.stringify(configPayload)}.`);
+    }
+    const startResponse = await fetch(`${backendUrl}/api/v1/auth/github/start`, { redirect: 'manual' });
+    const startPayload = await startResponse.json();
+    if (
+      startResponse.status !== 503
+      || startPayload.code !== 'GITHUB_OAUTH_NOT_CONFIGURED'
+      || JSON.stringify(startPayload).includes('routing-browser-jwt-secret')
+    ) {
+      throw new Error('GitHub OAuth start did not fail closed without leaking secrets.');
     }
 
     console.log(JSON.stringify({

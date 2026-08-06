@@ -7,9 +7,6 @@ import {
 const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL, {
   requireHttps: import.meta.env.PROD
 });
-const GITHUB_AUTH_FLOW_HINT = String(import.meta.env.VITE_GITHUB_AUTH_FLOW || 'web')
-  .trim()
-  .toLowerCase();
 
 function apiUrl(path) {
   return createApiUrl(path, API_BASE_URL);
@@ -159,7 +156,6 @@ async function download(path, options = {}) {
 
 export const lunarApi = {
   getGitHubOAuthStartUrl: () => apiUrl('/auth/github/start'),
-  shouldUseDirectGitHubOAuth: () => GITHUB_AUTH_FLOW_HINT === 'web',
   getMe: () => request('/auth/me'),
   login: (email, password) => request('/auth/login', {
     method: 'POST',

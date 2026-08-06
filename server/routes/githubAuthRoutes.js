@@ -15,14 +15,18 @@ const {
 } = require('../services/githubAccountLinking');
 const { serializeUser, tokenPayload } = require('../services/userSerializer');
 const { recordSuccessfulLogin } = require('../services/loginActivityService');
-const { writeSystemLog } = require('../middleware/logger');
 const { createCookieOptions } = require('../services/cookiePolicy');
 const { providerFetch } = require('../services/providerHttp');
-const { createAppRedirectUrl, normalizePublicAppUrl } = require('../services/publicAppUrl');
+const {
+  createAppRedirectUrl,
+  normalizeOAuthCallbackUrl,
+  normalizePublicAppUrl
+} = require('../services/publicAppUrl');
 
 const router = express.Router();
 const GITHUB_API = 'https://api.github.com';
 const GITHUB_DEVICE_COOKIE = 'github_device_session';
+const GITHUB_OAUTH_NOT_CONFIGURED = 'GITHUB_OAUTH_NOT_CONFIGURED';
 
 const githubCookieOptions = createCookieOptions({ defaultSameSite: 'lax' });
 const oauthStateCookieOptions = {
@@ -41,35 +45,67 @@ function redirectToApp(res, status) {
   return res.redirect(createAppRedirectUrl(status, publicAppUrl));
 }
 
-function getOAuthConfig() {
-  const clientId = process.env.GITHUB_CLIENT_ID;
-  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-  const callbackUrl = process.env.GITHUB_OAUTH_CALLBACK_URL;
-  const encryptionSecret = process.env.GITHUB_TOKEN_ENCRYPTION_KEY;
+function getOAuthConfigStatus() {
+  const clientId = String(process.env.GITHUB_CLIENT_ID || '').trim();
+  const clientSecret = String(process.env.GITHUB_CLIENT_SECRET || '').trim();
+  const callbackUrlValue = String(process.env.GITHUB_OAUTH_CALLBACK_URL || '').trim();
+  const encryptionSecret = String(process.env.GITHUB_TOKEN_ENCRYPTION_KEY || '').trim();
   const authFlow = String(process.env.GITHUB_AUTH_FLOW || 'web').toLowerCase();
   const redirectMode = String(process.env.GITHUB_OAUTH_REDIRECT_MODE || 'registered').toLowerCase();
-  if (!clientId || !clientSecret || !callbackUrl || !encryptionSecret || encryptionSecret.length < 32) {
-    return null;
+  const missingEnvironmentVariables = [];
+
+  if (!clientId) missingEnvironmentVariables.push('GITHUB_CLIENT_ID');
+  // GitHub OAuth client secrets are high-entropy values. Reject short
+  // placeholders so a deployment cannot report itself ready with dummy data.
+  if (clientSecret.length < 20) missingEnvironmentVariables.push('GITHUB_CLIENT_SECRET');
+  let callbackUrl = '';
+  try {
+    callbackUrl = normalizeOAuthCallbackUrl(callbackUrlValue, {
+      production: process.env.NODE_ENV === 'production'
+    });
+  } catch {
+    // Report only the environment variable name. Its value might contain
+    // sensitive query parameters and must never appear in diagnostics.
   }
-  if (!['device', 'web'].includes(authFlow)) {
-    writeSystemLog('ERROR', 'GITHUB_AUTH_FLOW must be "device" or "web".');
-    return null;
-  }
+  if (!callbackUrl) missingEnvironmentVariables.push('GITHUB_OAUTH_CALLBACK_URL');
+  if (encryptionSecret.length < 32) missingEnvironmentVariables.push('GITHUB_TOKEN_ENCRYPTION_KEY');
+  if (!['device', 'web'].includes(authFlow)) missingEnvironmentVariables.push('GITHUB_AUTH_FLOW');
   if (!['registered', 'explicit'].includes(redirectMode)) {
-    writeSystemLog('ERROR', 'GITHUB_OAUTH_REDIRECT_MODE must be "registered" or "explicit".');
-    return null;
+    missingEnvironmentVariables.push('GITHUB_OAUTH_REDIRECT_MODE');
   }
+
+  if (missingEnvironmentVariables.length > 0) {
+    return { config: null, missingEnvironmentVariables };
+  }
+
   return {
-    clientId,
-    clientSecret,
-    callbackUrl,
-    authFlow,
-    redirectMode,
-    encryptionKey: crypto.createHash('sha256').update(encryptionSecret).digest(),
-    scopes: (process.env.GITHUB_OAUTH_SCOPES || 'read:user user:email')
-      .split(/[\s,]+/)
-      .filter(Boolean)
+    config: {
+      clientId,
+      clientSecret,
+      callbackUrl,
+      authFlow,
+      redirectMode,
+      encryptionKey: crypto.createHash('sha256').update(encryptionSecret).digest(),
+      scopes: (process.env.GITHUB_OAUTH_SCOPES || 'read:user user:email')
+        .split(/[\s,]+/)
+        .filter(Boolean)
+    },
+    missingEnvironmentVariables: []
   };
+}
+
+function getOAuthConfig() {
+  return getOAuthConfigStatus().config;
+}
+
+function sendOAuthNotConfigured(res, missingEnvironmentVariables) {
+  return res.status(503).json({
+    success: false,
+    configured: false,
+    code: GITHUB_OAUTH_NOT_CONFIGURED,
+    error: 'GitHub OAuth is not configured on this server.',
+    missingEnvironmentVariables
+  });
 }
 
 function encryptToken(token, key) {
@@ -315,10 +351,15 @@ async function persistGitHubIdentity({
 }
 
 router.get('/config', (req, res) => {
-  const config = getOAuthConfig();
+  const { config, missingEnvironmentVariables } = getOAuthConfigStatus();
   return res.json({
     success: true,
     configured: Boolean(config),
+    ...(config ? {} : {
+      code: GITHUB_OAUTH_NOT_CONFIGURED,
+      error: 'GitHub OAuth is not configured on this server.',
+      missingEnvironmentVariables
+    }),
     callbackUrl: config ? config.callbackUrl : null,
     authFlow: config ? config.authFlow : null,
     redirectMode: config ? config.redirectMode : null
@@ -326,12 +367,9 @@ router.get('/config', (req, res) => {
 });
 
 router.get('/start', githubAuthStartRateLimiter, (req, res) => {
-  const config = getOAuthConfig();
+  const { config, missingEnvironmentVariables } = getOAuthConfigStatus();
   if (!config) {
-    return res.status(503).json({
-      success: false,
-      error: 'GitHub login is not configured. Set the GitHub OAuth environment variables.'
-    });
+    return sendOAuthNotConfigured(res, missingEnvironmentVariables);
   }
 
   const state = crypto.randomBytes(32).toString('base64url');
@@ -353,12 +391,9 @@ router.get('/start', githubAuthStartRateLimiter, (req, res) => {
 });
 
 router.post('/device/start', githubAuthStartRateLimiter, async (req, res) => {
-  const config = getOAuthConfig();
+  const { config, missingEnvironmentVariables } = getOAuthConfigStatus();
   if (!config) {
-    return res.status(503).json({
-      success: false,
-      error: 'GitHub login is not configured. Set the GitHub OAuth environment variables.'
-    });
+    return sendOAuthNotConfigured(res, missingEnvironmentVariables);
   }
   if (config.authFlow !== 'device') {
     return res.status(409).json({

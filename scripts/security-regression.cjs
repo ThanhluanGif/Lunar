@@ -400,7 +400,7 @@ const child = spawn(process.execPath, ['server/index.js'], {
     ENABLE_PAYMENT_MOCK: 'true',
     GITHUB_CLIENT_ID: 'regression-client-id',
     GITHUB_CLIENT_SECRET: 'regression-client-secret',
-    GITHUB_OAUTH_CALLBACK_URL: `${baseUrl}/api/v1/auth/github/callback`,
+    GITHUB_OAUTH_CALLBACK_URL: 'https://api.example.com/api/v1/auth/github/callback',
     GITHUB_AUTH_FLOW: 'web',
     GITHUB_OAUTH_REDIRECT_MODE: 'registered',
     GITHUB_TOKEN_ENCRYPTION_KEY: 'regression-github-encryption-key-at-least-32-characters',

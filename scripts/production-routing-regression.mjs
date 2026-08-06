@@ -13,7 +13,11 @@ import {
 const require = createRequire(import.meta.url);
 const { resolveCookiePolicy } = require('../server/services/cookiePolicy');
 const { resolveAllowedOrigins } = require('../server/services/corsPolicy');
-const { createAppRedirectUrl, normalizePublicAppUrl } = require('../server/services/publicAppUrl');
+const {
+  createAppRedirectUrl,
+  normalizeOAuthCallbackUrl,
+  normalizePublicAppUrl
+} = require('../server/services/publicAppUrl');
 
 assert.equal(normalizeApiBaseUrl(''), '');
 assert.equal(
@@ -94,6 +98,28 @@ assert.throws(
   () => normalizePublicAppUrl('http://app.example.com', { production: true }),
   /HTTPS/
 );
+assert.throws(
+  () => normalizePublicAppUrl('http://localhost:3000', { production: true }),
+  /loopback/
+);
+assert.throws(
+  () => normalizePublicAppUrl('https://127.0.0.1:3000', { production: true }),
+  /loopback/
+);
+assert.equal(
+  normalizeOAuthCallbackUrl(
+    'https://api.example.com/api/v1/auth/github/callback',
+    { production: true }
+  ),
+  'https://api.example.com/api/v1/auth/github/callback'
+);
+assert.throws(
+  () => normalizeOAuthCallbackUrl(
+    'http://localhost:5000/api/v1/auth/github/callback',
+    { production: true }
+  ),
+  /loopback/
+);
 assert.equal(createAppRedirectUrl('success'), '/?github_auth=success');
 assert.equal(
   createAppRedirectUrl('invalid state', 'https://app.example.com'),
@@ -106,7 +132,8 @@ for (const componentPath of [
 ]) {
   const source = fs.readFileSync(componentPath, 'utf8');
   assert.match(source, /lunarApi\.getGitHubOAuthStartUrl\(\)/);
-  assert.match(source, /lunarApi\.shouldUseDirectGitHubOAuth\(\)/);
+  assert.match(source, /await lunarApi\.getGitHubConfig\(\)/);
+  assert.doesNotMatch(source, /shouldUseDirectGitHubOAuth/);
   assert.doesNotMatch(source, /window\.location\.assign\(['"]\/api\/v1/);
 }
 const githubWorkspaceSource = fs.readFileSync('src/components/UserGitHubWorkspace.jsx', 'utf8');
@@ -117,6 +144,8 @@ assert.match(githubRouteSource, /redirectToApp\(res, 'success'\)/);
 assert.match(githubRouteSource, /oauthStateCookieOptions = \{[\s\S]*sameSite: 'lax'/);
 assert.doesNotMatch(githubRouteSource, /res\.redirect\(['"]\/\?github_auth=/);
 assert.match(githubRouteSource, /configured: Boolean\(config\)/);
+assert.match(githubRouteSource, /GITHUB_OAUTH_NOT_CONFIGURED/);
+assert.match(githubRouteSource, /missingEnvironmentVariables/);
 assert.doesNotMatch(githubRouteSource, /developer@lunar\.dev/);
 
 const viteConfigSource = fs.readFileSync('vite.config.js', 'utf8');
@@ -124,7 +153,7 @@ const envExampleSource = fs.readFileSync('.env.example', 'utf8');
 assert.match(viteConfigSource, /VITE_API_PROXY_TARGET \|\| 'http:\/\/127\.0\.0\.1:5000'/);
 assert.match(envExampleSource, /^PORT=5000$/m);
 assert.match(envExampleSource, /^VITE_API_PROXY_TARGET=http:\/\/127\.0\.0\.1:5000$/m);
-assert.match(envExampleSource, /^VITE_GITHUB_AUTH_FLOW=web$/m);
+assert.doesNotMatch(envExampleSource, /^VITE_GITHUB_AUTH_FLOW=/m);
 assert.match(envExampleSource, /^CORS_ORIGINS=$/m);
 
 const backendDockerfileSource = fs.readFileSync('Dockerfile.backend', 'utf8');
@@ -150,12 +179,16 @@ assert.match(renderBlueprintSource, /key: DATABASE_SSL_REJECT_UNAUTHORIZED\n(?:\
 assert.match(renderBlueprintSource, /key: GITHUB_OAUTH_CALLBACK_URL\n\s+value: https:\/\/lunar-api-thanhluan\.onrender\.com\/api\/v1\/auth\/github\/callback/);
 for (const secretName of [
   'DATABASE_URL',
-  'JWT_SECRET',
   'GITHUB_CLIENT_ID',
-  'GITHUB_CLIENT_SECRET',
-  'GITHUB_TOKEN_ENCRYPTION_KEY'
+  'GITHUB_CLIENT_SECRET'
 ]) {
   assert.match(renderBlueprintSource, new RegExp(`key: ${secretName}\\n\\s+sync: false`));
+}
+for (const generatedSecretName of ['JWT_SECRET', 'GITHUB_TOKEN_ENCRYPTION_KEY']) {
+  assert.match(
+    renderBlueprintSource,
+    new RegExp(`key: ${generatedSecretName}\\n\\s+generateValue: true`)
+  );
 }
 
 const lunarApiSource = fs.readFileSync('src/services/lunarApi.js', 'utf8');
@@ -163,7 +196,7 @@ assert.match(lunarApiSource, /code = 'API_UNREACHABLE'/);
 assert.match(lunarApiSource, /DEPLOYMENT_PROTECTED/);
 assert.match(lunarApiSource, /x-lunar-api/);
 assert.match(lunarApiSource, /Private Relay/);
-assert.match(lunarApiSource, /shouldUseDirectGitHubOAuth/);
+assert.doesNotMatch(lunarApiSource, /shouldUseDirectGitHubOAuth/);
 assert.doesNotMatch(lunarApiSource, /import\.meta\.env\.PROD && GITHUB_AUTH_FLOW_HINT/);
 
 const serverSource = fs.readFileSync('server/index.js', 'utf8');
