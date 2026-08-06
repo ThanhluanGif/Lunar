@@ -2,7 +2,7 @@ services:
   - type: web
     name: lunar-api-thanhluan
     runtime: docker
-    plan: starter
+    plan: free
     region: singapore
     branch: main
     dockerfilePath: ./Dockerfile.backend

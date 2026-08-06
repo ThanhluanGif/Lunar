@@ -136,7 +136,7 @@ assert.doesNotMatch(backendDockerfileSource, /npm run build/);
 
 const renderBlueprintSource = fs.readFileSync('render.yaml', 'utf8');
 assert.match(renderBlueprintSource, /^\s+runtime: docker$/m);
-assert.match(renderBlueprintSource, /^\s+plan: starter$/m);
+assert.match(renderBlueprintSource, /^\s+plan: free$/m);
 assert.match(renderBlueprintSource, /^\s+region: singapore$/m);
 assert.match(renderBlueprintSource, /^\s+dockerfilePath: \.\/Dockerfile\.backend$/m);
 assert.match(renderBlueprintSource, /^\s+healthCheckPath: \/api\/v1\/ready$/m);

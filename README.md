@@ -220,8 +220,12 @@ Xem checklist đầy đủ tại [`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTI
 
 #### Lunar: Vercel frontend + Render API
 
-Repository có `render.yaml` cho một Render Starter Web Service tại Singapore và
+Repository có `render.yaml` cho một Render Free Web Service tại Singapore và
 `Dockerfile.backend` chỉ đóng gói Express. Trình tự cutover production:
+
+Render Free không bảo đảm always-on: service có thể ngủ sau thời gian không có traffic và request
+đầu tiên phải chờ khởi động lại. Đây là lựa chọn không cần thẻ; đổi `plan` sang `starter` khi cần
+OAuth/API phản hồi ổn định 24/7.
 
 1. Tạo Blueprint từ repository, nhập các biến `sync: false` bằng secrets production hiện có.
    Auto-deploy đang tắt; chỉ deploy thủ công commit đã qua gate.
