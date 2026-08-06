@@ -172,7 +172,7 @@ export default function UserGitHubWorkspace({
       .catch((error) => {
         if (cancelled) return;
         setGitHubConnection((current) => ({ ...current, loading: false }));
-        if (error.status !== 401) {
+        if (error.status !== 401 && !error.retryable) {
           setScanError(error.message || 'Không thể kiểm tra kết nối GitHub.');
         }
       })
@@ -265,6 +265,10 @@ export default function UserGitHubWorkspace({
   const handleConnectGitHub = async () => {
     setScanError('');
     try {
+      if (lunarApi.shouldUseDirectGitHubOAuth()) {
+        window.location.assign(lunarApi.getGitHubOAuthStartUrl());
+        return;
+      }
       const config = await lunarApi.getGitHubConfig();
       if (!config.configured) {
         throw new Error('Kết nối GitHub hiện chưa được bật trên máy chủ Lunar. Vui lòng liên hệ quản trị viên.');

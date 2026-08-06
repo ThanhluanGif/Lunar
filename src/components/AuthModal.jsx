@@ -115,6 +115,13 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialRese
     setErrorMsg('');
     setNoticeMsg('');
     try {
+      // The configured GitHub web flow uses top-level navigation. This avoids a
+      // preflight fetch that privacy proxies/hosting protection can block while
+      // still allowing the browser redirect itself.
+      if (lunarApi.shouldUseDirectGitHubOAuth()) {
+        window.location.assign(lunarApi.getGitHubOAuthStartUrl());
+        return;
+      }
       const config = await lunarApi.getGitHubConfig();
       if (!config.configured) {
         setLoading(false);

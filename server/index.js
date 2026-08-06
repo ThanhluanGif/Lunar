@@ -46,6 +46,13 @@ function trustProxySetting(value) {
 app.disable('x-powered-by');
 app.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY));
 
+// Mark every response that actually reached Express. The frontend uses this
+// header to distinguish application errors from hosting edge/WAF blocks.
+app.use('/api/v1', (req, res, next) => {
+  res.set('X-Lunar-API', '1');
+  return next();
+});
+
 // 1. OWASP ASVS Security Headers
 app.use(securityHeaders);
 app.use(correlationLogger);
@@ -60,7 +67,7 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Correlation-ID'],
-  exposedHeaders: ['X-Correlation-ID', 'Content-Disposition']
+  exposedHeaders: ['X-Correlation-ID', 'X-Lunar-API', 'Content-Disposition']
 }));
 
 // 3. Global payload bounds; scan routes enforce smaller field-level limits.
@@ -113,10 +120,17 @@ app.use(['/api/v1/auth', '/api/v1/dashboard', '/api/v1/admin'], (req, res, next)
 });
 
 // Vercel imports the Express app without calling app.listen(). Initialize the
-// database on the first API request so routes using getPool() do not return a
-// false DATABASE_UNAVAILABLE response during a serverless cold start.
+// database only for endpoints that use it. OAuth config/start are intentionally
+// independent so a database cold start cannot block the redirect to GitHub.
+const DATABASE_INDEPENDENT_API_PATHS = new Set([
+  '/health',
+  '/auth/github/config',
+  '/auth/github/start',
+  '/auth/github/device/start'
+]);
+
 app.use('/api/v1', async (req, res, next) => {
-  if (req.path === '/health') return next();
+  if (req.method === 'OPTIONS' || DATABASE_INDEPENDENT_API_PATHS.has(req.path)) return next();
   await ensurePgConnected();
   return next();
 });

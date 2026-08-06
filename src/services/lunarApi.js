@@ -1,47 +1,78 @@
 import { createApiUrl, normalizeApiBaseUrl } from './apiUrl';
+import {
+  fetchWithSafeRetries,
+  isJsonApiResponse
+} from './apiResilience';
 
 const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL, {
   requireHttps: import.meta.env.PROD
 });
+const GITHUB_AUTH_FLOW_HINT = String(import.meta.env.VITE_GITHUB_AUTH_FLOW || 'web')
+  .trim()
+  .toLowerCase();
 
 function apiUrl(path) {
   return createApiUrl(path, API_BASE_URL);
 }
 
-async function fetchApi(path, options) {
+function waitForRetry(milliseconds, signal) {
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason || new DOMException('The operation was aborted.', 'AbortError'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason || new DOMException('The operation was aborted.', 'AbortError'));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function createConnectivityError(cause) {
+  const target = API_BASE_URL || 'backend cùng domain';
+  const frontendOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const crossOrigin = Boolean(API_BASE_URL && frontendOrigin && API_BASE_URL !== frontendOrigin);
+  const error = new Error(
+    `Không thể kết nối máy chủ Lunar (${target}). `
+    + (crossOrigin
+      ? `Frontend ${frontendOrigin} đang gọi API khác origin; hãy kiểm tra CORS allowlist, HTTPS và cookie cross-site. `
+      : '')
+    + 'Hệ thống đã tự thử lại nhưng chưa nhận được phản hồi. Vui lòng thử lại sau.'
+  );
+  error.status = 502;
+  error.code = 'API_UNREACHABLE';
+  error.retryable = true;
+  error.payload = {
+    error: error.message,
+    code: error.code,
+    target: API_BASE_URL || 'same-origin'
+  };
+  error.cause = cause;
+  return error;
+}
+
+async function fetchApi(path, options = {}) {
   try {
-    return await fetch(apiUrl(path), options);
+    return await fetchWithSafeRetries(fetch, apiUrl(path), options, waitForRetry);
   } catch (cause) {
     if (cause?.name === 'AbortError') throw cause;
-    const target = API_BASE_URL || 'backend cùng domain';
-    const frontendOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-    const crossOrigin = Boolean(API_BASE_URL && frontendOrigin && API_BASE_URL !== frontendOrigin);
-    const error = new Error(
-      `Không thể kết nối máy chủ Lunar (${target}). `
-      + (crossOrigin
-        ? `Frontend ${frontendOrigin} đang gọi API khác origin; hãy kiểm tra CORS allowlist, HTTPS và cookie cross-site. `
-        : '')
-      + 'Vui lòng thử lại sau hoặc liên hệ quản trị viên nếu lỗi vẫn tiếp diễn.'
-    );
-    error.status = 502;
-    error.code = 'API_UNREACHABLE';
-    error.payload = {
-      error: error.message,
-      code: error.code,
-      target: API_BASE_URL || 'same-origin'
-    };
-    error.cause = cause;
-    throw error;
+    throw createConnectivityError(cause);
   }
 }
 
 async function readJsonResponse(response) {
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.toLowerCase().includes('application/json')) {
+  if (!isJsonApiResponse(response)) {
     const status = response.status || 502;
     const responseText = await response.text().catch(() => '');
     const vercelRequestId = response.headers.get('x-vercel-id') || '';
     const vercelError = response.headers.get('x-vercel-error') || '';
+    const correlationId = response.headers.get('x-correlation-id') || '';
+    const reachedLunarApi = response.headers.get('x-lunar-api') === '1';
     const looksLikeVercelProtection = Boolean(
       vercelError
       || /vercel authentication|deployment protection|security checkpoint/i.test(responseText)
@@ -49,27 +80,32 @@ async function readJsonResponse(response) {
     const looksLikeVercelEdge = Boolean(
       vercelRequestId || /^vercel$/i.test(response.headers.get('server') || '')
     );
-    const errorMsg = status === 403 && looksLikeVercelProtection
-      ? 'Vercel đã chặn request trước khi tới Lunar API (HTTP 403). Hãy tắt Deployment Protection cho production hoặc dùng đúng production domain.'
-      : status === 403 && looksLikeVercelEdge
-      ? 'Vercel Edge/Firewall đã trả HTTP 403 trước khi Lunar API trả JSON. Hãy kiểm tra custom firewall, IP block, attack mode và production domain.'
+    const blockedBeforeApi = status === 403 && !reachedLunarApi;
+    const errorMsg = blockedBeforeApi && looksLikeVercelProtection
+      ? 'Vercel đã chặn request trước khi tới Lunar API (HTTP 403). Hãy dùng production domain công khai thay vì URL preview được bảo vệ.'
+      : blockedBeforeApi && looksLikeVercelEdge
+      ? 'Lớp bảo vệ tự động của Vercel đã tạm từ chối request trước khi tới Lunar API (HTTP 403). Hệ thống đã tự thử lại; hãy tắt VPN/Private Relay hoặc đổi mạng nếu lỗi còn lặp lại.'
+      : blockedBeforeApi
+      ? 'Lớp bảo vệ của hosting đã từ chối request trước khi tới Lunar API (HTTP 403). Hệ thống đã tự thử lại; hãy tắt VPN/proxy hoặc đổi mạng nếu lỗi còn lặp lại.'
       : status === 403
-      ? 'Gateway/WAF của hosting đã từ chối request trước khi trả JSON (HTTP 403). CORS không tạo ra phản hồi HTTP 403 đọc được; hãy kiểm tra firewall rule và request ID.'
+      ? 'Lunar API trả HTTP 403 nhưng phản hồi không đúng định dạng JSON.'
       : (status === 502 || status === 503 || status === 504)
       ? `Máy chủ Lunar hiện đang bận hoặc tạm thời chưa kết nối được (HTTP ${status}). Bạn có thể Đăng Nhập bằng Email / Nickname.`
       : `Máy chủ Lunar phản hồi không theo định dạng JSON (HTTP ${status}). Vui lòng thử lại hoặc đăng nhập bằng Email / Nickname.`;
-    const requestId = vercelRequestId || response.headers.get('x-correlation-id') || '';
+    const requestId = vercelRequestId || correlationId;
     const error = new Error(`${errorMsg}${requestId ? ` Mã request: ${requestId}.` : ''}`);
     error.status = status;
-    error.code = status === 403
+    error.code = blockedBeforeApi
       ? (looksLikeVercelProtection
         ? 'DEPLOYMENT_PROTECTED'
         : (looksLikeVercelEdge ? 'VERCEL_EDGE_FORBIDDEN' : 'HOSTING_FORBIDDEN'))
       : 'INVALID_API_RESPONSE';
+    error.retryable = blockedBeforeApi || [502, 503, 504].includes(status);
     error.payload = {
       error: error.message,
       code: error.code,
-      requestId: requestId || null
+      requestId: requestId || null,
+      reachedLunarApi
     };
     throw error;
   }
@@ -123,6 +159,7 @@ async function download(path, options = {}) {
 
 export const lunarApi = {
   getGitHubOAuthStartUrl: () => apiUrl('/auth/github/start'),
+  shouldUseDirectGitHubOAuth: () => GITHUB_AUTH_FLOW_HINT === 'web',
   getMe: () => request('/auth/me'),
   login: (email, password) => request('/auth/login', {
     method: 'POST',

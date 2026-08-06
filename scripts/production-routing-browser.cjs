@@ -25,7 +25,10 @@ const build = spawnSync(npmCommand, ['run', 'build'], {
   cwd: process.cwd(),
   env: {
     ...process.env,
-    VITE_API_BASE_URL: backendUrl
+    VITE_API_BASE_URL: backendUrl,
+    // Exercise the config/device branch; production web flow intentionally
+    // skips this fetch and navigates directly to OAuth start.
+    VITE_GITHUB_AUTH_FLOW: 'device'
   },
   stdio: 'inherit'
 });
@@ -108,6 +111,7 @@ async function run() {
     const page = await browser.newPage();
     let githubConfigRequestUrl = '';
     let githubConfigCorsOrigin = '';
+    let githubConfigApiMarker = '';
     page.on('request', (request) => {
       if (request.url().endsWith('/api/v1/auth/github/config')) {
         githubConfigRequestUrl = request.url();
@@ -116,6 +120,7 @@ async function run() {
     page.on('response', async (response) => {
       if (response.url().endsWith('/api/v1/auth/github/config')) {
         githubConfigCorsOrigin = response.headers()['access-control-allow-origin'] || '';
+        githubConfigApiMarker = response.headers()['x-lunar-api'] || '';
       }
     });
 
@@ -156,6 +161,9 @@ async function run() {
     if (githubConfigCorsOrigin !== frontendUrl) {
       throw new Error(`Backend returned the wrong CORS origin: ${githubConfigCorsOrigin}`);
     }
+    if (githubConfigApiMarker !== '1') {
+      throw new Error(`GitHub config response did not include the Lunar API marker: ${githubConfigApiMarker}`);
+    }
 
     console.log(JSON.stringify({
       status: 'PASS',
@@ -163,6 +171,7 @@ async function run() {
       backendUrl,
       githubConfigRequestUrl,
       credentialedCorsOrigin: githubConfigCorsOrigin,
+      lunarApiMarker: githubConfigApiMarker,
       providerCalls: 0
     }, null, 2));
   } finally {

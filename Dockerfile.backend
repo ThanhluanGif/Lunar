@@ -1,0 +1,40 @@
+# --- Lunar production API (backend only) ---
+
+FROM node:22-alpine AS dependencies
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev --include=optional \
+    && npm cache clean --force
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=10000
+
+COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node package.json ./package.json
+COPY --chown=node:node server ./server
+
+# Express still owns the non-API fallback route. Keep an empty dist directory
+# so a backend-only image never needs the frontend build context.
+RUN mkdir -p dist \
+    && chown node:node dist \
+    && rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+    && corepack disable \
+    && rm -rf /usr/local/lib/node_modules/corepack
+
+USER node
+
+EXPOSE 10000
+
+# Container liveness is database-independent. Render separately checks
+# /api/v1/ready before routing production traffic to a new deploy.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+  CMD wget -q --timeout=2 -O - http://127.0.0.1:${PORT}/api/v1/health >/dev/null || exit 1
+
+STOPSIGNAL SIGTERM
+
+CMD ["node", "server/index.js"]
