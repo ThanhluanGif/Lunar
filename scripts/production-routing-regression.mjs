@@ -138,7 +138,7 @@ const renderBlueprintSource = fs.readFileSync('render.yaml', 'utf8');
 assert.match(renderBlueprintSource, /^\s+runtime: docker$/m);
 assert.match(renderBlueprintSource, /^\s+plan: free$/m);
 assert.match(renderBlueprintSource, /^\s+region: singapore$/m);
-assert.match(renderBlueprintSource, /^\s+branch: card\/C-002$/m);
+assert.match(renderBlueprintSource, /^\s+branch: main$/m);
 assert.match(renderBlueprintSource, /^\s+dockerfilePath: \.\/Dockerfile\.backend$/m);
 assert.match(renderBlueprintSource, /^\s+healthCheckPath: \/api\/v1\/ready$/m);
 assert.match(renderBlueprintSource, /^\s+autoDeployTrigger: off$/m);
@@ -146,6 +146,7 @@ assert.doesNotMatch(renderBlueprintSource, /^\s+maxShutdownDelaySeconds:/m);
 assert.match(renderBlueprintSource, /key: CORS_ORIGINS\n\s+value: https:\/\/lunar-zeta-ruddy\.vercel\.app/);
 assert.match(renderBlueprintSource, /key: COOKIE_SECURE\n\s+value: "true"/);
 assert.match(renderBlueprintSource, /key: COOKIE_SAME_SITE\n\s+value: none/);
+assert.match(renderBlueprintSource, /key: DATABASE_SSL_REJECT_UNAUTHORIZED\n(?:\s+#.*\n)*\s+value: "false"/);
 assert.match(renderBlueprintSource, /key: GITHUB_OAUTH_CALLBACK_URL\n\s+value: https:\/\/lunar-api-thanhluan\.onrender\.com\/api\/v1\/auth\/github\/callback/);
 for (const secretName of [
   'DATABASE_URL',

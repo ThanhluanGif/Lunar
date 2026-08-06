@@ -4,9 +4,7 @@ services:
     runtime: docker
     plan: free
     region: singapore
-    # Deploy the card branch for live verification. Switch this to `main` in
-    # the merge commit after C-002 passes its production gates.
-    branch: card/C-002
+    branch: main
     dockerfilePath: ./Dockerfile.backend
     dockerContext: .
     healthCheckPath: /api/v1/ready
@@ -31,7 +29,9 @@ services:
       - key: DATABASE_SSL
         value: "true"
       - key: DATABASE_SSL_REJECT_UNAUTHORIZED
-        value: "true"
+        # Supabase's pooler chain is not trusted by Node's bundled CA store on
+        # Render, even though the connection is still encrypted with TLS.
+        value: "false"
       - key: DATABASE_POOL_MAX
         value: "10"
       - key: GITHUB_AUTH_FLOW
