@@ -11,7 +11,6 @@ services:
     # Main's existing dependency-audit gate is red. Keep deploys operator-gated
     # so Render never ships a commit merely because it was pushed.
     autoDeployTrigger: off
-    maxShutdownDelaySeconds: 30
     envVars:
       - key: NODE_ENV
         value: production

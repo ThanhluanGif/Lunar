@@ -141,6 +141,7 @@ assert.match(renderBlueprintSource, /^\s+region: singapore$/m);
 assert.match(renderBlueprintSource, /^\s+dockerfilePath: \.\/Dockerfile\.backend$/m);
 assert.match(renderBlueprintSource, /^\s+healthCheckPath: \/api\/v1\/ready$/m);
 assert.match(renderBlueprintSource, /^\s+autoDeployTrigger: off$/m);
+assert.doesNotMatch(renderBlueprintSource, /^\s+maxShutdownDelaySeconds:/m);
 assert.match(renderBlueprintSource, /key: CORS_ORIGINS\n\s+value: https:\/\/lunar-zeta-ruddy\.vercel\.app/);
 assert.match(renderBlueprintSource, /key: COOKIE_SECURE\n\s+value: "true"/);
 assert.match(renderBlueprintSource, /key: COOKIE_SAME_SITE\n\s+value: none/);
