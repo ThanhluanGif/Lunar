@@ -355,11 +355,9 @@ router.get('/config', (req, res) => {
   return res.json({
     success: true,
     configured: Boolean(config),
-    ...(config ? {} : {
-      code: GITHUB_OAUTH_NOT_CONFIGURED,
-      error: 'GitHub OAuth is not configured on this server.',
-      missingEnvironmentVariables
-    }),
+    code: config ? null : GITHUB_OAUTH_NOT_CONFIGURED,
+    error: config ? null : 'GitHub OAuth is not configured on this server.',
+    missingEnvironmentVariables,
     callbackUrl: config ? config.callbackUrl : null,
     authFlow: config ? config.authFlow : null,
     redirectMode: config ? config.redirectMode : null

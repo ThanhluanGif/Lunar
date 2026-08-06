@@ -290,6 +290,10 @@ Dự án Lunar tuân thủ nghiêm ngặt các tiêu chuẩn an toàn bảo mậ
 Chạy các bộ test tự động để đảm bảo chất lượng hệ thống trước khi release:
 
 ```bash
+# Bộ QA tích hợp cần DATABASE_URL trỏ tới PostgreSQL QA cô lập; script từ chối
+# tự đọc database trong .env để tránh ghi dữ liệu kiểm thử nhầm môi trường.
+DATABASE_URL=postgresql://lunar_admin:qa_password@localhost:5432/lunar_db npm run qa
+
 # Chạy toàn bộ kiểm thử SAST Engine & Security Regression
 npm run qa:security
 

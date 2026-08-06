@@ -2,6 +2,13 @@ const { spawn } = require('child_process');
 const crypto = require('crypto');
 const { Pool } = require('pg');
 
+const qaDbUrl = String(process.env.DATABASE_URL || '').trim();
+if (!qaDbUrl) {
+  throw new Error(
+    'qa-smoke requires an explicit DATABASE_URL for an isolated QA database; refusing to load a local .env database implicitly.'
+  );
+}
+
 const port = 5200 + Math.floor(Math.random() * 500);
 const baseUrl = `http://127.0.0.1:${port}`;
 const qaGithubEncryptionSecret = 'qa-github-token-encryption-key-at-least-32-characters';
@@ -9,6 +16,7 @@ const child = spawn(process.execPath, ['server/index.js'], {
   cwd: process.cwd(),
   env: {
     ...process.env,
+    DATABASE_URL: qaDbUrl,
     PORT: String(port),
     NODE_ENV: 'production',
     LUNAR_DISABLE_RATE_LIMIT: 'true',
@@ -335,11 +343,11 @@ async function run() {
       throw new Error('Forgot-password response leaked account state.');
     }
 
-    const qaDbUrl = process.env.DATABASE_URL || '';
     const qaDbSsl = /[?&]sslmode=(require|verify-ca|verify-full)\b/i.test(qaDbUrl);
     qaPool = new Pool({
       connectionString: qaDbUrl.replace(/([?&])sslmode=[^&]*/gi, ''),
-      ...(qaDbSsl ? { ssl: { rejectUnauthorized: false } } : {})
+      ...(qaDbSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+      connectionTimeoutMillis: 5000
     });
     const { PURPOSES, issueAccountToken } = require('../server/services/accountTokenService');
     const resetToken = await issueAccountToken(qaPool, {

@@ -8,6 +8,13 @@ const {
 
 const MAX_FILE_BYTES = 512000;
 const MAX_FILES = 500;
+// Agent/Flow skills are pinned development tooling, not code packaged into the
+// Vite frontend or Render backend. Some intentionally execute operator-authored
+// verification commands, so scanning that vendored toolchain as application
+// code creates release-blocking false positives.
+const IGNORED_PREFIXES = [
+  '.claude/skills/'
+];
 const IGNORED_PARTS = new Set([
   '.git',
   'node_modules',
@@ -35,6 +42,7 @@ function repositoryFiles() {
     .filter((filePath) => (
       isScannable(filePath)
       && !isLikelyTestOrFixture(filePath)
+      && !IGNORED_PREFIXES.some((prefix) => filePath.startsWith(prefix))
       && !filePath.split('/').some((part) => IGNORED_PARTS.has(part))
       && fs.statSync(filePath).size <= MAX_FILE_BYTES
     ))

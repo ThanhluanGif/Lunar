@@ -30,6 +30,9 @@ only verification commands, fixtures and reports.
 GitHubConfigResponse {
   success: true,
   configured: boolean,
+  code: null | "GITHUB_OAUTH_NOT_CONFIGURED",
+  error: string | null,
+  missingEnvironmentVariables: string[], // names only; never values
   callbackUrl: string | null,
   authFlow: "web" | "device" | null,
   redirectMode: "registered" | "explicit" | null
@@ -129,6 +132,9 @@ CoreTrustBaselineReport {
 - `CoreTrustBaselineReport` must never contain cookie, JWT, OAuth state/code, access token, email,
   login, repository name/URL, source text, raw AI prompt/response or response headers containing
   credentials. Only stable case IDs and aggregate counts survive normalization.
+- GitHub OAuth configuration diagnostics expose environment variable names only. `/config` returns
+  `200` with `configured:false`; `/start` and `/device/start` fail closed with `503`, code
+  `GITHUB_OAUTH_NOT_CONFIGURED`, and never redirect while required values are absent or invalid.
 - A checkpoint is `BLOCKED` only for missing operator consent, provider/config/quota unavailability
   or network interruption; an observed product error is `FAIL`, not `BLOCKED`.
 - Overall verdict is PASS only when OAuth is PASS, deterministic and AI thresholds pass, AI has
