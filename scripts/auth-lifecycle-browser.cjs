@@ -167,7 +167,7 @@ async function run() {
         JWT_SECRET: jwtSecret,
         DATABASE_URL: databaseUrl,
         CORS_ORIGINS: frontendUrl,
-        PUBLIC_APP_URL: frontendUrl,
+        PUBLIC_APP_URL: 'https://app.example.com',
         COOKIE_SECURE: 'false',
         COOKIE_SAME_SITE: 'strict',
         GEMINI_API_KEY: '',
