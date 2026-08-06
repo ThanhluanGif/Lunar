@@ -14,109 +14,82 @@ then check the gate. `/flow assess` seeds the auto-scan and validates this gate.
 - [x] A human reviewed this assessment (brownfield assessment is operator-gated)
 - [x] No FILL placeholders remain in this file
 
-## Detected (auto-scan)
+## Detected stack and entry points
 
-- Runtime and UI: Node.js, Express 5, React 18 and Vite 8 (`package.json`, `server/package.json`).
-- Persistence and integrations: PostgreSQL via `pg`, Supabase browser client, GitHub OAuth/API, Vercel AI Gateway (`server/db/connection.js`, `src/services/supabaseClient.js`, `server/routes/githubAuthRoutes.js`, `server/services/aiAssistantService.js`).
-- Deployment: Vercel static Vite build plus the Express serverless entrypoint `api/index.js`; Docker and nginx are alternative production surfaces (`vercel.json`, `Dockerfile`, `docker-compose.yml`, `deploy/nginx/lunar.conf`).
-- Entry points: `src/main.jsx` -> `src/App.jsx` for the browser; `api/index.js` -> `server/index.js` on Vercel; direct Node/Docker starts `server/index.js`.
-- Commands from `package.json`: `npm run dev`, `npm run build`, `npm run qa`, `npm run qa:security`, `npm run qa:production-routing`, `npm run qa:production-routing:browser`, `npm run qa:docker`, and `npm run qa:ui`.
-- CI: `.github/workflows/qa.yml` runs the repository quality gates.
+- Node.js, Express 5, React 18 and Vite 8 (`package.json`, `server/index.js`, `src/main.jsx`).
+- PostgreSQL persistence, GitHub OAuth/API and three optional AI providers (`server/db/connection.js`,
+  `server/routes/githubAuthRoutes.js`, `server/routes/aiRoutes.js`).
+- Canonical Vercel production origin: `https://lunar-zeta-ruddy.vercel.app`; Express is exported
+  through `api/index.js` and mounted below `/api/v1`.
+- Relevant commands: `npm run build`, `npm run qa`, `npm run qa:security`, `npm run qa:sast`,
+  `npm run qa:auth-lifecycle:browser`, `npm run qa:ui`.
 
-## Ranked surfaces (auto-scan — read these first)
+## Product and trust-critical surfaces
 
-The auto-scan ranks source files by how widely their symbols are referenced (highest-leverage
-code first). The routing investigation inspected the cross-cutting surfaces that can explain the
-reported response: `src/services/lunarApi.js` constructs every API request and classifies non-JSON
-responses; `server/index.js` owns CORS, CSRF, middleware ordering and every `/api/v1` mount;
-`server/services/corsPolicy.js` normalizes the allowlist; `server/middleware/rateLimiter.js`
-controls public/auth request quotas; and `server/routes/scanRoutes.js` accepts the security-code
-payload most likely to resemble hostile input. The product-heavy ranked surfaces
-`server/services/reportService.js`, `server/routes/adminRoutes.js`, and `server/routes/aiRoutes.js`
-remain relevant but are downstream of the edge-routing failure.
+Lunar is a browser SAST and AI-assisted code-review workbench. The two trust-critical user journeys
+are: (1) authorize GitHub, receive a Lunar session and see synchronized repositories; (2) submit
+source and receive security findings that distinguish real vulnerabilities from safe code.
 
-## What this product is (from docs/specs/code, not guesses)
+Primary surfaces inspected:
 
-Lunar.dev is a browser-based SAST and code-repair workbench for developers, technical leads and
-application-security practitioners (`README.md:14-51`). Its core job is to ingest pasted/local or
-GitHub-hosted source, produce OWASP/CWE/CVSS findings, and carry verified findings into repair,
-reporting and account workflows.
+- OAuth/session: `src/components/AuthModal.jsx`, `src/App.jsx`, `src/services/lunarApi.js`,
+  `server/routes/githubAuthRoutes.js`, `server/routes/authRoutes.js`.
+- Deterministic scan: `server/routes/scanRoutes.js`, `server/services/sastEngine.js`,
+  `src/services/securityScannerEngine.js`.
+- AI review: `server/routes/aiRoutes.js`, `src/services/geminiService.js`,
+  `src/services/aiReviewEngine.js`.
 
-## Current functionality state (evidence)
+## Verified current state — 2026-08-06
 
-- **Production API routing works on the canonical aliases now.** At 2026-08-02 17:14 ICT,
-  `GET https://lunar-zeta-ruddy.vercel.app/api/v1/health` and
-  `GET https://lunar-thanhluangifs-projects.vercel.app/api/v1/health` returned HTTP 200 JSON with
-  both `x-vercel-id` and `x-correlation-id`. `OPTIONS /api/v1/auth/login` returned 204 and a test
-  login POST reached Express and returned the expected JSON 401, proving the edge is no longer
-  returning the reported non-JSON 403.
-- **Guest scanning reaches the application through Vercel.** Benign, `eval(...)`, and SQL/XSS-like
-  public scan payloads all returned HTTP 200 JSON from `/api/v1/scans/guest-preview`; the security
-  payload was not blocked by the current WAF (`server/routes/scanRoutes.js:257-288`).
-- **Frontend request routing is implemented but its 403 branch is diagnostic only.** Requests use
-  relative same-origin `/api/v1/*` when `VITE_API_BASE_URL` is empty
-  (`src/services/apiUrl.js:24-27`, `src/services/lunarApi.js:3-31`). Non-JSON 403 responses are
-  classified as Vercel Deployment Protection, Vercel Edge, or generic hosting rejection
-  (`src/services/lunarApi.js:35-73`); this message cannot bypass an edge denial.
-- **Vercel serverless routing is present in the dirty worktree and deployed production build.**
-  `vercel.json:3-12` maps `/api/v1/*` to the `api` function before the SPA catch-all, and
-  `api/index.js:1-3` exports the Express app. The generated `.vercel/output/config.json` maps the
-  API route to `/api?path=$1`; the production function is present in Vercel deployment
-  `dpl_9DUNWy6q5AUJ29dPrBEjSJgYKQm1`.
-- **Preview branch routing is stale/broken.** The existing `mac` preview alias serves the SPA but
-  `/api/v1/health` returns Vercel `NOT_FOUND` because that preview predates the serverless routing
-  commit. The canonical production aliases do not have this failure.
-- **Auth, dashboard, admin, scans, reports, payments and AI routes exist.** They are mounted under
-  `/api/v1` in `server/index.js:121-139`; auth/session state is consumed by `src/App.jsx:119-204`.
+- `GET /api/v1/health` returned HTTP 200 JSON on the canonical production origin.
+- `GET /api/v1/auth/github/config` returned `configured=true`, `authFlow=web`,
+  `redirectMode=registered` and the canonical callback URL.
+- `GET /api/v1/auth/github/start` returned HTTP 302 to GitHub and set a Secure, HttpOnly,
+  SameSite=Lax state cookie. This proves only initiation; no operator completed consent, callback,
+  Lunar session creation or repository synchronization, so GitHub login is **not verified E2E**.
+- Production guest scan returned 0 findings for parameterized SQL and 1 finding for concatenated
+  SQL injection, but returned score 100 and 0 findings for
+  `exec(req.query.command)`. That is a reproduced critical false negative on a user-facing scan.
+- `npm run qa:sast` ran the focused regression suites successfully, then exited 1 after the
+  repository self-audit reported 6 critical command-execution findings in the local Flow harness.
+  Those findings remain untriaged; a red suite is not evidence of scanner accuracy.
 
-## UI / UX state vs product goals
+## UI / UX state vs the product promise
 
-The React application contains landing, authentication, dashboard, admin, GitHub workspace,
-submission, vulnerability repair, reports, pricing and assistant surfaces (`src/App.jsx:1-28`).
-The reported non-JSON response is surfaced directly in the relevant modal/error state, which is
-useful for operators but too infrastructure-specific for end users. More importantly, a user can
-land on the stale preview UI and only discover its missing API after an action; the UI currently
-does not identify that the preview deployment is not a valid production surface.
+The UI offers “Tiếp Tục Với GitHub”, repository synchronization, “SAST & AI review” and AI repair.
+It already warns that human verification is required, but it does not show a measured scanner
+precision/recall baseline. A configured OAuth button and a successful redirect can also look
+healthy before callback/session/repository sync fails. The product currently exposes activity,
+not an end-to-end trust proof.
 
-## Risks / tech-debt / known issues
+## Risks / tech debt / known issues
 
-1. **Deployment is not reproducible from Git HEAD.** Production metadata records `gitDirty=1`,
-   while the worktree has 48 modified/deleted tracked files. The working production route depends
-   on uncommitted edits to `vercel.json`, `api/index.js`, `server/index.js`, and related tests.
-2. **The reported 403 has no matching current platform evidence.** Vercel reports no custom WAF
-   rules, no IP blocks, no pending firewall draft, Attack Mode disabled, no firewall actions over
-   the last seven days, and no production runtime 403 logs. Disabling security controls would be
-   an unjustified security regression.
-3. **Stale preview URLs are externally visible.** GitHub deployment status links and the `mac`
-   branch alias point at deployments without the API function; consumers may confuse those URLs
-   with the canonical production alias.
-4. **Routing regression checks are mostly source assertions.** `scripts/production-routing-regression.mjs:79-91`
-   checks strings but does not exercise the generated Vercel route table or a public deployment.
-   The browser test validates split-origin local processes, not Vercel edge behavior
-   (`scripts/production-routing-browser.cjs:95-167`).
-5. **The Express API has no served OpenAPI document.** The current application predates Flow and
-   therefore cannot yet perform the standard runtime contract-drift check.
+1. OAuth tests cover configuration, invalid callback and mocked boundaries, not a real production
+   authorization-code round trip with a GitHub account.
+2. There are multiple scan implementations with different rule sets. Guest/verified scan uses five
+   regex rules, while browser and deep scan paths use separate engines; results can drift by entrypoint.
+3. AI `/api/v1/ai/review` validates JSON shape but has no versioned ground-truth corpus, confusion
+   matrix or repeatability measure. “AI-based” is not an accuracy claim.
+4. Current scan tests use a handful of hand-written fixtures. They do not publish TP, TN, FP, FN,
+   precision or recall, and they miss the production command-injection example above.
+5. OAuth live verification handles credentials and user data; any harness must keep consent human,
+   never print cookies/tokens/state/code, and use a dedicated test account.
 
 ## Test + quality baseline
 
-- `npm run qa:production-routing` passes and covers base URL normalization, OAuth redirect origin,
-  cookie policy, local proxy alignment, CORS allowlist fallback and diagnostic strings.
-- `npm run qa:production-routing:browser` passes a real Chromium flow against separate local Vite
-  and Express origins, including a credentialed CORS response.
-- The live probes above cover canonical production health, auth JSON behavior, CORS preflight and
-  WAF-sensitive guest scan payloads. No current 403 was reproduced.
-- Broader suites are available through `npm run qa`, `npm run qa:security`, `npm run qa:a11y`,
-  `npm run qa:docker`, and `npm run qa:ui`; there is no configured line/branch coverage threshold.
-- Missing baseline: an automated assertion that Vercel's generated route table contains the API
-  function before the SPA fallback, plus a safe live smoke against the canonical production URL.
+- Existing OAuth regression: route/config/state/error behavior is covered locally.
+- Existing SAST regression: selected positive/negative fixtures and self-audit exist, but there is
+  no stable labeled benchmark shared by deterministic and AI paths.
+- Missing OAuth baseline: five live checkpoints — start, callback/session, `/auth/me`, GitHub status
+  plus repository list, and logout invalidation.
+- Missing scan baseline: at least 40 labeled cases, per-engine TP/TN/FP/FN, precision/recall,
+  critical-CWE recall and three-run AI stability.
 
 ## Verdict
 
-The codebase is healthy enough for a narrowly scoped production-routing hardening card, and the
-canonical production API is currently healthy. The first fix is to make the already-working
-serverless route reproducible and regression-tested, explicitly reject stale preview evidence,
-and keep live verification on the canonical production alias. Firewall/protection must not be
-disabled without a concrete Vercel firewall event or request ID proving a false-positive rule.
+Do not continue the old routing-only card. Build a verification gate first. The gate may honestly
+report `FAIL` or `BLOCKED`; its job is to establish reproducible evidence before any OAuth or
+scanner repair is scoped. No auth implementation, scanner rule or AI prompt is changed in C-001.
 
 <!-- auto-scan -->
 stack:
@@ -126,14 +99,9 @@ stack:
 context files present:
   - README.md
   - docs
-ranked surfaces (most-referenced first - inspect these before planning):
-  1. server/services/reportService.js  (score 399; height, source, reportLine)
-  2. server/services/accountEmailService.js  (score 321; from, protocol, smtpUrl)
-  3. src/components/ScoreRadar.jsx  (score 299; center, radius, angle)
-  4. server/routes/paymentRoutes.js  (score 256; payment, orderCode, amount)
-  5. server/middleware/auth.js  (score 245; currentUser, verifyToken, optionalToken)
-  6. server/routes/adminRoutes.js  (score 238; reason, page, recentLogins)
-  7. server/middleware/rateLimiter.js  (score 226; body, identifier, reportRateLimiter)
-  8. src/services/lunarApi.js  (score 217; request, lunarApi, download)
-  9. server/routes/aiRoutes.js  (score 211; model, highCount, reasonUnavailable)
-  10. src/components/SubmitModal.jsx  (score 206; file, preview, projectScan)
+ranked surfaces:
+  - server/routes/githubAuthRoutes.js
+  - server/routes/aiRoutes.js
+  - server/routes/scanRoutes.js
+  - src/services/securityScannerEngine.js
+  - src/services/lunarApi.js

@@ -1,0 +1,56 @@
+services:
+  - type: web
+    name: lunar-api-thanhluan
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile.backend
+    dockerContext: .
+    healthCheckPath: /api/v1/ready
+    # Main's existing dependency-audit gate is red. Keep deploys operator-gated
+    # so Render never ships a commit merely because it was pushed.
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: TRUST_PROXY
+        value: "1"
+      - key: CORS_ORIGINS
+        value: https://lunar-zeta-ruddy.vercel.app
+      - key: PUBLIC_APP_URL
+        value: https://lunar-zeta-ruddy.vercel.app
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAME_SITE
+        value: none
+      - key: DATABASE_SSL
+        value: "true"
+      - key: DATABASE_SSL_REJECT_UNAUTHORIZED
+        # Supabase's pooler chain is not trusted by Node's bundled CA store on
+        # Render, even though the connection is still encrypted with TLS.
+        value: "false"
+      - key: DATABASE_POOL_MAX
+        value: "10"
+      - key: GITHUB_AUTH_FLOW
+        value: web
+      - key: GITHUB_OAUTH_REDIRECT_MODE
+        value: explicit
+      - key: GITHUB_OAUTH_CALLBACK_URL
+        value: https://lunar-api-thanhluan.onrender.com/api/v1/auth/github/callback
+      - key: GITHUB_OAUTH_SCOPES
+        value: read:user user:email
+      - key: AUTH_EMAIL_BASE_URL
+        value: https://lunar-zeta-ruddy.vercel.app
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_TOKEN_ENCRYPTION_KEY
+        sync: false

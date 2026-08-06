@@ -205,7 +205,8 @@ Backend tương ứng cần cấu hình:
 PUBLIC_APP_URL=https://app.example.com
 CORS_ORIGINS=https://app.example.com
 COOKIE_SECURE=true
-COOKIE_SAME_SITE=strict
+COOKIE_SAME_SITE=none
+TRUST_PROXY=1
 GITHUB_OAUTH_CALLBACK_URL=https://api.example.com/api/v1/auth/github/callback
 GITHUB_AUTH_FLOW=web
 GITHUB_OAUTH_REDIRECT_MODE=explicit
@@ -216,6 +217,30 @@ Nếu frontend và API cùng site/domain thông qua reverse proxy, để
 Nếu frontend và backend khác site hoàn toàn, ví dụ `vercel.app` và
 `onrender.com`, mới dùng `COOKIE_SAME_SITE=none` cùng HTTPS ở cả hai phía.
 Xem checklist đầy đủ tại [`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md).
+
+#### Lunar: Vercel frontend + Render API
+
+Repository có `render.yaml` cho một Render Free Web Service tại Singapore và
+`Dockerfile.backend` chỉ đóng gói Express. Trình tự cutover production:
+
+Render Free không bảo đảm always-on: service có thể ngủ sau thời gian không có traffic và request
+đầu tiên phải chờ khởi động lại. Đây là lựa chọn không cần thẻ; đổi `plan` sang `starter` khi cần
+OAuth/API phản hồi ổn định 24/7.
+
+1. Tạo Blueprint từ repository, nhập các biến `sync: false` bằng secrets production hiện có.
+   Auto-deploy đang tắt; chỉ deploy thủ công commit đã qua gate.
+2. Chờ `https://lunar-api-thanhluan.onrender.com/api/v1/ready` trả `200`.
+3. Đổi callback của GitHub OAuth App thành
+   `https://lunar-api-thanhluan.onrender.com/api/v1/auth/github/callback`.
+4. Đặt hai build-time variables trên Vercel rồi redeploy production:
+
+   ```bash
+   VITE_API_BASE_URL=https://lunar-api-thanhluan.onrender.com
+   VITE_GITHUB_AUTH_FLOW=web
+   ```
+
+5. Xác minh public API, CORS credentialed và một vòng GitHub OAuth thật trước khi gỡ đường API
+   Vercel cũ. Không đưa `DATABASE_URL`, JWT/OAuth key hoặc provider key vào build arguments.
 
 ---
 
@@ -247,7 +272,9 @@ Dự án Lunar tuân thủ nghiêm ngặt các tiêu chuẩn an toàn bảo mậ
 | `LOG_LEVEL` | Mức log JSON của backend | `INFO` ở production |
 | `TRUST_PROXY` | CIDR/địa chỉ reverse proxy được tin cậy | Không để trống sau proxy production |
 | `VITE_API_BASE_URL` | Origin HTTPS của backend khi frontend host riêng | Để trống khi dùng `/api` same-origin |
+| `VITE_GITHUB_AUTH_FLOW` | Gợi ý flow cho frontend; phải khớp `GITHUB_AUTH_FLOW` | `web` để điều hướng OAuth trực tiếp; `device` để tải config |
 | `PUBLIC_APP_URL` | Origin frontend để backend redirect sau OAuth | Để trống khi backend phục vụ frontend |
+| `CORS_ORIGINS` | Danh sách origin frontend được gọi API kèm cookie | Origin Vercel chính xác, không dùng `*` |
 | `COOKIE_SAME_SITE` | Chính sách session cookie | `strict`; dùng `none` cho cross-site |
 | `GITHUB_CLIENT_ID` | OAuth App Client ID từ GitHub | *GitHub Client ID* |
 | `GITHUB_CLIENT_SECRET` | OAuth App Client Secret từ GitHub | *GitHub Client Secret* |

@@ -1,136 +1,148 @@
 # Stage 05 — Interface Contract (the seam)
 
-The contract is whatever sits between your core and its consumer. For a web app that's
-API endpoints (the table below). For a CLI it's commands + flags + output shapes; for a
-plugin it's hooks + filters; for a pipeline it's input/output file schemas. Keep the
-table's SPIRIT — every feature maps to an interface, every interface has its shapes
-written before code — and adapt the columns to your project's shape.
-
-Written BEFORE any code. Backend cards build TO this table; UI cards consume FROM it.
-The #1 AI-build failure is producer/consumer drift — backend ships one shape, UI assumes
-another, both look green. This file is the cheap fix.
+Written before implementation. Existing production endpoints are systems under test; C-001 adds
+only verification commands, fixtures and reports.
 
 ## Gate — check ALL before `/flow next`
-- [x] Every PRD feature maps to at least one INTERFACE below (web: endpoint · cli: command · library: public function · skill: command/file)
-- [x] Every interface has its INPUT and OUTPUT shapes written (web: request+response · cli: flags+output/exit code · library: args+return)
-- [x] Access/effects column filled for every interface (web: public/token/admin · non-web: writes/side-effects, or "none")
+- [x] Every PRD feature maps to at least one interface below
+- [x] Every interface has input and output shapes written
+- [x] Access/effects is filled for every interface
 - [x] No FILL placeholders remain in this file
 
-## OpenAPI / Swagger rule  (web only — N/A for cli/library/skill)
+## Interfaces
 
-For non-web types there is no served spec; the equivalent "no producer/consumer drift" check
-is the per-type done-evidence (the command runs / the API imports / the skill installs+runs).
-For `web`:
-
-This table is the PLANNING source of truth. If the framework serves a spec (FastAPI →
-`/openapi.json` + `/docs`), the served spec is the RUNTIME artifact of this same contract:
-- Path/method/shapes here and in the served spec must agree — the contract-test card
-  asserts every endpoint in this table exists in the live `/openapi.json` with matching
-  request/response shapes.
-- Change flows ONE way: amend this file first, then the code, then the spec follows.
-- **Docs land with the API, not after**: the served spec is live from the vertical-slice
-  card onward, and every backend card's verify checks its endpoints appear in the live
-  `/docs` with correct schemas. The contract-test card later asserts full agreement —
-  but by then the docs have been growing card by card, never a catch-up task.
-- Keep `/docs` enabled at least until v1 ships — it's the free human-readable contract.
-
-## Interfaces  (web: endpoints · cli: commands · library: functions · skill: commands)
-
-Adapt the columns to your project type. Web: Method/Path/Access(=auth: public/token/admin)/
-Request/Response. CLI: Command/Flags/Access(=side-effects)/Input/Output+exit. Library:
-Function/—/Access(=none)/Args/Return. The shared column below is "Access/Effects".
-
-| Method/Interface | Path/Name | Access/Effects | Input shape | Output shape |
+| Method/interface | Path/name | Access/effects | Input shape | Output shape |
 |---|---|---|---|---|
-| `GET` | `/api/v1/health` | Public; read-only; không cookie/token; không truy cập DB | Không body; `Accept: application/json`; redirect mode `manual` trong live smoke | `200 application/json`; body `HealthResponse`; header `x-correlation-id: SafeRequestId`, và edge có thể thêm `x-vercel-id` |
-| `GET` | `/api/v1/__routing_contract_probe__` | Public; read-only; route cố ý không tồn tại; không cookie/token | Không body; `Accept: application/json`; redirect mode `manual` | `404 application/json`; body `ApiNotFoundResponse`; header `x-correlation-id: SafeRequestId`, và edge có thể thêm `x-vercel-id` |
-| `OPTIONS` | `/api/v1/auth/login` | Public preflight; read-only; không cookie/token | Không body; headers `Origin: <canonical origin>`, `Access-Control-Request-Method: POST` | `204`, body rỗng 0 byte và không có `content-type`; `access-control-allow-origin` bằng đúng canonical origin; `access-control-allow-credentials: true`; `access-control-allow-methods` chứa `POST` |
-| Client response classifier | `classifyNonJsonApiResponse(meta)` | Client-local; không network/write; không log body/header bí mật | `NonJsonResponseMeta`; tuyệt đối không truyền/đọc response body | Ném/trả `ApiResponseError`; precedence: `x-vercel-error` → `DEPLOYMENT_PROTECTED`; `x-vercel-mitigated` hoặc `x-vercel-id`/`server: Vercel` → `VERCEL_EDGE_FORBIDDEN`; 403 khác → `HOSTING_FORBIDDEN`; non-403 → `INVALID_API_RESPONSE` |
-| npm verification command | `npm run qa:production-routing:live -- --origin https://lunar-zeta-ruddy.vercel.app` | Read-only external network tới đúng canonical origin; không cookie/token/body; exit non-zero khi contract sai | `--origin` bắt buộc và phải bằng đúng canonical HTTPS origin, không path/query/credential; timeout cố định `10000` ms/probe | stdout đúng một `LiveRoutingReport` JSON cho pass/probe failure; exit `0` khi `passed=3,total=3`, exit `1` khi probe/network/redirect/contract fail, exit `2` khi input CLI không hợp lệ |
+| `GET` | `/api/v1/auth/github/config` | Public, read-only | No body | `200 GitHubConfigResponse` |
+| Browser navigation | `/api/v1/auth/github/start` → GitHub → `/api/v1/auth/github/callback` | Public start; operator consent at GitHub; callback may create/update Lunar user, GitHub connection, repository rows and Secure HttpOnly session cookie | No body; browser-managed state cookie; operator authorizes a dedicated account | Redirect to `/?github_auth=success|failed|invalid_state|link_required|unavailable`; secrets never enter report |
+| `GET` | `/api/v1/auth/me` | Session cookie; read-only DB | No body | `200 AuthenticatedUserResponse`; `401` after logout |
+| `GET` | `/api/v1/auth/github/status` | Session cookie; read-only DB | No body | `200 GitHubStatusResponse` |
+| `GET` | `/api/v1/auth/github/repositories` | Session cookie; read-only DB | No body | `200 GitHubRepositoriesResponse`; harness records only count and public-test-repo presence boolean |
+| `POST` | `/api/v1/auth/logout` | Session cookie; clears browser cookie | No body | `200 {success:true}`; subsequent `/auth/me` is `401` |
+| Local function | `scanCodeForSecurityVulnerabilities(code,path,language)` | Offline; no write/network | One labeled case source and metadata | Normalized finding list mapped to case id/CWE; raw source excluded from report |
+| `POST` | `/api/v1/ai/review` | Session cookie; consumes one daily AI review and writes existing usage log | `AiReviewBenchmarkRequest`; same corpus for exactly 3 calls | `200 AiReviewResponse` or sanitized `429/503`; normalized findings mapped to case IDs |
+| npm command | `npm run qa:core-trust:baseline` | Offline except optional explicit live phase; writes only a redacted report path | `--mode deterministic|live|all`, `--origin` exact canonical value for live | Exit 0 only when requested measurements complete; stdout `CoreTrustBaselineReport`; verdict may PASS/FAIL/BLOCKED |
+| npm command | `npm run qa:core-trust:enforce` | Reads report/fixtures; no application write | `--report .flow/core-trust-baseline.json` | Exit 0 only for PASS and thresholds met; exit 1 for FAIL/BLOCKED/threshold miss; exit 2 invalid input |
 
-## Shared shapes (objects used by multiple interfaces)
+## Shared shapes
 
+```text
+GitHubConfigResponse {
+  success: true,
+  configured: boolean,
+  callbackUrl: string | null,
+  authFlow: "web" | "device" | null,
+  redirectMode: "registered" | "explicit" | null
+}
+
+AuthenticatedUserResponse {
+  success: true,
+  user: { id: string, role: string, tier: string, ...existingPublicFields }
+}
+
+GitHubStatusResponse {
+  success: true,
+  connected: boolean,
+  connection: null | { login: string, email: string, avatarUrl: string,
+                        scopes: string[], lastSyncedAt: string }
+}
+
+GitHubRepositoriesResponse {
+  success: true,
+  repositories: Array<{ id, fullName, name, repoUrl, language,
+                        isPrivate, updatedAt }>
+}
+
+BenchmarkCase {
+  id: string,                       // stable, e.g. JS-CWE78-BAD-01
+  expected: "VULNERABLE" | "SAFE",
+  cwe: "CWE-78" | "CWE-79" | "CWE-89" | "CWE-95" | "CWE-798",
+  severity: "CRITICAL" | "HIGH",
+  appliesTo: Array<"deterministic" | "ai">,
+  filename: string,
+  language: "javascript",
+  source: string                    // fixture only; never copied to report
+}
+
+AiReviewBenchmarkRequest {
+  code: string,                     // generated corpus with stable case markers
+  filename: "lunar-security-benchmark.js",
+  language: "javascript",
+  provider: "gemini" | "openai" | "anthropic",
+  operation: "benchmark",
+  customPolicies: []
+}
+
+ConfusionMatrix {
+  total: integer,
+  tp: integer,
+  tn: integer,
+  fp: integer,
+  fn: integer,
+  precision: number | null,         // tp / (tp + fp)
+  recall: number | null,            // tp / (tp + fn)
+  criticalRecall: number | null
+}
+
+OAuthCheckpoint {
+  name: "start" | "callback-session" | "auth-me" |
+        "github-connection-repositories" | "logout-invalidation",
+  status: "PASS" | "FAIL" | "BLOCKED",
+  httpStatus: integer | null,
+  failureCode: string | null
+}
+
+CoreTrustBaselineReport {
+  schemaVersion: 1,
+  corpusVersion: string,
+  generatedAt: string,              // ISO-8601
+  origin: "https://lunar-zeta-ruddy.vercel.app" | null,
+  oauth: {
+    status: "PASS" | "FAIL" | "BLOCKED",
+    checkpoints: OAuthCheckpoint[5]
+  },
+  scan: {
+    deterministic: ConfusionMatrix,
+    ai: {
+      status: "PASS" | "FAIL" | "BLOCKED",
+      provider: string | null,
+      model: string | null,
+      runs: ConfusionMatrix[0|3],
+      medianRecall: number | null,
+      worstRecall: number | null,
+      disagreementCaseIds: string[]
+    }
+  },
+  thresholds: {
+    precisionMin: 0.90,
+    recallMin: 0.85,
+    criticalRecallMin: 1.00,
+    aiWorstMedianGapMax: 0.10
+  },
+  verdict: "PASS" | "FAIL" | "BLOCKED",
+  redaction: { secretFieldsEmitted: 0 }
+}
 ```
-SafeRequestId = string matching /^[A-Za-z0-9:._-]{1,256}$/
 
-HealthResponse {
-  status: "HEALTHY",
-  service: string,
-  timestamp: string  // ISO-8601 parseable
-}
+## Contract rules
 
-ApiNotFoundResponse {
-  success: false,
-  error: "API endpoint not found."
-}
-
-NonJsonResponseMeta {
-  status: integer,
-  contentType: string,
-  headers: {
-    xVercelError?: string,
-    xVercelMitigated?: string,
-    xVercelId?: string,
-    xCorrelationId?: string,
-    server?: string
-  }
-  // no body field by design
-}
-
-ApiResponseError {
-  status: integer,
-  code: "DEPLOYMENT_PROTECTED" | "VERCEL_EDGE_FORBIDDEN" |
-        "HOSTING_FORBIDDEN" | "INVALID_API_RESPONSE",
-  payload: {
-    error: string,       // Vietnamese user-facing message
-    code: same as parent code,
-    requestId: SafeRequestId | null
-  }
-}
-
-ApiResponseError message rules {
-  DEPLOYMENT_PROTECTED: chỉ dẫn dùng canonical production domain hoặc quyền/bypass
-    đã được operator cấp; không khuyên tắt protection mặc định,
-  VERCEL_EDGE_FORBIDDEN: nêu Vercel Edge/Firewall/Mitigation và yêu cầu kiểm request ID,
-  HOSTING_FORBIDDEN: nêu hosting gateway/WAF 403 và giải thích response 403 đọc được
-    không do CORS tạo ra,
-  INVALID_API_RESPONSE: nêu status và response không phải JSON
-}
-
-LiveProbeResult {
-  name: "health" | "api-not-found" | "login-preflight",
-  method: "GET" | "OPTIONS",
-  path: string,
-  expectedStatus: 200 | 404 | 204,
-  actualStatus: integer | null,
-  contentType: string,
-  requestId: SafeRequestId | null,
-  corsOrigin: string | null,
-  passed: boolean
-}
-
-LiveRoutingReport {
-  status: "PASS" | "FAIL",
-  origin: string,
-  probes: LiveProbeResult[3],
-  summary: { passed: integer, total: 3 }
-}
-```
-
-Contract rules: report/classifier không chứa response body, cookie, Authorization,
-`x-vercel-challenge-token` hoặc giá trị `x-vercel-mitigated`; request ID không khớp
-`SafeRequestId` trở thành `null`. Classifier dùng **sự hiện diện** của `x-vercel-error`
-và `x-vercel-mitigated` cho precedence kể cả khi giá trị header là chuỗi rỗng; producer
-biểu diễn header vắng mặt bằng `null`. Hai GET live probe chỉ PASS khi có riêng
-`x-correlation-id` hợp lệ, dù field `requestId` trong report vẫn ưu tiên `x-vercel-id`;
-health timestamp phải khớp cú pháp ISO-8601 chặt và parse được. Express hiện không phục vụ OpenAPI/Swagger và card này
-không tạo hay đổi business endpoint/schema, nên v1 kiểm trực tiếp các existing endpoint
-trong bảng; bổ sung full served spec cho toàn API là brownfield documentation work ngoài
-Scope đã duyệt, không được giả là đã có.
+- `CoreTrustBaselineReport` must never contain cookie, JWT, OAuth state/code, access token, email,
+  login, repository name/URL, source text, raw AI prompt/response or response headers containing
+  credentials. Only stable case IDs and aggregate counts survive normalization.
+- A checkpoint is `BLOCKED` only for missing operator consent, provider/config/quota unavailability
+  or network interruption; an observed product error is `FAIL`, not `BLOCKED`.
+- Overall verdict is PASS only when OAuth is PASS, deterministic and AI thresholds pass, AI has
+  exactly 3 runs, and `secretFieldsEmitted=0`. Precedence is deterministic: any observed OAuth or
+  threshold failure makes the overall verdict FAIL; otherwise a required lane that could not be
+  measured makes it BLOCKED; only then may it be PASS.
+- Baseline completion and release enforcement are different exit contracts. An exit-0 baseline
+  does not imply verdict PASS; `qa:core-trust:enforce` is the only green release signal.
+- Express currently has no served OpenAPI spec. This planning contract names the exact existing
+  interfaces consumed by C-001; application endpoint shapes must not be changed by the card.
 
 ## Feature → interface map
 
-Reference each PRD feature by its `FRn` id so the mapping is machine-checkable
-(`/flow consistency` flags any `FRn` with no interface here).
-
-- **FR1 →** `GET /api/v1/health`; `GET /api/v1/__routing_contract_probe__`; `OPTIONS /api/v1/auth/login`; `classifyNonJsonApiResponse(meta)`; `npm run qa:production-routing:live -- --origin https://lunar-zeta-ruddy.vercel.app`.
+- **FR1 →** GitHub config/start/callback, `/auth/me`, GitHub status/repositories, logout,
+  `qa:core-trust:baseline`.
+- **FR2 →** deterministic scanner function, `/api/v1/ai/review`, `qa:core-trust:baseline`,
+  `qa:core-trust:enforce`.
