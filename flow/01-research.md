@@ -3,55 +3,86 @@
 Rule: INSPECT what already exists. Evidence required — links, quotes, screenshots.
 "I think there's nothing like this" without searching = gate fail.
 
-> Project type (`/flow project-type`, default `web`): items 2 and 4 below are written for a
-> **web / market-facing product**. For an **internal tool / cli / library / skill** (no public
-> market), use the non-web framing in each item — it is still real evidence (first-party
-> friction, who-benefits), NOT an excuse to skip. The semantic gate refuses a market product
-> that hides behind the soft framing.
-
 ## Gate — check ALL before `/flow next`
 - [x] I actually OPENED 3 existing tools/competitors (links below, with one honest note each)
-- [x] **(web)** I found 3 REAL user complaints online, quoted, with source links — **OR (non-web/internal)** I named the concrete first-party friction / observed pain that justifies this
-- [x] I wrote what competitors CHARGE (real prices) and who pays — **OR (non-web)** what people spend AROUND this problem today (time, a worse tool, manual work)
-- [x] **(web)** I named the ONE channel my first 10 users come from (a place, not "social media") — **OR (non-web/internal)** I named who benefits and how they hear about it (release notes / team), and noted "no market channel" is NOT a kill signal for an internal tool
+- [x] I found 3 REAL user complaints online, quoted, with source links
+- [x] I wrote what competitors CHARGE (real prices) and who pays
+- [x] I named the ONE channel my first 10 users come from (a place, not "social media")
 - [x] I wrote why those users would pick this over the status quo (one honest paragraph)
 - [x] I wrote what is technically free vs hard for this idea
 - [x] No FILL placeholders remain in this file
 
-## What exists already (3 — open them, don't guess)
+## What exists already (opened 2026-08-06)
 
-Đã mở ngày 2026-08-02: ba trang dưới đây, cộng với trang giá của từng dịch vụ.
+1. [GitHub CodeQL](https://docs.github.com/en/code-security/concepts/code-scanning/codeql/codeql-code-scanning)
+   builds a code database and runs maintained queries. It is a stronger reference than Lunar's
+   regex-only guest path, but GitHub explicitly notes unsupported/custom frameworks can make
+   analysis incomplete; it still requires triage and measurable fixtures.
+2. [Semgrep](https://semgrep.dev/) combines static analysis with AI reasoning for detection,
+   triage and remediation. Its documented separation of deterministic tools and LLM-backed
+   analysis supports Lunar's decision to score those lanes separately instead of marketing one
+   blended “AI accuracy” number.
+3. [Snyk Code](https://docs.snyk.io/scan-with-snyk/snyk-code) is an AI-based SAST product exposed
+   through web, IDE, CLI and source integrations. Its multi-surface delivery is comparable to
+   Lunar, and also shows why the same labeled corpus must guard every user-visible entrypoint.
 
-1. [Vercel Rewrites](https://vercel.com/docs/routing/rewrites) — giải quyết đúng lớp route: rewrite giữ URL và có wildcard cho `/api/v1/*`; đây là lựa chọn nền tảng hợp lý cho Lunar. Điểm thiếu: tự nó không chứng minh generated route table đã đặt API trước SPA fallback, cũng không báo cho Lunar khi WAF chặn trước khi Express chạy.
-2. [Checkly API Checks](https://www.checklyhq.com/pricing/) — có HTTP API check, header/payload và assertion, vì vậy có thể báo khi health endpoint không còn JSON. Điểm thiếu: probe chạy từ IP/UA của Checkly, nên có thể không tái hiện một quyết định WAF phụ thuộc fingerprint của khách; nó cũng không có `x-vercel-id`/Firewall Event nội bộ nếu edge không trả chúng.
-3. [Better Stack Uptime](https://betterstack.com/pricing) — monitor HTTP đa vị trí, alert và ảnh lỗi giúp biết lỗi nằm ngoài browser của Lunar. Điểm thiếu: status/keyword monitor là lớp quan sát ngoài; không thay được regression route table, request ID tương quan, hay chẩn đoán response body an toàn trong client.
+Benchmark references opened:
 
-## What users say (web: 3 real complaints quoted+linked · non-web: real first-party friction)
+- [OWASP Benchmark](https://owasp.org/www-project-benchmark/) publishes labeled true/false cases
+  and computes TP, FN, TN, FP, TPR/recall and FPR for automated vulnerability tools.
+- [NIST Juliet/SARD](https://www.nist.gov/publications/juliet-11-cc-and-java-test-suite) provides
+  known-flawed and non-flawed programs for evaluating static analyzers. Lunar v1 will use a much
+  smaller JavaScript-focused corpus, but retain the same ground-truth discipline.
+- [GitHub OAuth web flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps)
+  defines three real steps: redirect user, receive callback, then use the token. A 302 alone is
+  not an end-to-end success.
 
-1. Tessdashservices 7443, Vercel Community, 2026-05-14: “Issue started suddenly without code changes or redeploy.” Báo cáo kèm HTTP 403, `X-Vercel-Mitigated: challenge`, `Content-Type: text/html` và API không đến server — đúng dạng lỗi edge cần phân biệt khỏi CORS/app lỗi. [Nguồn](https://community.vercel.com/t/production-api-and-vercel-dev-blocked-by-x-vercel-mitigated-challenge-403-false-cors/41873).
-2. Anujamanthrirathne, Vercel Community, 2025-02-18: “previous week this web page work these couple day come this issue”. Bài có `/api/v1/get-events` trả 403 HTML và browser hiển thị như CORS lỗi; đây là lý do UI/monitor phải ghi content type và ID thay vì đổ lỗi CORS. [Nguồn](https://community.vercel.com/t/403-forbiden-error-comming-i-add-cors-url-corectly-help-me/5966).
-3. Switch Labs, Vercel Community, 2025-06-06: “Only dynamic routes fail with HTML 404s”. Họ nói local trả JSON nhưng deployment chỉ trả HTML 404, chặn chức năng production — phù hợp nhu cầu kiểm tra route thực tế, không chỉ source assertion. [Nguồn](https://community.vercel.com/t/dynamic-api-routes-returning-html-404-pages-instead-of-route-handlers/12641).
+## What users say
 
-## GTM & business reality
+1. A GitHub Community user reported: “Failed to connect to GitHub. Please try again later.”
+   [Source](https://github.com/orgs/community/discussions/181237). This is the exact class of vague
+   outcome a start-only check cannot explain.
+2. Another integration report says: “There was a problem syncing GitHub. Try again later.”
+   [Source](https://github.com/orgs/community/discussions/178890). The discussion also contains an
+   `OAuth state invalid or not found` report, showing callback/session continuity must be tested.
+3. A Semgrep false-positive report concludes the pattern was “overbroad and doesn't rely on any
+   semantic property.” [Source](https://github.com/semgrep/semgrep/issues/10984). This matches the
+   failure mode of treating regex hits as verified vulnerabilities.
 
-Building is the cheap part now. Distribution and willingness-to-pay are where ideas die —
-research them BEFORE planning, not after shipping.
+First-party Lunar evidence is stronger than analogy: on 2026-08-06 production guest scan detected
+SQL concatenation but missed `exec(req.query.command)` and returned score 100.
 
-### Who pays today, and how much (pricing reference points)
+## Pricing and who pays
 
-- [Vercel](https://vercel.com/pricing): Hobby **$0/tháng** (có WAF/DDoS mitigation); Pro **$20/tháng** và usage overage, Enterprise báo giá. Chủ project/team Lunar trả; Vercel là runtime/router/WAF hiện tại, không phải một “sản phẩm mới” để mua. Pricing đã kiểm tra ngày 2026-08-02.
-- [Checkly](https://www.checklyhq.com/pricing/): Hobby **$0/tháng** gồm 10 uptime monitor và 10.000 API runs/tháng; Starter **$24/tháng** (billed annually); overage API Starter **$2,60/10.000**. Chủ vận hành Lunar trả nếu cần external synthetic alerting. Đây là chi phí tùy chọn, không phải điều kiện của hotfix.
-- [Better Stack](https://betterstack.com/pricing): free tier gồm **10 monitor**; thêm 50 monitor **$25/tháng** (hoặc $21/tháng trả năm); responder/on-call bắt đầu **$34/license/tháng** (hoặc $29/tháng trả năm). Chủ vận hành/on-call Lunar trả khi muốn escalation. Không cần mua để xác nhận routing contract.
+- GitHub CodeQL is available for public GitHub repositories; private/internal repositories require
+  GitHub Team or Enterprise with GitHub Code Security. GitHub bills licensed security use by active
+  committers; the exact contract price is not public in the product docs.
+- Semgrep Code and Supply Chain are free for organizations with at most 10 monthly contributors;
+  larger teams need paid Team licenses. AI actions consume plan credits, so repeated AI benchmarks
+  have a real quota/cost even when deterministic scanning is free.
+- [Snyk pricing](https://snyk.io/plans/) lists Free at **$0/month**, Team from
+  **$25/month per contributing developer**, Ignite from **$1,260/year per contributing developer**,
+  and Enterprise by quote. Engineering/security teams pay for private-repository scale and controls.
 
-### The first-10-users channel (web) · who-benefits (non-web/internal)
+## First-10-users channel
 
-**Một kênh duy nhất:** [GitHub Issues của Lunar](https://github.com/ThanhluanGif/Lunar/issues). Mười người đầu tiên ở đây là maintainer/contributor hoặc người đã dùng Lunar và gặp API/preview bất thường; họ đã có repo, URL production và nơi gửi reproduction, nên maintainer có thể mời họ chạy thử canonical smoke/diagnostic qua issue ghim hoặc release note. Đây là kênh vận hành của một hotfix chứ không phải tuyên bố có mười khách hàng trả tiền; không suy diễn traffic từ preview cũ.
+One channel: [GitHub Issues của Lunar](https://github.com/ThanhluanGif/Lunar/issues). Maintainer and
+early users can receive a versioned verification report with reproduction commands, rather than a
+claim that “AI scan is accurate” or “GitHub login works” without evidence.
 
-### Why switch (vs the status quo)
+## Why switch from the status quo
 
-Những người ở GitHub Issues không cần “chuyển” sang một dashboard mới: status quo của họ là đọc console CORS, Vercel 403/404 HTML hoặc deploy log rồi đoán route/WAF. Họ chọn hardening này nếu nó làm deploy từ Git HEAD tái tạo được route `/api/v1/*`, kiểm tra canonical production trả JSON, và khi response là HTML thì lộ status, `content-type`, `x-vercel-id`/correlation ID có sẵn (không log secret/body nhạy cảm) để mở Vercel case. Đây nhanh hơn mua/thêm một monitor chung chung và an toàn hơn bypass/disable WAF. Nó **không** hứa chữa được mọi 403: production chuẩn hiện khỏe, HTML 403 được báo chưa tái hiện hôm nay, và preview `mac` 404 là deploy cũ thiếu function chứ không chứng minh production hỏng.
+Today the operator can click OAuth, see a redirect, run a few scanner fixtures and still not know
+whether a real session/repository sync completed or whether critical findings were missed. Lunar's
+gate is useful only if it makes failure explicit: one redacted live OAuth trace, one versioned
+ground-truth corpus, per-engine confusion matrices and a release threshold. This is narrower than
+buying another AppSec platform and more honest than adding scanner rules before measuring baseline.
 
 ## Technically free vs hard
 
-- Free (solved by libraries/platforms): Vercel đã có rewrite/serverless route, HTTPS/WAF/DDoS mitigation và `x-vercel-id`; Node/Express trả JSON; CI có thể chạy scripted assertion; curl/fetch có thể kiểm `status`, `content-type` và header. Vercel nói rewrite chuyển request sang destination mà không đổi URL, nên không cần tự xây reverse proxy. Các primitive này không yêu cầu nới WAF.
-- Hard (custom work, real risk): bảo đảm config committed sinh đúng route table trước SPA fallback; chọn canonical production URL thay vì preview cũ; live smoke đủ nhỏ/đúng auth để không gây side effect; phân loại HTML 403/404 trước app mà không tiết lộ token, HTML challenge hay payload scan; giữ correlation/request ID xuyên browser–Vercel–log; và xác định false positive từ evidence Firewall/Vercel, không từ phỏng đoán. Không có bằng chứng hiện tại để tắt/bypass firewall — làm vậy là regression bảo mật, không phải diagnostic.
+- Free/existing primitives: GitHub OAuth endpoints, Secure HttpOnly cookie policy, Puppeteer,
+  Node assertions/fetch, existing deterministic scanners, OWASP-style confusion-matrix formulas.
+- Hard/custom work: keep user consent interactive while collecting reproducible checkpoints;
+  prevent token/state/code/cookie leakage; map findings back to labeled cases; distinguish engines;
+  run AI three times within quota; report instability and failure without laundering either into
+  a green test.
