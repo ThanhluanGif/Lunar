@@ -79,23 +79,28 @@ async function waitForUrl(url, label, logs) {
 }
 
 async function markAndClick(page, text, { exact = true, scope = 'button' } = {}) {
+  const expectedTexts = Array.isArray(text) ? text : [text];
   const selector = `data-auth-lifecycle-${Math.random().toString(16).slice(2)}`;
-  const marked = await page.evaluate(({ expected, exactMatch, query, attribute }) => {
+  const marked = await page.evaluate(({ expectedValues, exactMatch, query, attribute }) => {
     const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
     const element = [...document.querySelectorAll(query)].find((candidate) => (
-      exactMatch
-        ? normalize(candidate.textContent) === expected
-        : normalize(candidate.textContent).includes(expected)
+      candidate.getClientRects().length > 0
+      && !candidate.disabled
+      && expectedValues.some((expected) => (
+        exactMatch
+          ? normalize(candidate.textContent) === expected
+          : normalize(candidate.textContent).includes(expected)
+      ))
     ));
     element?.setAttribute(attribute, 'true');
     return Boolean(element);
-  }, { expected: text, exactMatch: exact, query: scope, attribute: selector });
-  if (!marked) throw new Error(`Could not find UI action: ${text}`);
+  }, { expectedValues: expectedTexts, exactMatch: exact, query: scope, attribute: selector });
+  if (!marked) throw new Error(`Could not find UI action: ${expectedTexts.join(' / ')}`);
   await page.click(`[${selector}="true"]`);
 }
 
 async function openEmailLogin(page) {
-  await markAndClick(page, 'Đăng nhập');
+  await markAndClick(page, ['Đăng nhập', 'Sign in']);
   await page.waitForSelector('[role="dialog"][aria-modal="true"]', { visible: true });
   await markAndClick(page, 'Đăng nhập bằng email', { exact: false, scope: '[role="dialog"] button' });
 }
@@ -109,10 +114,10 @@ async function waitForSignedInUser(page) {
 
 async function logoutFromNavbar(page) {
   await page.click('button[aria-haspopup="menu"]');
-  await markAndClick(page, 'Đăng xuất', { scope: '[role="menu"] button' });
+  await markAndClick(page, ['Đăng xuất', 'Sign out'], { scope: '[role="menu"] button' });
   await page.waitForFunction(() => (
     [...document.querySelectorAll('button')]
-      .some((button) => button.textContent.trim() === 'Đăng nhập')
+      .some((button) => ['Đăng nhập', 'Sign in'].includes(button.textContent.trim()))
   ), { timeout: 7000 });
 }
 

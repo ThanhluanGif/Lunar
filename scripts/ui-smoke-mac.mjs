@@ -281,11 +281,15 @@ try {
   };
 
   await clickButton('GitHub Quick Scan');
-  await sleep(600);
-  results.page.heroQuickScanCta = await evaluate(`Math.abs(
-    document.querySelector('#github-quick-scan').getBoundingClientRect().top
-    - Number.parseFloat(getComputedStyle(document.querySelector('#github-quick-scan')).scrollMarginTop || 0)
-  ) < 40`);
+  await waitFor(
+    `Math.abs(
+      document.querySelector('#github-quick-scan').getBoundingClientRect().top
+      - Number.parseFloat(getComputedStyle(document.querySelector('#github-quick-scan')).scrollMarginTop || 0)
+    ) < 40`,
+    'hero quick scan scroll position',
+    5000
+  );
+  results.page.heroQuickScanCta = true;
 
   const openedLocalMode = await evaluate(`(() => {
     const button = [...document.querySelectorAll('.quick-scan-mode')]
@@ -392,6 +396,9 @@ try {
   results.githubOAuthFlow = githubConfiguration.authFlow;
   results.githubOAuthRedirectMode = githubConfiguration.redirectMode;
   if (!githubConfiguration.configured) {
+    if (githubConfiguration.code !== 'GITHUB_OAUTH_NOT_CONFIGURED') {
+      throw new Error('GitHub configuration endpoint omitted the fail-closed diagnostic code.');
+    }
     await clickButton('Tiếp Tục Với GitHub');
     await waitFor(
       `document.body.innerText.includes('GitHub OAuth chưa được cấu hình')`,
@@ -486,7 +493,7 @@ try {
   } else {
     await clickButton('Kết Nối GitHub');
     await waitFor(
-      `document.body.innerText.includes('LUNAR_GITHUB_CLIENT_ID')`,
+      `document.body.innerText.includes('Kết nối GitHub hiện chưa được bật trên máy chủ Lunar')`,
       'workspace GitHub configuration warning'
     );
     results.workspaceGitHubWarning = true;
@@ -584,7 +591,7 @@ try {
     || !results.page.liveDashboardGuestState
     || !results.page.dashboardMockRemoved
   ) {
-    throw new Error('The React application did not render the expected workspace.');
+    throw new Error(`The React application did not render the expected workspace: ${JSON.stringify(results.page)}`);
   }
   if (results.cookieSession?.status !== 200 || !results.cookieSession?.body?.user?.email) {
     throw new Error('Browser registration did not establish a working cookie session.');

@@ -67,16 +67,19 @@ const pool = new Pool({
 let isPgConnected = false;
 let initPromise = null;
 
-async function initPgDatabase() {
+async function initializePgDatabase() {
   let client;
   try {
     client = await pool.connect();
-    isPgConnected = true;
     writeSystemLog('INFO', 'PostgreSQL database pool connected.');
 
     const schemaSql = fs.readFileSync(path.join(__dirname, '../schema.sql'), 'utf8');
     await client.query(schemaSql);
 
+    // Readiness means both the connection and the complete schema are usable.
+    // Setting this before the schema query created a cold-start race where
+    // `/ready` returned 200 while application tables did not exist yet.
+    isPgConnected = true;
     writeSystemLog('INFO', 'PostgreSQL schema initialized and verified.');
   } catch (error) {
     isPgConnected = false;
@@ -86,14 +89,18 @@ async function initPgDatabase() {
   }
 }
 
-async function ensurePgConnected() {
-  if (isPgConnected) return true;
+function initPgDatabase() {
   if (!initPromise) {
-    initPromise = initPgDatabase().finally(() => {
+    initPromise = initializePgDatabase().finally(() => {
       initPromise = null;
     });
   }
-  await initPromise;
+  return initPromise;
+}
+
+async function ensurePgConnected() {
+  if (isPgConnected) return true;
+  await initPgDatabase();
   return isPgConnected;
 }
 
